@@ -1,9 +1,9 @@
 # UI 디자인 가이드
 
 ## 디자인 원칙
-1. {원칙 1 — 예: "도구처럼 보여야 한다. 마케팅 페이지가 아니라 매일 쓰는 대시보드."}
-2. {원칙 2}
-3. {원칙 3}
+1. **도구처럼 보여야 한다.** 마케팅 페이지가 아니라 매일 쓰는 대시보드. 랜딩과 대시보드가 같은 톤·같은 컴포넌트를 쓴다.
+2. **숫자가 주인공이다.** 장식이 숫자보다 시선을 먼저 끌면 실패다. 금액은 tabular-nums로 자리를 맞춘다.
+3. **라이트/다크 양쪽 다 1급 시민이다.** 한쪽만 다듬고 다른 쪽을 방치하지 않는다. 모든 색은 아래 토큰으로만 쓴다.
 
 ## AI 슬롭 안티패턴 — 하지 마라
 | 금지 사항 | 이유 |
@@ -17,60 +17,132 @@
 | 배경 gradient orb (blur-3xl 원형) | 모든 AI 랜딩 페이지에 있는 장식 |
 
 ## 색상
-### 배경
-| 용도 | 값 |
-|------|------|
-| 페이지 | {예: #0a0a0a} |
-| 카드 | {예: #141414} |
 
-### 텍스트
-| 용도 | 값 |
-|------|------|
-| 주 텍스트 | {예: text-white} |
-| 본문 | {예: text-neutral-300} |
-| 보조 | {예: text-neutral-400} |
-| 비활성 | {예: text-neutral-500} |
+Tailwind v4의 `@theme`로 정의한다. **v3의 `bg-[--surface]` 문법을 쓰지 마라 — v4에서는 에러 없이 조용히 무시된다.**
+`--color-*`로 선언하면 Tailwind가 유틸리티를 자동 생성하므로 `bg-surface`, `text-muted`처럼 평범하게 쓴다.
+**컴포넌트에 hex를 하드코딩하지 마라. 반드시 아래 토큰명을 거쳐라.**
 
-### 데이터/시맨틱 색상
-| 용도 | 값 |
-|------|------|
-| {긍정/성공} | {예: #22c55e} |
-| {부정/에러} | {예: #ef4444} |
-| {중립/기본} | {예: #525252} |
+### 토큰 정의 (`src/app/globals.css`)
+
+```css
+@import "tailwindcss";
+
+@theme {
+  --color-bg: #ffffff;
+  --color-surface: #f7f7f5;
+  --color-surface-2: #efefec;
+  --color-border-default: #e3e3df;
+  --color-text: #1a1a19;
+  --color-text-body: #3d3d3a;
+  --color-muted: #6b6b66;
+  --color-disabled: #9c9c96;
+  --color-up: #b3261e;
+  --color-down: #2f6b46;
+  --color-neutral-line: #8a8a84;
+  --color-accent: #2563a8;
+}
+
+[data-theme="dark"] {
+  --color-bg: #0f0f0e;
+  --color-surface: #191918;
+  --color-surface-2: #222220;
+  --color-border-default: #2c2c29;
+  --color-text: #f5f5f3;
+  --color-text-body: #d4d4d0;
+  --color-muted: #8a8a84;
+  --color-disabled: #5c5c58;
+  --color-up: #f2837b;
+  --color-down: #6fbd8e;
+  --color-neutral-line: #6e6e69;
+  --color-accent: #7fb0e0;
+}
+```
+
+v4는 테마 값을 실제 CSS 변수로 내보내고 유틸리티가 `var(--color-*)`를 참조한다. `[data-theme="dark"]`에서 같은 변수를 덮어쓰면 그대로 캐스케이드된다.
+**`dark:` variant를 쓸 필요가 없다** — 클래스는 한 벌만 쓰고 변수만 갈아끼운다.
+
+### 용도
+
+| 토큰 | 클래스 예 | 용도 |
+|------|-----------|------|
+| `bg` | `bg-bg` | 페이지 배경 |
+| `surface` | `bg-surface` | 카드 |
+| `surface-2` | `bg-surface-2` | 테이블 헤더, 호버, placeholder 블록 |
+| `border-default` | `border-border-default` | 모든 테두리 |
+| `text` | `text-text` | 주 텍스트, 숫자 |
+| `text-body` | `text-text-body` | 본문 |
+| `muted` | `text-muted` | 보조, 라벨 |
+| `disabled` | `text-disabled` | 비활성, placeholder |
+| `up` | `text-up` | 지출 증가 / 경고 / 이상거래 |
+| `down` | `text-down` | 지출 감소 / 절약 / 성공 |
+| `neutral-line` | `stroke-neutral-line` | 차트 기준선 |
+| `accent` | `text-accent` / `outline-accent` | 링크, 포커스 링 |
+
+브랜드 포인트 색(`accent`)은 **링크와 포커스 링에만** 쓴다. Primary 버튼은 무채색이다 — 증감 색상(빨강/초록)과 경쟁하면 데이터를 못 읽는다.
+
+**카테고리 12색 팔레트는 여기서 정하지 않는다.** 차트를 만드는 step에서 `dataviz` 스킬을 로드해 확정하고, 확정된 값을 `src/lib/palette.ts`에 두고 전 차트가 그 파일만 참조한다.
 
 ## 컴포넌트
+
 ### 카드
 ```
-{예: rounded-lg bg-[#141414] border border-neutral-800 p-6}
+rounded-md border border-border-default bg-surface p-5
 ```
+카드 반경은 `rounded-md` 고정. 강조는 반경이 아니라 `border` 색이나 좌측 2px 액센트 바로 한다.
 
 ### 버튼
 ```
-Primary: {예: rounded-lg bg-white text-black hover:bg-neutral-200}
-Text:    {예: text-neutral-500 hover:text-neutral-300}
+Primary:     rounded-md bg-text text-bg px-4 py-2 text-sm font-medium hover:opacity-90
+Secondary:   rounded-md border border-border-default text-text px-4 py-2 text-sm hover:bg-surface-2
+Text:        text-sm text-muted hover:text-text underline-offset-4 hover:underline
+Destructive: rounded-md border border-up text-up px-4 py-2 text-sm hover:bg-up/10
 ```
+모든 인터랙티브 요소에 `focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent`.
 
 ### 입력 필드
 ```
-{예: rounded-lg bg-neutral-900 border border-neutral-800 px-4 py-3}
+rounded-md border border-border-default bg-bg px-3 py-2 text-sm text-text
+placeholder:text-disabled focus:border-accent
+```
+
+### 금액 표기
+```
+font-mono tabular-nums
+```
+`₩1,234,567` 형식(`Intl.NumberFormat('ko-KR')`). 지출 금액 자체는 `text-text`로 두고, **증감분에만** `text-up`/`text-down`을 쓴다. 예: `₩482,000` + `+12.4%`(up).
+
+### 테이블 (거래 목록)
+```
+헤더: text-xs font-medium text-muted bg-surface-2 좌측 정렬 (금액 컬럼만 우측 정렬)
+행:   border-b border-border-default text-sm hover:bg-surface-2
 ```
 
 ## 레이아웃
-- 전체 너비: {예: max-w-5xl}
-- 정렬: {예: 좌측 정렬 기본. 중앙 정렬 금지}
-- 간격: {예: gap-3~4, 섹션 간 space-y-8}
+- 전체 너비: `max-w-6xl mx-auto px-6` (대시보드), `max-w-5xl` (랜딩)
+- 정렬: 좌측 정렬 기본. 랜딩 히어로 한 곳만 예외적으로 중앙 정렬 허용.
+- 간격: 컴포넌트 내부 `gap-3`, 카드 사이 `gap-4`, 섹션 사이 `space-y-10`
 
 ## 타이포그래피
 | 용도 | 스타일 |
 |------|--------|
-| 페이지 제목 | {예: text-4xl font-semibold text-white} |
-| 카드 제목 | {예: text-sm font-medium text-neutral-400} |
-| 본문 | {예: text-sm text-neutral-300 leading-relaxed} |
+| 랜딩 히어로 | `text-4xl sm:text-5xl font-semibold tracking-tight text-text` |
+| 페이지 제목 | `text-2xl font-semibold text-text` |
+| 섹션 제목 | `text-sm font-medium text-muted uppercase tracking-wide` |
+| 카드 라벨 | `text-xs font-medium text-muted` |
+| 큰 숫자(KPI) | `text-3xl font-semibold tabular-nums text-text` |
+| 본문 | `text-sm text-text-body leading-relaxed` |
 
 ## 애니메이션
-- {허용할 애니메이션만 나열. 예: fade-in (0.4s), slide-up (0.5s)}
-- {그 외 모든 애니메이션 금지}
+- 허용: `fade-in` (0.2s ease-out), 테마 전환 `background-color`/`color` 0.15s, hover 색상 전환 0.1s
+- 그 외 모든 애니메이션 금지. 스크롤 리빌, 시차 효과, 숫자 카운트업, 로딩 스켈레톤 shimmer 전부 금지.
+- 로딩 상태는 스켈레톤 대신 정적 placeholder 블록(`bg-surface-2`)을 쓴다.
 
 ## 아이콘
-- {예: SVG 인라인, strokeWidth 1.5}
-- {예: 아이콘 컨테이너(둥근 배경 박스)로 감싸지 않는다}
+- SVG 인라인, `strokeWidth={1.5}`, `currentColor`
+- 아이콘 컨테이너(둥근 배경 박스)로 감싸지 않는다
+- 아이콘만으로 의미를 전달하지 않는다. 항상 텍스트 라벨을 동반한다.
+
+## 다크모드 구현 규칙
+- `:root`에 라이트 토큰을 정의하고, `[data-theme="dark"]`에서 같은 토큰을 재정의한다.
+- `prefers-color-scheme`은 최초 방문 시 기본값 결정에만 쓰고, 사용자가 토글하면 `localStorage`가 우선한다.
+- FOUC 방지: `layout.tsx`의 `<head>`에 인라인 스크립트로 `data-theme`을 hydration 전에 세팅한다.
