@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>FinSight — 준비 중</title>
+<meta name="description" content="카드 명세서 CSV를 올리면 지출이 어디로 새는지 보여드립니다.">
+<meta name="robots" content="noindex">
+<style>
+  /* docs/UI_GUIDE.md 토큰과 동일한 값. Next.js 전환 시 @theme로 옮긴다. */
+  :root {
+    --bg:#ffffff; --surface:#f7f7f5; --surface-2:#efefec; --border:#e3e3df;
+    --text:#1a1a19; --text-body:#3d3d3a; --muted:#6b6b66;
+    --up:#b3261e; --down:#2f6b46; --accent:#2563a8;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg:#0f0f0e; --surface:#191918; --surface-2:#222220; --border:#2c2c29;
+      --text:#f5f5f3; --text-body:#d4d4d0; --muted:#8a8a84;
+      --up:#f2837b; --down:#6fbd8e; --accent:#7fb0e0;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg:#0f0f0e; --surface:#191918; --surface-2:#222220; --border:#2c2c29;
+    --text:#f5f5f3; --text-body:#d4d4d0; --muted:#8a8a84;
+    --up:#f2837b; --down:#6fbd8e; --accent:#7fb0e0;
+  }
+  * { box-sizing:border-box; }
+  body {
+    margin:0; background:var(--bg); color:var(--text);
+    font:14px/1.6 -apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo","Pretendard",
+         "Segoe UI",Roboto,"Helvetica Neue",sans-serif;
+    -webkit-font-smoothing:antialiased;
+  }
+  .wrap { max-width:56rem; margin:0 auto; padding:4rem 1.5rem 5rem; }
+  header { display:flex; justify-content:space-between; align-items:center; margin-bottom:5rem; }
+  .brand { font-weight:600; letter-spacing:-0.01em; }
+  .badge {
+    font-size:11px; color:var(--muted); border:1px solid var(--border);
+    border-radius:4px; padding:2px 7px; margin-left:8px; vertical-align:2px;
+  }
+  button {
+    font:inherit; font-size:13px; color:var(--muted); background:none;
+    border:1px solid var(--border); border-radius:6px; padding:5px 11px; cursor:pointer;
+  }
+  button:hover { color:var(--text); background:var(--surface-2); }
+  button:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
+  h1 {
+    font-size:clamp(1.9rem,5vw,2.75rem); font-weight:600; letter-spacing:-0.02em;
+    line-height:1.25; margin:0 0 1.25rem; text-wrap:balance; max-width:22ch;
+  }
+  .lede { font-size:1rem; color:var(--text-body); max-width:52ch; margin:0 0 3.5rem; }
+  .grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(210px,1fr)); gap:1rem; margin-bottom:3.5rem; }
+  .card { border:1px solid var(--border); background:var(--surface); border-radius:6px; padding:1.15rem 1.25rem; }
+  .card h2 { font-size:11px; font-weight:500; color:var(--muted); text-transform:uppercase;
+             letter-spacing:0.06em; margin:0 0 0.7rem; }
+  .card p { margin:0; color:var(--text-body); font-size:13px; }
+  .num { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-variant-numeric:tabular-nums;
+         font-size:1.45rem; font-weight:600; color:var(--text); display:block; margin-bottom:0.3rem; }
+  .delta { font-size:12px; font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+           font-variant-numeric:tabular-nums; }
+  .up { color:var(--up); } .down { color:var(--down); }
+  .status { border-top:1px solid var(--border); padding-top:1.75rem; }
+  .status h2 { font-size:11px; font-weight:500; color:var(--muted); text-transform:uppercase;
+               letter-spacing:0.06em; margin:0 0 0.9rem; }
+  ol { margin:0; padding-left:1.15rem; color:var(--text-body); font-size:13px; }
+  ol li { margin-bottom:0.35rem; }
+  ol li::marker { color:var(--muted); font-variant-numeric:tabular-nums; }
+  footer { margin-top:4rem; padding-top:1.5rem; border-top:1px solid var(--border);
+           font-size:12px; color:var(--muted); }
+  .note { font-size:12px; color:var(--muted); margin-top:0.9rem; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <span class="brand">FinSight<span class="badge">준비 중</span></span>
+    <button id="t" type="button" aria-label="테마 전환">테마</button>
+  </header>
+
+  <main>
+    <h1>카드 명세서를 올리면 지출이 어디로 새는지 보여드립니다.</h1>
+    <p class="lede">
+      은행·카드사에서 받은 CSV를 그대로 올리세요. 컬럼 형식이 제각각이어도 자동으로 읽고,
+      거래를 분류하고, 잊고 있던 정기결제를 찾아냅니다.
+    </p>
+
+    <div class="grid">
+      <div class="card">
+        <h2>이번 달 지출</h2>
+        <span class="num">₩1,482,000</span>
+        <span class="delta up">+12.4% 지난달 대비</span>
+      </div>
+      <div class="card">
+        <h2>정기결제</h2>
+        <span class="num">4건</span>
+        <span class="delta">월 ₩47,000</span>
+      </div>
+      <div class="card">
+        <h2>절약 여지</h2>
+        <span class="num">₩31,000</span>
+        <span class="delta down">미사용 구독 2건</span>
+      </div>
+    </div>
+    <p class="note">위 숫자는 디자인 확인용 예시입니다. 실제 데이터가 아닙니다.</p>
+
+    <section class="status">
+      <h2>진행 상황</h2>
+      <ol>
+        <li>기획·아키텍처·보안 명세 확정 — 완료</li>
+        <li>프로젝트 스캐폴딩 · 공유 타입 · DB 스키마</li>
+        <li>CSV 파서 · 분류 엔진 · 집계</li>
+        <li>업로드 플로우 · 대시보드</li>
+        <li>랜딩 · 결제 · 배포</li>
+      </ol>
+    </section>
+  </main>
+
+  <footer>이 페이지는 배포 파이프라인 확인용 임시 페이지입니다.</footer>
+</div>
+<script>
+  (function () {
+    var r = document.documentElement, k = 'finsight-theme';
+    try { var s = localStorage.getItem(k); if (s) r.setAttribute('data-theme', s); } catch (e) {}
+    document.getElementById('t').addEventListener('click', function () {
+      var dark = r.getAttribute('data-theme') === 'dark' ||
+        (!r.getAttribute('data-theme') && matchMedia('(prefers-color-scheme: dark)').matches);
+      var next = dark ? 'light' : 'dark';
+      r.setAttribute('data-theme', next);
+      try { localStorage.setItem(k, next); } catch (e) {}
+    });
+  })();
+</script>
+</body>
+</html>

@@ -1,0 +1,16 @@
+# 내부 문서 — 배포에 포함하지 않는다.
+# package.json이 생기기 전에는 Vercel이 정적 사이트로 서빙하므로
+# 이 목록이 없으면 기획·아키텍처 문서가 공개 URL로 노출된다.
+docs/
+phases/
+scripts/
+plan.md
+CLAUDE.md
+.claude/
+.idea/
+
+# 빌드 산출물 / 로컬
+node_modules/
+.next/
+.env
+.env.*
