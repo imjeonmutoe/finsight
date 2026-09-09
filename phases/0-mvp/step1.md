@@ -19,20 +19,21 @@
 | 파일 | 내용 |
 |---|---|
 | `src/types/category.ts` | `CATEGORIES` 상수(12개, `as const`), `Category` 타입 |
-| `src/types/upload.ts` | `ColumnMapping`, `UploadStatus` |
-| `src/types/transaction.ts` | `ParsedTransaction`, `CategorySource`, DB 행 타입 |
-| `src/types/api.ts` | `MappingResponse`, `ConfirmResponse`, `ClassifyResponse` |
+| `src/types/upload.ts` | `FinancialSource`, `MappingLabel`, `SanitizedMappingInput`, `ColumnMapping`, `ImportContext`, `UploadStatus` |
+| `src/types/transaction.ts` | `TransactionKind`, `ParsedTransaction`, `CategorySource`, DB 행 타입 |
+| `src/types/api.ts` | `MappingResponse`, `ConfirmRequest`, `DuplicateDecision`, `ImportReviewResponse`, `ConfirmResponse`, `ClassifyResponse` |
 | `src/types/billing.ts` | `Plan` (`'free' | 'pro'`), 프로필 관련 타입 |
+| `src/types/llm.ts` | `LlmCallContext` (서버 전용 lease 문맥) |
 
 추가로 정의할 것:
 
-- `src/types/transaction.ts`에 DB에서 읽어온 거래 행 타입 `Transaction` — `ParsedTransaction` 필드 + `id`, `userId`, `uploadId`, `category: Category | null`, `categorySource`, `createdAt`
+- `src/types/transaction.ts`에 DB에서 읽어온 거래 행 타입 `Transaction` — `ParsedTransaction`의 `kind`·`dedupeHash`·`candidateHash`를 non-null로 좁히고 `id`, `userId`, `uploadId`, `category: Category | null`, `categorySource: 'ai' | 'rule' | 'user' | null`을 추가한다. `ImportContext`가 참조하는 `TransactionKind`는 type import로 연결한다.
 - `src/types/analytics.ts` — step 6과 8이 공유할 집계 결과 타입:
   ```ts
   export type MonthlySummary = {
     month: string                                   // 'YYYY-MM'
-    totalKrw: number
-    byCategory: { category: Category; amountKrw: number; count: number }[]
+    totalKrw: number                                 // 지출-환불, 수입/이체 제외
+    byCategory: { category: Category | null; amountKrw: number; count: number }[]
   }
   export type Subscription = {
     merchantNorm: string; displayName: string
@@ -72,8 +73,9 @@ console.log('카테고리 12개 OK');
 1. 위 AC 커맨드를 실행한다.
 2. 아키텍처 체크리스트:
    - 타입 이름과 필드가 `ARCHITECTURE.md`의 `## 공유 인터페이스`와 **한 글자도 다르지 않은가?**
-   - `ParsedTransaction`에 `occurrenceIndex`와 `dedupeHash`가 있는가?
-   - `ColumnMapping`에 `deposit`·`withdrawal`·`krwEquivalent`·`skipRows`가 있는가?
+   - `ParsedTransaction`에 `sourceId`·`kind`·`accountingMonth`·`sourceTransactionKey`·`dataRowIndex`·두 해시가 있는가?
+   - `ColumnMapping`이 컬럼 인덱스를 사용하고 `SanitizedMappingInput`에 임의 원본 문자열 필드가 없는가?
+   - 승인 요청에 행별 유형 수정·중복 확인이 있고 409 응답 타입이 공유되는가?
 3. `phases/0-mvp/index.json`의 step 1을 업데이트한다. `summary`에 **정의한 타입 이름을 전부 나열**하라 — 이후 step이 이 요약만 보고 import 대상을 판단한다.
 
 ## 금지사항

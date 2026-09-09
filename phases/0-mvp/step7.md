@@ -13,20 +13,24 @@
 
 담당 화면: **S7**(파일 선택) · **S8**(매핑 확인) · **S9**(진행률) · **S10**(결과 요약). 전부 `/dashboard/upload` 한 경로의 4단계다.
 
-### 라우트 핸들러 5개
+### 라우트 핸들러 6개
+
+**`GET/POST /api/sources`**
+- 인증된 본인의 카드/계좌 별칭 목록 조회 및 생성. UUID는 서버에서 만들고 종류는 card/bank enum을 검증한다. 원본 계좌/카드번호는 받거나 저장하지 않는다
 
 **`POST /api/uploads`** → `MappingResponse`
-1. 검증: 확장자·MIME·**크기 5MB**·**행수 10,000**. 서버에서 검증한다 — 클라이언트 검증은 UX용이지 방어가 아니다
-2. Storage 저장. 경로는 **서버가 `{user_id}/{서버생성 uuid}.csv`로만 조합**한다. 원본 파일명은 `uploads.filename` 컬럼에만 넣는다. 사용자 입력을 경로에 넣지 마라
-3. 인코딩 감지 → 첫 20행 추출 → `inferColumnMapping()`
-4. `uploads` 행 생성 (`status='mapped'`), 매핑과 미리보기 반환
+1. 인증·`sourceId` 소유권·확장자·MIME·**파일 4,000,000 bytes**·**multipart body 4,200,000 bytes**·**행수 10,000** 검증. 실제 수신 bytes를 세며 Content-Length만 믿지 않는다. 초과는 413
+2. 원본 bytes로 `file_hash` 계산. 같은 `(user_id, source_id, file_hash)`의 mapped/parsed는 기존 ID·결과와 `reused=true`를 반환한다. pending은 409와 재시도 시각을 반환한다. 이 경로에서는 Storage 복제나 LLM 호출을 하지 않는다
+3. 새 `uploads`를 pending으로 생성한다(UNIQUE 충돌 시 기존 행 재조회). Storage 경로는 **서버가 `{user_id}/{서버생성 uuid}.csv`로 조합**하며 원본 파일명은 `uploads.filename`에만 저장한다
+4. 인코딩 감지 → 첫 20행에서 `buildSanitizedMappingInput()` 생성 → 사용자별 LLM lease 획득·캐시 재확인 → `inferColumnMapping(input, context)` 호출. 원본 헤더·셀·상단 요약을 넘기지 않는다
+5. 성공 시 mapped와 column_mapping 저장. 실패는 failed로 기록하고 파일 경로를 이력에 남겨 삭제 가능하게 한다. 같은 파일의 failed 재시도는 기존 행/파일을 재사용하되 매 모델 시도마다 한도를 소비한다. pending이 요청 제한시간 300초를 넘고 lease도 만료됐으면 failed로 전환해 재개할 수 있게 한다
 
 **`POST /api/uploads/[id]/confirm`** → `ConfirmResponse`
-1. Storage에서 원본 재조회 → 전체 파싱
-2. `occurrence_index` 계산 → `dedupe_hash` 계산
-3. `merchant_rules` 조회해 히트하는 건 `category_source='rule'`로 즉시 채움
-4. `transactions` upsert — **해시 충돌은 무시**(`on conflict do nothing`). `duplicates`는 무시된 건수
-5. `status='parsed'`, 카운트 컬럼 갱신
+1. `ConfirmRequest` 검증. 출처·파일 해시는 DB에서 읽고 클라이언트가 바꿀 수 없게 한다. parsed 재요청은 저장된 ConfirmResponse를 반환하며 insert나 카운트 덮어쓰기를 하지 않는다
+2. 원본 재조회 → 선택한 인코딩/매핑·청구월·거래구분 값 매핑으로 파싱 → 행별 kindOverrides 적용. 카드 청구월을 컬럼/요청 어디에서도 얻을 수 없으면 입력 오류로 반환해 사용자 입력을 요구한다. 임의 행 번호·유효하지 않은 enum은 거부한다
+3. 유형·청구월이 확정된 행의 출처별 확정 해시와 후보 해시 계산. 고유번호가 없는 파일 간 후보는 keep/duplicate 결정을 요구한다. 미확정 유형이나 미결정 후보가 있으면 **409 ImportReviewResponse**, 거래 insert는 아직 하지 않는다
+4. duplicate가 가리키는 거래는 본인·동일 출처·후보 조건을 모두 재검증하고 기존 거래 하나를 여러 새 행에 연결하지 않는다. 같은 파일 내 별개 행을 후보라는 이유로 제거하지 않는다. 확정 해시 충돌만 자동 중복 처리한다
+5. 지출/환불에 merchant_rules를 적용한다. 출처 행 잠금 아래 후보 재조회·결정 검증·insert·업로드 카운트 및 parsed 전이를 하나의 DB 트랜잭션/RPC로 처리한다. 동시 confirm이 새 후보를 만들면 409로 되돌린다. 승인된 import_context를 저장한다. RPC는 세션 UID와 소유권을 검증한다
 
 **`DELETE /api/uploads/[id]`**
 - Storage 파일 + `transactions` 행을 함께 지운다. **Storage 삭제가 실패하면 DB 삭제도 롤백**한다
@@ -34,20 +38,20 @@
 
 **`POST /api/transactions/classify`** → `ClassifyResponse`
 - **1 요청 = 1 배치(최대 50건).** 서버가 루프를 돌지 않는다
-- 선택: `WHERE category IS NULL ... LIMIT 50`
-- 갱신: `UPDATE ... WHERE category IS NULL` — **멱등**해야 한다. 탭 두 개나 더블 클릭에도 같은 거래를 두 번 분류하지 않는다
+- step 5의 사용자별 LLM lease 획득 **후** 선택: `WHERE kind IN ('expense','refund') AND category IS NULL ... LIMIT 50`
+- `classifyTransactions(items, context)`가 매 API 시도 전 사용량 예약. 갱신은 `UPDATE ... WHERE category IS NULL`로 사용자 수정을 보존한다. 이 조건만으로 동시 호출을 막는다고 가정하지 않는다
 - `classifyTransactions()` 반환은 **`id`로 매칭**한다. 반환에 없는 `id`는 미분류로 남긴다
-- `remaining`을 함께 반환한다
+- `remaining`은 미분류 지출/환불만 센다. 429/409/503과 진척 없는 응답에서는 클라이언트 루프를 멈춘다. 성공·실패 모두 토큰 일치 조건으로 lease를 해제한다
 
 **`PATCH /api/transactions/[id]`**
-- `category`와 `category_source='user'` 갱신
-- **동시에 `merchant_rules`에 `(user_id, merchant_norm) → category`를 upsert**한다. 이게 F5 대응의 전부다 — 다음 업로드부터 자동 적용된다
+- category 수정은 `category_source='user'`로 갱신하고 동시에 merchant_rules를 upsert한다
+- kind 수정도 허용해 지출·수입·환불·이체를 바로잡는다. 유형을 merchant_rules에 저장하지 않는다. 변경 시 후보/확정 해시를 재계산하고 UNIQUE 충돌은 409로 반환한다. 거래를 자동 삭제하지 않는다. SQL 집계를 재조회해 총액과 탐지를 갱신한다
 
 모든 쿼리에 `user_id` 조건을 명시한다(CLAUDE.md CRITICAL).
 
 ### UI 4단계
 
-**S7 파일 선택** — 드래그앤드롭 + 파일 선택 버튼. 크기·확장자를 클라이언트에서도 미리 알려준다(UX용).
+**S7 파일 선택** — 기존 카드/계좌 별칭 선택 또는 새 별칭 생성, 드래그앤드롭 + 파일 선택. 한 파일은 한 출처만 허용한다. 공유 상수로 크기·확장자를 클라이언트에서도 안내한다.
 
 **S8 매핑 확인 — 마찰 F2 대응.**
 이 화면이 기술적으로 느껴지면 사용자가 이탈한다.
@@ -55,11 +59,15 @@
 - 미리보기 표에 첫 5행을 보여준다 — **가맹점명이 깨져 보이면 사용자가 인코딩 오판(E3)을 육안으로 발견**할 수 있다
 - 인코딩 수동 전환 옵션을 상세 영역에 둔다
 - 신뢰도가 낮으면 상세를 펼친 상태로 시작한다
+- 카드 청구월·거래구분 값 매핑을 확인한다. 알 수 없는 컬럼은 수동 선택하고, 유형 미확정 행은 지출/수입/환불/이체 중 선택한다. 은행 카드대금 납부와 본인 이체를 지출로 자동 확정하지 않는다
+- 409 ImportReviewResponse는 같은 화면에서 해결한다. 유사 거래마다 "별도 거래로 추가" 또는 "기존 거래와 중복"을 고르게 하고 전부 해결한 뒤 재승인한다. 내부 해시는 화면에 노출하지 않는다
+- 같은 파일 재업로드는 "이미 올린 파일"과 기존 결과/재개 경로를 보여준다
 
 **S9 진행률 — 마찰 F3 대응.**
 - 파싱 결과(`inserted`/`duplicates`)를 **먼저** 보여준다. 분류를 기다리게 하지 않는다
 - 클라이언트가 `remaining`이 0이 될 때까지 `classify`를 순차 호출하며 진행률 표시
 - 중간 이탈해도 미분류는 DB에 남아 다음 방문에 이어진다 — 이걸 문구로 안내한다
+- 한도 도달 시 재시도 시각과 수동 수정 경로를 표시한다. Retry-After 이전 자동 반복과 진척 없는 무한 반복은 하지 않는다
 
 **S10 결과 요약 — 마찰 F4 대응.**
 - "N건 추가 · M건 중복" 표시
@@ -76,10 +84,16 @@ npm test
 **TDD 가드: 모든 `route.ts`와 `src/components/*.tsx`는 테스트 파일이 먼저 있어야 한다.** (`page.tsx`만 면제)
 
 테스트에 반드시 포함할 것:
-- 5MB 초과 / 10,000행 초과 → 서버가 거부하는가
+- 파일 4,000,000 bytes 경계, body 4,200,000 bytes 경계, 10,000행 경계를 실제 bytes/행수로 검증하는가(Content-Length 없는 요청 포함)
 - Storage 경로에 사용자 파일명이 들어가지 않는가
-- `classify`를 같은 상태에서 두 번 호출 → 두 번째가 이미 분류된 건을 다시 분류하지 않는가 (멱등)
-- 같은 CSV를 두 번 confirm → 두 번째의 `inserted`가 0, `duplicates`가 전체인가
+- 동시 classify 두 요청 → 한 lease만 획득하고 같은 거래에 모델 호출이 중복되지 않는가
+- 같은 출처·같은 CSV 반복/동시 업로드 → 하나의 uploads/Storage 객체, 매핑 호출 한 번인가
+- parsed 업로드 재confirm → 거래/카운트 불변, 저장된 결과를 반환하는가
+- 다른 카드의 동일 날짜·가맹점·금액 → 두 거래 보존, 식별자 없는 부분 파일 겹침 → 사용자 결정 전 insert 없음
+- 중복 후보/출처 ID 변조 및 동일 기존 거래의 다중 대응을 거부하는가
+- kind 수정으로 급여·이체가 총지출에서 제외되고, 카테고리 규칙을 잘못 바꾸지 않는가
+- SDK에 실제 전달된 매핑 payload에 원본 식별자·헤더·셀 값이 없는가
+- 호출 한도 및 RPC 장애에서 모델 호출이 0회이며 금융 데이터 삭제 후 한도가 초기화되지 않는가
 - `PATCH` 시 `merchant_rules`가 함께 upsert 되는가
 - DELETE 시 Storage 삭제 실패 → DB 삭제가 롤백되는가
 
@@ -88,7 +102,7 @@ npm test
 1. 위 AC 커맨드를 실행한다.
 2. 아키텍처 체크리스트:
    - 서버가 분류 배치 루프를 돌지 않는가? (1요청=1배치)
-   - `classify` 갱신이 `WHERE category IS NULL`로 멱등한가?
+   - 선택 전 lease, 호출 전 예약, 갱신의 `category IS NULL` 조건을 모두 지키는가?
    - 분류 결과를 `id`로 매칭하는가?
    - 모든 쿼리에 `user_id` 조건이 있는가?
    - Storage 경로를 서버가 조합하는가?
@@ -98,7 +112,7 @@ npm test
 ## 금지사항
 
 - 서버에서 분류 배치를 루프로 돌리지 마라. 이유: ADR-006. 진행률을 못 보여주고, 중간 실패 시 앞의 배치도 함께 날아간다.
-- 분류 갱신을 무조건 `UPDATE`로 하지 마라. `WHERE category IS NULL`을 붙여라. 이유: 탭 두 개면 같은 거래를 두 번 분류하고 Claude 비용이 두 배가 된다.
+- 분류 갱신은 `WHERE category IS NULL`로 사용자 수정을 보존하고, 동시 호출은 사용자별 lease로 막아라.
 - Storage 경로에 사용자 파일명이나 클라이언트가 보낸 id를 넣지 마라. 이유: 경로 조작으로 남의 폴더에 쓸 수 있다.
 - 입력 검증을 클라이언트에만 두지 마라. 이유: 클라이언트 검증은 우회된다.
 - 집계 로직을 여기서 다시 만들지 마라. 이유: step 6의 `queries.ts`·`analytics.ts`를 쓴다. 두 곳에 있으면 반드시 어긋난다.

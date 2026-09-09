@@ -29,6 +29,8 @@ getTransactionsForMerchants(supabase, userId, merchantNorms: string[]): Promise<
 전부 `group by`나 좁힌 `where`로 필요한 것만 가져온다. `select *`로 전체를 끌어와 JS에서 합산하지 마라.
 **모든 쿼리에 `user_id` 조건을 명시한다.** RLS가 이미 막지만 정책을 나중에 잘못 고쳐도 한 겹이 남는다(CLAUDE.md CRITICAL).
 
+월별 집계는 `accounting_month`로 묶는다. `totalKrw`와 카테고리 합계는 `expense`의 amount를 더하고 `refund`의 amount만 뺀다. `income`·`transfer`는 제외한다. 저장 amount는 절댓값이므로 `SUM(amount_krw)`만 사용하면 안 된다. 구독·이상치·중앙값은 `kind='expense'`만 대상으로 하며 거래 유형을 category 문자열로 추정하지 않는다.
+
 ### `src/lib/analytics.ts` — 탐지 (순수 함수, I/O 없음)
 
 ```ts
@@ -66,8 +68,13 @@ detectOutliers(transactions: Transaction[], medians: Record<Category, number>): 
 - 거래가 1~2건뿐인 카테고리 → 중앙값이 불안정하므로 탐지하지 않는다(예외 처리 확인)
 
 **집계**
-- 수입(음수 금액)이 섞였을 때 카테고리 합계에서 올바로 상계되는가
-- 미분류(`category === null`) 거래가 카테고리별 집계에서 어떻게 처리되는가 — **총액에는 포함하되 카테고리 항목에는 "미분류"로 별도 표기**
+- 급여 income 3,000,000 + expense 1,000,000 → 총지출 1,000,000
+- expense 100,000 + refund 20,000 → 같은 카테고리 순지출 80,000
+- 카드 명세서 지출 100,000 + 은행의 카드대금 transfer 100,000 → 총지출 100,000
+- 본인 계좌 이체 입출금은 지출·구독·이상치·중앙값에 포함되지 않는가
+- 할부 원 승인일이 같아도 청구월별 회차 금액이 각 월에 잡히는가
+- 환불만 있는 월은 음수 순지출을 허용하고, 급여는 순지출을 낮추지 않는가
+- 미분류 지출/환불은 **총액에 포함하고 카테고리에는 null("미분류")로 별도 표기**한다. 미분류 수입/이체는 포함하지 않는다
 
 ## Acceptance Criteria
 

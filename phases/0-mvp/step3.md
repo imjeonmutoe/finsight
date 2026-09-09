@@ -19,7 +19,7 @@
 ```ts
 createBrowserSupabase()      // Client Component용
 createServerSupabase()       // Server Component / Route Handler용 (쿠키 어댑터 포함)
-createServiceSupabase()      // service role — 웹훅 등 사용자 컨텍스트 없는 곳 전용
+createServiceSupabase()      // service role — 웹훅·계정 삭제·LLM 사용량/lease 관리 전용
 ```
 
 **전부 함수 안에서 클라이언트를 만든다.** 모듈 최상위에서 `createClient()`를 호출하면 환경변수 없이 도는 `next build`가 깨지고, Stop 훅이 매 세션 실패한다.

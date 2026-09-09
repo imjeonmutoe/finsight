@@ -70,6 +70,7 @@ npm test
 - 서명 비교에 `timingSafeEqual`을 쓰는가
 - **같은 웹훅을 두 번 보내도 결과가 동일한가** (멱등)
 - 오래된 타임스탬프의 이벤트 → 무시되는가
+- Free 사용자 JWT로 자기 profiles의 플랜·만료일·Polar ID 변경이 거부되고, 검증된 웹훅만 변경할 수 있는가
 - 강등 이벤트 후에도 `transactions` 행이 남아 있는가
 - 체크아웃 세션 생성 시 `customer_ip_address`가 전달되는가
 

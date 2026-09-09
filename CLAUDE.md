@@ -16,7 +16,11 @@ CSV로 받은 카드 명세서·은행 거래내역을 Claude API로 분석해 �
 - CRITICAL: `ANTHROPIC_API_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, `POLAR_ACCESS_TOKEN`, `POLAR_WEBHOOK_SECRET`은 절대 `NEXT_PUBLIC_` 접두사를 붙이지 않는다. 클라이언트 번들에 들어가면 즉시 유출이다.
 - CRITICAL: 집계·통계·탐지는 전부 코드(TypeScript 순수 함수 또는 SQL)로 계산한다. LLM에게 합계·평균·비율을 계산시키지 않는다. LLM의 역할은 (1) CSV 컬럼 매핑 추론, (2) 거래 카테고리 분류, (3) 이미 계산된 숫자를 설명하는 문장 생성 — 이 세 가지뿐이다.
 - CRITICAL: 금액은 원 단위 정수(`bigint` / TS `number` 정수)로만 다룬다. 부동소수점 금액 금지.
+- CRITICAL: 저장 금액은 0 이상 절댓값이고 `kind`로 지출·수입·환불·이체를 구분한다. 총지출은 지출-환불이며 수입·이체를 포함하지 않는다.
 - CRITICAL: 모든 사용자 데이터 테이블과 Storage 버킷에 RLS를 건다. RLS 없는 테이블을 만들지 않는다.
+- CRITICAL: `profiles`는 사용자의 자기 행 SELECT만 허용한다. 플랜·만료일·Polar ID를 클라이언트가 INSERT/UPDATE/DELETE할 수 없게 권한을 철회한다.
+- CRITICAL: 매핑용 LLM 입력은 원본 헤더·행이 아닌 `SanitizedMappingInput`만 허용한다. 모든 모델 호출은 서버의 원자적 사용량 예약과 사용자별 lease를 거친다.
+- CRITICAL: 거래 중복은 카드/계좌 출처 안에서 판정한다. 파일 내 순번으로 파일 간 정상 거래를 자동 병합하지 않는다. 상세 규약은 `docs/ARCHITECTURE.md`를 따른다.
 - 카테고리는 `src/types/category.ts`의 고정 목록(12개)을 벗어나지 않는다. 새 카테고리를 임의로 추가하지 않는다.
 - CRITICAL: 금융 데이터를 로그에 남기지 마라. 거래 내용·가맹점명·금액을 `console.log`하지 않는다. 에러 로그에는 행 내용 대신 **행 번호**만 남긴다. Vercel 함수 로그도 유출 경로다.
 - CRITICAL: `dangerouslySetInnerHTML`을 쓰지 마라. LLM 출력에는 사용자가 올린 CSV에서 온 임의 문자열이 섞일 수 있다. React 기본 이스케이프가 유일한 XSS 방어선이다.
