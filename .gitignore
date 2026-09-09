@@ -10,3 +10,11 @@ phases/**/step*-output.json
 
 # IDE
 .idea/
+
+# 환경변수 (API 키 — 절대 커밋 금지)
+.env
+.env.local
+.env*.local
+
+# 테스트 커버리지
+coverage/
