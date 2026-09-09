@@ -1,7 +1,13 @@
 @import "tailwindcss";
 
-/* UI_GUIDE: 허용 애니메이션은 fade-in, slide-up 두 개뿐이다. 그 외 추가 금지. */
 @theme {
+  /* 한글 우선 시스템 폰트. 웹폰트를 받지 않는다 — FOUT과 번들 무게를 만들지 않기 위해서다.
+     macOS는 Apple SD Gothic Neo, Windows는 맑은 고딕이 잡힌다. */
+  --font-sans: -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo",
+               "Malgun Gothic", "맑은 고딕", "Segoe UI", system-ui, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+
+  /* UI_GUIDE: 허용 애니메이션은 fade-in, slide-up 두 개뿐이다. 그 외 추가 금지. */
   --animate-fade-in: fade-in 0.4s ease-out;
   --animate-slide-up: slide-up 0.5s ease-out;
 
@@ -27,6 +33,13 @@
 }
 
 body {
+  /* 한글 줄바꿈. 둘은 항상 쌍으로 쓴다 —
+     keep-all 없으면 어절 중간에서 잘리고, overflow-wrap 없으면 긴 가맹점명이 레이아웃을 깨뜨린다.
+     UI_GUIDE의 `## 한국어 타이포그래피 → 줄바꿈` 참조. */
+  word-break: keep-all;
+  overflow-wrap: break-word;
+
+  /* 색상 스텁 — phases/0-foundation/step0.md 가 UI_GUIDE의 라이트/다크 토큰 전체로 교체한다. */
   background-color: #0a0a0a;
   color: #d4d4d4;
 }

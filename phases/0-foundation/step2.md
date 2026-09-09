@@ -21,7 +21,7 @@
 - `uploads` — `source_id`, 서버 계산 `file_hash`, `UNIQUE(user_id, source_id, file_hash)`, `status` CHECK, `column_mapping jsonb`, 카운트 컬럼들
 - `transactions` — 금액 절댓값과 `kind`, `accounting_month`, 출처·업로드 복합 FK(CASCADE), `source_transaction_key`, `data_row_index`, `dedupe_hash`, `candidate_hash`, `UNIQUE(user_id, source_id, dedupe_hash)`
 - `merchant_rules` — PK `(user_id, merchant_norm)`
-- `insight_cache` — PK `(user_id, accounting_month)`, `payload jsonb`, `txn_fingerprint`, `model`. 클라이언트 쓰기 금지
+- `insight_cache` — PK `(user_id, accounting_month)`, `payload jsonb`, `txn_fingerprint`, **`plan` CHECK(`free`/`pro`)**, `model`. 클라이언트 쓰기 금지. `plan`이 필요한 이유는 ADR-015 — Free는 Sonnet으로 한 달치만, Pro는 Opus로 추이까지 넣어 생성하므로 플랜이 바뀌면 캐시를 무효화해야 한다
 
 **웹훅 이벤트 테이블은 만들지 않는다.** 핸들러가 `UPDATE profiles`만 하므로 재실행해도 결과가 같다(step 11 참조).
 

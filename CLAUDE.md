@@ -12,7 +12,7 @@ CSV로 받은 카드 명세서·은행 거래내역을 Claude API로 분석해 �
 - Tailwind CSS v4 (4.3.3) — `@theme` 토큰만 사용. v3 문법은 v4에서 에러 없이 조용히 무시된다
 - Vitest 4.1.11 / ESLint 9.39.5 / zod 4.5.4
 - Supabase (Auth / Postgres / Storage)
-- Anthropic Claude API — 분류·매핑은 `claude-sonnet-5`, Pro의 문장 생성만 `claude-opus-5`
+- Anthropic Claude API — 컬럼 매핑·카테고리 분류는 플랜 무관 `claude-sonnet-5`. AI 인사이트는 **Free도 `claude-sonnet-5`로 생성**하고 Pro만 `claude-opus-5`를 쓴다 (ADR-015)
 - Polar **샌드박스** (구독 결제) — `sandbox-api.polar.sh`. 프로덕션 토큰을 쓰지 않는다
 - Vercel (배포)
 
@@ -30,6 +30,8 @@ CSV로 받은 카드 명세서·은행 거래내역을 Claude API로 분석해 �
 - CRITICAL: `kind`는 매핑에서 결정론적으로 도출하며 NOT NULL이다. 사용자 확인 단계나 `kind=null` 미확정 상태를 만들지 마라. 수정은 `PATCH /api/transactions/[id]`가 담당한다 (ADR-013).
 - CRITICAL: 거래 중복은 카드/계좌 출처 안에서 판정한다. 파일 내 순번으로 파일 간 정상 거래를 자동 병합하지 않는다. 상세 규약은 `docs/ARCHITECTURE.md`를 따른다.
 - 카테고리는 `src/types/category.ts`의 고정 목록(12개)을 벗어나지 않는다. 새 카테고리를 임의로 추가하지 않는다.
+- CRITICAL: 모든 UI 문구·에러 메시지·빈 상태 문구는 **한국어**로 쓴다. 영문을 병기하지 않는다. `<html lang="ko">`를 세우고, `body`에 `word-break: keep-all`과 `overflow-wrap: break-word`를 함께 적용한다. 이유: `keep-all`이 없으면 한글이 어절 중간에서 잘려 문법적으로 틀린 위치에서 줄바꿈된다. 상세 규칙은 `docs/UI_GUIDE.md`의 `## 한국어 타이포그래피`.
+- 한글에 `uppercase`·`tracking-tight`·`tracking-wide`·`font-light`를 쓰지 않는다. 라틴 타이포 관용구이며 한글에서는 효과가 없거나 깨져 보인다.
 - CRITICAL: 금융 데이터를 로그에 남기지 마라. 거래 내용·가맹점명·금액을 `console.log`하지 않는다. 에러 로그에는 행 내용 대신 **행 번호**만 남긴다. Vercel 함수 로그도 유출 경로다.
 - CRITICAL: `dangerouslySetInnerHTML`을 쓰지 마라. LLM 출력에는 사용자가 올린 CSV에서 온 임의 문자열이 섞일 수 있다. React 기본 이스케이프가 유일한 XSS 방어선이다.
 - CRITICAL: RLS를 믿되 라우트 핸들러 쿼리에도 `user_id` 조건을 명시하라. RLS 정책을 나중에 잘못 고쳐도 한 겹이 남는다.

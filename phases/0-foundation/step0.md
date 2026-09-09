@@ -40,11 +40,22 @@
 
 위 0번 참조. `tailwind.config.js`는 없고 앞으로도 만들지 않는다 — 테마는 CSS의 `@theme`로 정의한다.
 
-### 2. `src/app/globals.css`의 `@theme` 토큰
+### 2. `src/app/globals.css`의 `@theme` 토큰 + 한글 base 스타일
 
-`/docs/UI_GUIDE.md`의 `## 색상 → 토큰 정의` 코드 블록을 **그대로** 옮긴다. `@theme` 블록의 라이트 값과 `[data-theme="dark"]` 블록의 다크 값 전부.
+`/docs/UI_GUIDE.md`의 `## 색상 → 토큰 정의` 코드 블록을 **그대로** 옮긴다. `@theme` 블록의 라이트 값·다크 값 전부, 그리고 **`--font-sans`·`--font-mono` 폰트 스택까지** 포함한다(한글 우선 시스템 폰트. 웹폰트를 받지 않는다).
 
-이걸 여기서 심어야 이후 step의 컴포넌트가 색을 하드코딩하지 않는다.
+이걸 여기서 심어야 이후 step의 컴포넌트가 색과 폰트를 하드코딩하지 않는다.
+
+추가로 base 레이어에 아래를 넣는다 — `/docs/UI_GUIDE.md`의 `## 한국어 타이포그래피 → 줄바꿈` 참조:
+
+```css
+body {
+  word-break: keep-all;
+  overflow-wrap: break-word;
+}
+```
+
+**둘을 쌍으로 넣어야 한다.** `keep-all`만 두면 긴 가맹점명이 컨테이너를 넘쳐 레이아웃이 깨지고, `keep-all`이 없으면 한글이 어절 중간에서 잘린다.
 
 ### 3. 테스트 환경 보강 — jsdom + @testing-library ← **이 step의 실질적 핵심 작업**
 
@@ -90,7 +101,7 @@ NEXT_PUBLIC_SITE_URL=http://localhost:3000
 ### 6. 최소 `src/app/layout.tsx` + `src/app/page.tsx`
 
 빌드가 통과할 최소한만. 랜딩 실제 내용은 step 10에서 만든다.
-`layout.tsx`의 `<head>`에 FOUC 방지 인라인 스크립트를 넣는다 — `localStorage`의 테마 값(없으면 `prefers-color-scheme`)을 읽어 hydration 전에 `<html>`의 `data-theme`을 세팅.
+`<html lang="ko">`를 세운다(스크린리더 발음과 브라우저 기본 줄바꿈 규칙이 이 값을 본다). `layout.tsx`의 `<head>`에 FOUC 방지 인라인 스크립트를 넣는다 — `localStorage`의 테마 값(없으면 `prefers-color-scheme`)을 읽어 hydration 전에 `<html>`의 `data-theme`을 세팅.
 `<body>`에 `bg-bg text-text`를 적용해 토큰이 실제로 동작하는지 확인한다.
 
 ## Acceptance Criteria

@@ -151,6 +151,7 @@ merchant_rules(user_id, merchant_norm, category, updated_at, PK(user_id, merchan
 insight_cache(user_id FK → auth.users, accounting_month date,
               payload jsonb,           -- generateInsights 결과 전체
               txn_fingerprint text,     -- 이 캐시가 만들어진 시점의 거래 상태
+              plan 'free'|'pro',        -- 생성 당시 플랜. 현재 플랜과 다르면 캐시 미스
               model text, created_at,
               PK(user_id, accounting_month))
 ```
@@ -196,7 +197,8 @@ insight_cache(user_id FK → auth.users, accounting_month date,
 - **분류 3단 순서:** ① `merchant_rules` ② 내장 규칙 사전 ③ 남은 것만 Claude. 순서 고정이며 단계를 건너뛰지 않는다(ADR-011). ①②는 `src/lib/`의 순수 함수라 단위 테스트로 고정하고, ③만 `src/services/claude.ts`를 탄다. **①②로 전부 채워지면 모델을 호출하지 않는다.**
 - **분류 배치:** **1 요청 = 1 배치(최대 50건).** 서버가 루프를 돌지 않는다. 근거는 ① 진행률 피드백 ② 부분 실패 복구 ③ 재시도 단위 축소다. 클라이언트는 remaining이 0이면 완료하고 한도·오류·무진척 응답에서는 정지한다. 중간 이탈 시 미분류 지출/환불은 다음 방문에 이어서 처리된다.
 - **분류는 멱등해야 한다.** `WHERE kind IN ('expense','refund') AND category IS NULL ... LIMIT 50`으로 선택하고, 갱신에도 `category IS NULL`을 넣어 사용자 수정을 보존한다. 동시 호출 시 두 번째 UPDATE는 아무 행도 바꾸지 않으므로 결과는 멱등하다. **동시 호출 자체를 막는 락은 두지 않는다**(ADR-012) — 낭비되는 것은 모델 호출 몇 회이고, 총량은 미분류 거래 수로 상한이 잡힌다.
-- **Pro 게이팅은 서버에서.** Free 사용자에게는 집계 **요약 한 줄만** 서버에서 계산해 전달하고, 상세 배열은 응답 본문에 담지 않는다. CSS로 가리는 방식은 금지.
+- **Pro 게이팅은 서버에서.** Free 사용자에게 **구독 누수·이상거래·기간별 추이의 상세 배열을 응답 본문에 담지 않는다.** 대신 코드로 계산한 **요약 한 줄만** 전달한다(예: "정기결제 4건, 월 47,000원을 찾았습니다"). CSS로 가리는 방식은 금지.
+- **AI 월간 요약은 Free에게도 준다**(ADR-015). 게이팅 대상이 아니다. Free는 해당 월 집계만 입력으로 받아 Sonnet으로 생성하고, Pro는 추이·구독·이상거래까지 입력에 넣어 Opus로 생성한다. **Free 인사이트 입력에 Pro 전용 상세 데이터를 넣지 마라** — 게이팅이 무의미해지고 응답 본문으로 유출된다.
 
 ## RLS
 - 모든 테이블에 RLS 활성화. `transactions`/`uploads`/`merchant_rules`/`financial_sources`는 `auth.uid() = user_id`와 쓰기의 WITH CHECK를 적용한다. 출처·업로드의 소유권은 복합 FK로도 보장한다.
@@ -233,7 +235,9 @@ insight_cache(user_id FK → auth.users, accounting_month date,
 | 이상거래 탐지 | 코드 (`lib/analytics.ts`) |
 | 중복 거래 제거 | 코드 (해시 + UNIQUE 제약) |
 
-Claude 호출은 전부 `src/services/claude.ts`를 거친다. 모델은 `claude-sonnet-5`, 구조화 출력은 `output_config.format`을 쓴다.
+Claude 호출은 전부 `src/services/claude.ts`를 거친다. 구조화 출력은 `output_config.format`을 쓴다.
+
+**모델 선택**(ADR-015): 컬럼 매핑과 카테고리 분류는 플랜 무관 `claude-sonnet-5`. 인사이트만 플랜에 따라 갈린다 — Free `claude-sonnet-5`, Pro `claude-opus-5`. **모델 ID를 호출 지점에 하드코딩하지 말고 `src/lib/limits.ts`의 상수와 `modelForInsights(plan)` 한 곳에서 결정한다.**
 
 - **매핑 추론:** `lib/sanitize.ts`가 헤더와 첫 20행을 로컬에서 검사해 컬럼 인덱스, 허용된 의미 label, 값 형식 enum만 만든다. 원본 헤더·셀 값·상단 요약문은 전송하지 않는다. 모르는 헤더는 `unknown`, 값은 `date/number/text/empty/mixed` 같은 형식으로만 전달한다. 추론에 근거가 부족하면 사용자가 컬럼을 직접 선택한다. 이 과정은 `buildTransactions`보다 먼저 실행된다.
 - **분류·인사이트:** 정제한 가맹점명, 금액·날짜, 내부 거래 UUID와 코드 집계값만 허용한다. 별칭·파일명·거래 참조번호·계좌번호·카드번호 컬럼은 제외한다. 가맹점명에 섞인 번호·이메일·전화번호도 마스킹한다. SDK 호출 직전 허용 필드만 새 객체로 구성하며 객체 spread로 원본 행을 넣지 않는다.
@@ -262,11 +266,14 @@ Free는 **KST(Asia/Seoul) 캘린더 월 기준 1회**, Pro는 무제한이다(AD
 ADR-012에 따라 LLM 호출량 쿼터 시스템을 두지 않는다. 대신 유일한 무한 호출 경로였던 인사이트를 캐싱한다. **`llm_usage` 테이블·lease·사용량 예약·429/503 경로를 만들지 마라.**
 
 - 대시보드(Server Component)는 `insight_cache`에서 `(user_id, accounting_month)`를 먼저 읽는다. 히트면 모델을 호출하지 않는다. **캐시를 거치지 않는 인사이트 호출 경로를 만들지 마라** — 그 경로가 생기는 순간 페이지 로드마다 모델이 돌아간다.
+- **캐시 히트 판정에 `plan`도 포함한다.** 저장된 `plan`이 현재 플랜과 다르면 미스로 처리한다. 이유: Free는 Sonnet으로 한 달치만, Pro는 Opus로 추이·구독·이상거래까지 넣어 생성한다(ADR-015). 플랜이 바뀐 사용자에게 이전 플랜의 인사이트를 보여주면 결제하고도 같은 문장을 보게 된다.
 - **무효화는 `txn_fingerprint` 비교로 한다.** 해당 월 거래의 상태를 하나의 문자열로 요약한 값이며, 캐시에 저장된 값과 지금 계산한 값이 다르면 재생성한다:
   ```
   txn_fingerprint = sha256(JSON.stringify([
     "fp-v1", 거래 건수, 지출-환불 합계, 카테고리별 합계를 카테고리명 순으로 정렬한 배열
   ]))
+  // plan은 fingerprint에 넣지 않는다 — 별도 컬럼으로 비교한다.
+  // 거래 상태와 플랜은 서로 다른 이유로 바뀌므로 한 값에 섞으면 무효화 원인을 알 수 없다.
   ```
   이유: 거래 추가·삭제·카테고리 수정·유형 수정이 전부 이 값을 바꾼다. `updated_at` 최댓값을 쓰면 삭제를 감지하지 못한다.
 - 캐시 미스 시 모델을 호출하고 결과를 upsert한다. **모델 호출이 실패하면 캐시를 쓰지 않는다** — 실패를 캐싱하면 사용자가 그 달의 인사이트를 영구히 못 본다. 해당 섹션에만 에러를 표시하고 나머지 대시보드는 렌더한다.
@@ -370,8 +377,11 @@ inferColumnMapping(input: SanitizedMappingInput):
 classifyTransactions(items: { id: string; merchant: string; amountKrw: number }[]):
   Promise<{ id: string; category: Category }[]>
 
-generateInsights(summary: MonthlySummary):
+generateInsights(input: InsightInput, plan: Plan):
   Promise<{ headline: string; items: { text: string; transactionIds: string[] }[] }>
+  // plan이 모델을 고른다: 'free' → claude-sonnet-5, 'pro' → claude-opus-5 (ADR-015)
+  // InsightInput은 Free면 해당 월 집계만, Pro면 추이·구독·이상거래까지 포함한다.
+  // 프롬프트와 출력 스키마는 한 벌이다 — 플랜별로 프롬프트를 두 벌 만들지 마라.
 ```
 
 > **`classifyTransactions`의 반환은 반드시 `id`로 매칭한다. 배열 순서나 길이를 신뢰하지 마라.**
