@@ -23,7 +23,6 @@
 | `src/types/transaction.ts` | `TransactionKind`, `ParsedTransaction`, `CategorySource`, DB 행 타입 |
 | `src/types/api.ts` | `MappingResponse`, `ConfirmRequest`, `DuplicateDecision`, `ImportReviewResponse`, `ConfirmResponse`, `ClassifyResponse` |
 | `src/types/billing.ts` | `Plan` (`'free' | 'pro'`), 프로필 관련 타입 |
-| `src/types/llm.ts` | `LlmCallContext` (서버 전용 lease 문맥) |
 
 추가로 정의할 것:
 

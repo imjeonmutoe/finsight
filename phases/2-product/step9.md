@@ -21,7 +21,7 @@
 - `parsed` — 정상. 삭제 가능
 - `mapped` — **"미완료"로 구분 표시.** 사용자가 매핑 확인 화면에서 이탈해 Storage에 파일만 있고 거래는 0건인 상태다. **"이어서 진행" 버튼**으로 `/dashboard/upload?resume={id}`로 보내고, 삭제도 가능하게 한다. 이게 없으면 고아 파일이 Storage에 계속 쌓인다
 - `failed` — 에러와 함께 재시도·삭제 제공. 같은 파일의 기존 행/Storage를 재사용하고 LLM 한도는 그대로 적용
-- `pending` — 처리 중. 요청 제한시간과 lease 만료 후에도 남아 있으면 failed로 전환해 재개
+- `pending` — 처리 중. 요청 제한시간(300초)이 지나도 남아 있으면 failed로 전환해 재개
 
 **삭제 확인 — ADR-008의 조건이다.**
 
@@ -42,7 +42,7 @@ N은 서버에서 실제로 세어 온 값이어야 한다. 추정치를 쓰지 
 **전체 삭제 순서: Storage → DB.**
 `auth.users` 삭제의 CASCADE는 Storage 객체를 지우지 않는다. Storage를 먼저 비우고 DB를 지운다. 순서가 반대면 DB 레코드가 사라져 어떤 파일을 지워야 할지 알 수 없게 되고 고아 객체가 영구히 남는다.
 
-삭제 대상: Storage의 해당 사용자 폴더 전체 + `transactions` + `uploads` + `merchant_rules` + `financial_sources`. `profiles`와 `llm_usage`는 유지한다. 이 버튼을 계정 삭제로 구현하지 않는다. 계정 삭제 요청은 개인정보처리방침의 문의 경로로 접수한다.
+삭제 대상: Storage의 해당 사용자 폴더 전체 + `transactions` + `uploads` + `merchant_rules` + `financial_sources`. `profiles`는 유지한다. `insight_cache`는 근거 거래가 사라지므로 함께 지운다. 이 버튼을 계정 삭제로 구현하지 않는다. 계정 삭제 요청은 개인정보처리방침의 문의 경로로 접수한다.
 
 삭제 전 안내에 **"Anthropic에 이미 전송된 데이터는 회수할 수 없습니다"**를 명시한다(개인정보처리방침과 일관되게).
 
@@ -60,7 +60,7 @@ npm test
 - 삭제 확인 다이얼로그에 **함께 삭제될 거래 건수가 표시되는가**
 - `mapped` 상태 업로드가 "미완료"로 구분되고 "이어서 진행"이 제공되는가
 - 전체 삭제가 **Storage 먼저, DB 나중** 순서로 호출되는가
-- 금융 데이터 4개 테이블/Storage만 삭제하고 profiles·llm_usage를 유지하는가
+- 금융 데이터 테이블·Storage·insight_cache를 삭제하고 profiles를 유지하는가
 - 삭제 후 모델 호출을 다시 시도해도 기존 한도가 유지되는가
 
 ## 검증 절차

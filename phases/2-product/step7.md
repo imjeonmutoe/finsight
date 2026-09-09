@@ -24,16 +24,16 @@
 1. 인증·`sourceId` 소유권·확장자·MIME·**파일 4,000,000 bytes**·**multipart body 4,200,000 bytes**·**행수 10,000** 검증. 실제 수신 bytes를 세며 Content-Length만 믿지 않는다. 초과는 413
 2. 원본 bytes로 `file_hash` 계산. 같은 `(user_id, source_id, file_hash)`의 mapped/parsed는 기존 ID·결과와 `reused=true`를 반환한다. pending은 409와 재시도 시각을 반환한다. 이 경로에서는 Storage 복제나 LLM 호출을 하지 않는다
 3. 새 `uploads`를 pending으로 생성한다(UNIQUE 충돌 시 기존 행 재조회). Storage 경로는 **서버가 `{user_id}/{서버생성 uuid}.csv`로 조합**하며 원본 파일명은 `uploads.filename`에만 저장한다
-4. 인코딩 감지 → 첫 20행에서 `buildSanitizedMappingInput()` 생성 → 사용자별 LLM lease 획득·캐시 재확인 → **Free 업로드 한도 검증** → `inferColumnMapping(input, context)` 호출. 원본 헤더·셀·상단 요약을 넘기지 않는다
-   - 한도 검증은 **lease 획득 후**에 한다. 이유: `## 업로드 한도`대로 lease가 같은 사용자의 동시 업로드를 직렬화하므로 두 요청이 동시에 검증을 통과할 수 없다. **별도 락을 만들지 마라**
+4. 인코딩 감지 → 첫 20행에서 `buildSanitizedMappingInput()` 생성 → 저장된 매핑 캐시 재확인 → **Free 업로드 한도 검증** → `inferColumnMapping(input)` 호출. 원본 헤더·셀·상단 요약을 넘기지 않는다
+   - **동시 업로드 경쟁을 막는 락을 만들지 마라.** 서로 다른 파일 2개를 동시에 올리면 무료 사용자가 월 1회를 한 번 초과할 수 있는데, ADR-012에서 그걸 감수하기로 했다. 최악의 결과가 '무료 업로드 1회 초과'다
    - 카운터 테이블을 만들지 마라. `uploads`를 직접 센다 — `status in ('mapped','parsed')` + KST 캘린더 월. 쿼리는 `/docs/ARCHITECTURE.md`의 `## 업로드 한도`에 있다
-   - 초과 시 **403** + `{ code: 'UPLOAD_LIMIT_REACHED', resetsAt }`. lease를 해제하고 pending 행과 Storage 파일을 정리한다. 모델은 호출하지 않는다
+   - 초과 시 **403** + `{ code: 'UPLOAD_LIMIT_REACHED', resetsAt }`. pending 행과 Storage 파일을 정리한다. 모델은 호출하지 않는다
    - 위 2번의 `reused=true` 경로는 이 검증에 도달하기 전에 반환되므로 동일 파일 재업로드는 횟수를 소비하지 않는다
-5. 성공 시 mapped와 column_mapping 저장. 실패는 failed로 기록하고 파일 경로를 이력에 남겨 삭제 가능하게 한다. 같은 파일의 failed 재시도는 기존 행/파일을 재사용하되 매 모델 시도마다 한도를 소비한다. pending이 요청 제한시간 300초를 넘고 lease도 만료됐으면 failed로 전환해 재개할 수 있게 한다
+5. 성공 시 mapped와 column_mapping 저장. 실패는 failed로 기록하고 파일 경로를 이력에 남겨 삭제 가능하게 한다. 같은 파일의 failed 재시도는 기존 행/파일을 재사용한다. `pending`이 요청 제한시간 300초를 넘겨 남아 있으면 failed로 전환해 재개할 수 있게 한다
 
 **`POST /api/uploads/[id]/confirm`** → `ConfirmResponse`
 1. `ConfirmRequest` 검증. 출처·파일 해시는 DB에서 읽고 클라이언트가 바꿀 수 없게 한다. parsed 재요청은 저장된 ConfirmResponse를 반환하며 insert나 카운트 덮어쓰기를 하지 않는다
-2. 원본 재조회 → 선택한 인코딩/매핑·청구월·거래구분 값 매핑으로 파싱 → 행별 kindOverrides 적용. 카드 청구월을 컬럼/요청 어디에서도 얻을 수 없으면 입력 오류로 반환해 사용자 입력을 요구한다. 임의 행 번호·유효하지 않은 enum은 거부한다
+2. 원본 재조회 → 선택한 인코딩/매핑·청구월로 파싱. `kind`는 step 4의 파서가 결정론적으로 도출하므로(ADR-013) **요청에서 거래구분 값 매핑이나 행별 오버라이드를 받지 마라.** 카드 청구월을 컬럼/요청 어디에서도 얻을 수 없으면 입력 오류로 반환해 사용자 입력을 요구한다
 3. 유형·청구월이 확정된 행의 출처별 확정 해시와 후보 해시 계산. 고유번호가 없는 파일 간 후보는 keep/duplicate 결정을 요구한다. 미확정 유형이나 미결정 후보가 있으면 **409 ImportReviewResponse**, 거래 insert는 아직 하지 않는다
 4. duplicate가 가리키는 거래는 본인·동일 출처·후보 조건을 모두 재검증하고 기존 거래 하나를 여러 새 행에 연결하지 않는다. 같은 파일 내 별개 행을 후보라는 이유로 제거하지 않는다. 확정 해시 충돌만 자동 중복 처리한다
 5. 지출/환불에 **①`merchant_rules` → ②`classifyByRule`(내장 사전) 순으로** 적용해 즉시 분류되는 건 채운다(ADR-011). 이 단계는 LLM 호출이 0회다. `category_source`는 각각 `'user'`·`'rule'`로 기록한다. 출처 행 잠금 아래 후보 재조회·결정 검증·insert·업로드 카운트 및 parsed 전이를 하나의 DB 트랜잭션/RPC로 처리한다. 동시 confirm이 새 후보를 만들면 409로 되돌린다. 승인된 import_context를 저장한다. RPC는 세션 UID와 소유권을 검증한다
@@ -44,12 +44,12 @@
 
 **`POST /api/transactions/classify`** → `ClassifyResponse`
 - **1 요청 = 1 배치(최대 50건).** 서버가 루프를 돌지 않는다
-- step 5의 사용자별 LLM lease 획득 **후** 선택: `WHERE kind IN ('expense','refund') AND category IS NULL ... LIMIT 50`
+- 선택: `WHERE kind IN ('expense','refund') AND category IS NULL ... LIMIT 50`
 - **선택한 배치에 3단 분류를 순서대로 적용한다(ADR-011).** ①`merchant_rules` 조회로 채운다 → ②`classifyByRule`(step 4의 내장 사전)로 채운다 → ③**그래도 남은 것만** `classifyTransactions`에 넘긴다. ①②는 `category_source='rule'`(사용자 규칙은 `'user'`)로 기록한다
-- **③에 넘길 게 0건이면 모델을 호출하지 않고 사용량 예약도 하지 않는다.** 이유: 규칙 사전이 전부 잡는 경우가 실제로 흔하다. 그때 한도를 태우면 ADR-005의 호출 한도가 무의미해진다. `classified`에는 ①②로 채운 건수도 포함한다
-- `classifyTransactions(items, context)`가 매 API 시도 전 사용량 예약. 갱신은 `UPDATE ... WHERE category IS NULL`로 사용자 수정을 보존한다. 이 조건만으로 동시 호출을 막는다고 가정하지 않는다
+- **③에 넘길 게 0건이면 모델을 호출하지 않는다.** 이유: 규칙 사전이 전부 잡는 경우가 실제로 흔하다. `classified`에는 ①②로 채운 건수도 포함한다
+- 갱신은 `UPDATE ... WHERE category IS NULL`로 사용자 수정을 보존한다. 동시 호출 시 두 번째 UPDATE는 아무 행도 바꾸지 않아 결과가 멱등하다. **동시 호출 자체를 막는 락을 만들지 마라**(ADR-012) — 낭비는 모델 호출 몇 회이고 총량은 미분류 거래 수로 상한이 잡힌다
 - `classifyTransactions()` 반환은 **`id`로 매칭**한다. 반환에 없는 `id`는 미분류로 남긴다
-- `remaining`은 미분류 지출/환불만 센다. 429/409/503과 진척 없는 응답에서는 클라이언트 루프를 멈춘다. 성공·실패 모두 토큰 일치 조건으로 lease를 해제한다
+- `remaining`은 미분류 지출/환불만 센다. **진척 없는 응답(`classified`가 0인데 `remaining`이 그대로)에서는 클라이언트 루프를 멈춘다** — 이게 유일한 무한 루프 방어선이다
 
 **`PATCH /api/transactions/[id]`**
 - category 수정은 `category_source='user'`로 갱신하고 동시에 merchant_rules를 upsert한다
@@ -94,7 +94,7 @@ npm test
 테스트에 반드시 포함할 것:
 - 파일 4,000,000 bytes 경계, body 4,200,000 bytes 경계, 10,000행 경계를 실제 bytes/행수로 검증하는가(Content-Length 없는 요청 포함)
 - Storage 경로에 사용자 파일명이 들어가지 않는가
-- 동시 classify 두 요청 → 한 lease만 획득하고 같은 거래에 모델 호출이 중복되지 않는가
+- 동시 classify 두 요청 → 두 번째 UPDATE가 아무 행도 바꾸지 않아 최종 결과가 같은가(멱등)
 - 같은 출처·같은 CSV 반복/동시 업로드 → 하나의 uploads/Storage 객체, 매핑 호출 한 번인가
 - parsed 업로드 재confirm → 거래/카운트 불변, 저장된 결과를 반환하는가
 - 다른 카드의 동일 날짜·가맹점·금액 → 두 거래 보존, 식별자 없는 부분 파일 겹침 → 사용자 결정 전 insert 없음
@@ -110,7 +110,7 @@ npm test
 1. 위 AC 커맨드를 실행한다.
 2. 아키텍처 체크리스트:
    - 서버가 분류 배치 루프를 돌지 않는가? (1요청=1배치)
-   - 선택 전 lease, 호출 전 예약, 갱신의 `category IS NULL` 조건을 모두 지키는가?
+   - 갱신의 `category IS NULL` 조건을 지키는가? lease·사용량 예약 코드를 만들지 않았는가?
    - 분류 결과를 `id`로 매칭하는가?
    - 모든 쿼리에 `user_id` 조건이 있는가?
    - Storage 경로를 서버가 조합하는가?
@@ -120,7 +120,7 @@ npm test
 ## 금지사항
 
 - 서버에서 분류 배치를 루프로 돌리지 마라. 이유: ADR-006. 진행률을 못 보여주고, 중간 실패 시 앞의 배치도 함께 날아간다.
-- 분류 갱신은 `WHERE category IS NULL`로 사용자 수정을 보존하고, 동시 호출은 사용자별 lease로 막아라.
+- 분류 갱신에서 `WHERE category IS NULL`을 빼지 마라. 이유: 사용자가 방금 고친 카테고리를 LLM 결과가 덮어쓴다. 단 동시 호출을 막는 lease는 만들지 마라(ADR-012).
 - Storage 경로에 사용자 파일명이나 클라이언트가 보낸 id를 넣지 마라. 이유: 경로 조작으로 남의 폴더에 쓸 수 있다.
 - 입력 검증을 클라이언트에만 두지 마라. 이유: 클라이언트 검증은 우회된다.
 - 집계 로직을 여기서 다시 만들지 마라. 이유: step 6의 `queries.ts`·`analytics.ts`를 쓴다. 두 곳에 있으면 반드시 어긋난다.

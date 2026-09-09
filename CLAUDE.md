@@ -25,7 +25,9 @@ CSV로 받은 카드 명세서·은행 거래내역을 Claude API로 분석해 �
 - CRITICAL: 저장 금액은 0 이상 절댓값이고 `kind`로 지출·수입·환불·이체를 구분한다. 총지출은 지출-환불이며 수입·이체를 포함하지 않는다.
 - CRITICAL: 모든 사용자 데이터 테이블과 Storage 버킷에 RLS를 건다. RLS 없는 테이블을 만들지 않는다.
 - CRITICAL: `profiles`는 사용자의 자기 행 SELECT만 허용한다. 플랜·만료일·Polar ID를 클라이언트가 INSERT/UPDATE/DELETE할 수 없게 권한을 철회한다.
-- CRITICAL: 매핑용 LLM 입력은 원본 헤더·행이 아닌 `SanitizedMappingInput`만 허용한다. 모든 모델 호출은 서버의 원자적 사용량 예약과 사용자별 lease를 거친다.
+- CRITICAL: 매핑용 LLM 입력은 원본 헤더·행이 아닌 `SanitizedMappingInput`만 허용한다.
+- CRITICAL: AI 인사이트는 `insight_cache`를 먼저 읽고, 미스일 때만 모델을 호출한다. 캐시를 우회하는 인사이트 호출 경로를 만들지 마라. 이유: 대시보드가 Server Component라 페이지를 열 때마다 모델이 돌아간다. LLM 호출량 쿼터 시스템(`llm_usage`·lease·사용량 예약·429/503)은 이 캐싱으로 대체했으므로 **만들지 마라** (ADR-012).
+- CRITICAL: `kind`는 매핑에서 결정론적으로 도출하며 NOT NULL이다. 사용자 확인 단계나 `kind=null` 미확정 상태를 만들지 마라. 수정은 `PATCH /api/transactions/[id]`가 담당한다 (ADR-013).
 - CRITICAL: 거래 중복은 카드/계좌 출처 안에서 판정한다. 파일 내 순번으로 파일 간 정상 거래를 자동 병합하지 않는다. 상세 규약은 `docs/ARCHITECTURE.md`를 따른다.
 - 카테고리는 `src/types/category.ts`의 고정 목록(12개)을 벗어나지 않는다. 새 카테고리를 임의로 추가하지 않는다.
 - CRITICAL: 금융 데이터를 로그에 남기지 마라. 거래 내용·가맹점명·금액을 `console.log`하지 않는다. 에러 로그에는 행 내용 대신 **행 번호**만 남긴다. Vercel 함수 로그도 유출 경로다.

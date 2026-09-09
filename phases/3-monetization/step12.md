@@ -39,7 +39,7 @@ git check-ignore -v .env.local
 select tablename from pg_tables where schemaname = 'public' and rowsecurity = false;
 ```
 
-추가로 실제 일반 사용자 JWT로 자기 profiles의 plan·만료일·Polar ID INSERT/UPDATE/DELETE, llm_usage 변경/RPC 호출, 다른 사용자의 출처·업로드 참조가 거부되는지 검증한다. RLS 활성화 쿼리만으로 통과시키지 않는다.
+추가로 실제 일반 사용자 JWT로 자기 profiles의 plan·만료일·Polar ID INSERT/UPDATE/DELETE, `insight_cache` 쓰기, 다른 사용자의 출처·업로드 참조가 거부되는지 검증한다. RLS 활성화 쿼리만으로 통과시키지 않는다.
 
 **S5. 클라이언트 번들에 시크릿이 없는지**
 ```bash
@@ -87,7 +87,6 @@ NEXT_PUBLIC_SITE_URL
 9. 같은 출처의 같은 CSV 재업로드 → 기존 업로드 재사용, 매핑 호출 0회, 총액 불변
 10. 거래 카테고리 수정 → 다른 CSV에서 같은 가맹점이 자동 분류되는가
 11. Free 계정에서 DevTools Network → 대시보드 응답에 **Pro 상세 배열이 없는가**
-12. 가맹점명이 `=HYPERLINK(...)`인 거래로 CSV 내보내기 → 셀이 `'=`로 시작하는가
 13. 서명 없는 웹훅 POST → 401
 14. Polar 테스트 결제 → 웹훅 → Pro 노출. 같은 웹훅 재전송 → 중복 처리 없음
 15. 로그인 30분 후 새로고침 → 세션 유지

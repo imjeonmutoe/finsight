@@ -35,7 +35,7 @@ buildTransactions(rows: string[][], mapping: ColumnMapping, context: ImportConte
 
 `buildTransactions`가 이 모듈의 중심이다. 아래를 전부 처리한다:
 
-- **금액·유형**: `parseAmount`는 부호를 읽되 저장 금액은 절댓값으로 만든다. 지출·수입·환불·이체는 거래구분 컬럼의 승인된 `kindValues` 또는 사용자 명시 승인으로 정한다. 은행 입금/출금이나 카테고리만으로 유형을 확정하지 않는다. 불확실하면 `kind=null`로 반환해 승인 화면에서 해소한다
+- **금액·유형**: `parseAmount`는 부호를 읽되 저장 금액은 절댓값으로 만든다. `kind`는 ARCHITECTURE `## 데이터 모델 → 불변 규칙`의 4단 규칙으로 **결정론적으로 도출하며 항상 값이 있다**(ADR-013): ①`transactionKind` 컬럼 → 값 사전 ②`withdrawal` 값 있음 → `expense` ③`deposit` 값 있음 → `income` ④단일 `amount` → 양수 `expense`·음수 `refund`. **`kind=null`을 반환하지 마라.** 사용자 승인 화면은 없다 — 수정은 대시보드의 `PATCH`가 담당한다. 카테고리로 유형을 추정하지 마라
 - **해외결제**: 원화환산 값이 있는 행은 그 값만 사용한다. 국내 행에서 환산 값이 비면 원화 amount를 사용한다. 둘을 더하지 않는다
 - **할부**: 회차 청구액을 청구월 `accountingMonth`에 기록한다. 카드 청구월은 명세서 컬럼 또는 사용자 확인값을 사용하고, 은행은 거래월이다. 원래 승인일은 `occurredOn`에 유지한다
 - **출처·행 위치**: `sourceId`·`fileHash`는 서버에서 검증한 context에서 받는다. `dataRowIndex`는 헤더·요약행 제외 0-based 데이터 행 위치다

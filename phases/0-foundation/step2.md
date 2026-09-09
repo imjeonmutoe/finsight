@@ -10,7 +10,7 @@
 
 ## 작업
 
-`supabase/migrations/0001_init.sql` 하나를 작성한다. 테이블 6개 + 인덱스 + RLS + Storage 버킷/정책 + LLM 사용량·lease RPC.
+`supabase/migrations/0001_init.sql` 하나를 작성한다. 테이블 6개 + 인덱스 + RLS + Storage 버킷/정책.
 
 ### 테이블
 
@@ -21,7 +21,7 @@
 - `uploads` — `source_id`, 서버 계산 `file_hash`, `UNIQUE(user_id, source_id, file_hash)`, `status` CHECK, `column_mapping jsonb`, 카운트 컬럼들
 - `transactions` — 금액 절댓값과 `kind`, `accounting_month`, 출처·업로드 복합 FK(CASCADE), `source_transaction_key`, `data_row_index`, `dedupe_hash`, `candidate_hash`, `UNIQUE(user_id, source_id, dedupe_hash)`
 - `merchant_rules` — PK `(user_id, merchant_norm)`
-- `llm_usage` — 사용자 PK, UTC 일/분 호출 카운터, lease 토큰·만료일. 클라이언트 쓰기 금지
+- `insight_cache` — PK `(user_id, accounting_month)`, `payload jsonb`, `txn_fingerprint`, `model`. 클라이언트 쓰기 금지
 
 **웹훅 이벤트 테이블은 만들지 않는다.** 핸들러가 `UPDATE profiles`만 하므로 재실행해도 결과가 같다(step 11 참조).
 
@@ -50,7 +50,9 @@ category text CHECK (category IS NULL OR category IN ( ...src/types/category.ts�
 
 **profiles는 authenticated의 자기 행 SELECT만 허용한다.** anon/authenticated의 INSERT·UPDATE·DELETE 권한을 철회하며 해당 쓰기 정책도 만들지 않는다. 플랜·만료일·Polar ID·갱신 시각은 웹훅 서버만 변경한다. 클라이언트 INSERT로 `plan='pro'` 행을 만드는 경로도 막는다. 전체 계정 삭제는 인증을 확인한 서버가 처리한다.
 
-**llm_usage와 RPC:** 클라이언트의 카운터 쓰기·삭제를 금지한다. 사용자 행 잠금으로 lease 획득·토큰 조건부 해제 및 UTC 일/분 전환·호출 예약을 원자적으로 수행하는 RPC를 만든다. 하루 300회·분당 20회, lease 300초와 토큰 소유권을 DB에서 강제한다. 한도는 클라이언트/RPC 인자로 받지 않는다. PUBLIC/anon/authenticated의 EXECUTE를 철회하고 service role만 허용한다. `SECURITY DEFINER` 사용 시 search_path를 고정하고 스키마를 명시한다. 상세 동작은 ARCHITECTURE의 `## LLM 사용량 제한`이 기준이다.
+**insight_cache:** `auth.uid() = user_id`로 자기 행 SELECT만 허용한다. anon/authenticated의 INSERT·UPDATE·DELETE 권한을 철회하고 쓰기 정책도 만들지 않는다 — 캐시 기록은 service role 서버 코드만 한다. 클라이언트가 쓸 수 있으면 조작된 인사이트를 심을 수 있다. 상세는 ARCHITECTURE의 `## 인사이트 캐싱`이 기준이다.
+
+**사용량 카운터 테이블·lease·호출 예약 RPC를 만들지 마라.** ADR-012에서 인사이트 캐싱으로 대체했다. `llm_usage`라는 테이블은 이 프로젝트에 존재하지 않는다.
 
 ### Storage
 
@@ -83,9 +85,8 @@ where schemaname = 'public' and rowsecurity = false;
 
 - 다른 사용자의 거래/출처/업로드 조회·수정·참조 insert가 거부되는가
 - 자기 profiles의 plan·만료일·Polar ID 변경 및 INSERT·DELETE가 거부되는가
-- 일반 사용자의 llm_usage 수정·삭제와 RPC 직접 호출이 거부되는가
-- 한도 직전 동시 예약이 일/분 상한을 넘지 않고, 같은 사용자의 lease를 둘이 획득할 수 없는가
-- 만료 토큰의 예약·해제가 새 lease에 영향을 주지 않는가
+- 일반 사용자의 `insight_cache` INSERT·UPDATE·DELETE가 거부되는가
+- 다른 사용자의 `insight_cache` 행이 조회되지 않는가
 
 CHECK 제약 확인:
 ```sql

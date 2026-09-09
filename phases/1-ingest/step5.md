@@ -12,7 +12,9 @@
 
 ## 작업
 
-`src/services/claude.ts`와 `src/services/llm-usage.ts`를 작성한다. 후자는 step 2의 RPC로 사용자 lease를 획득·해제하고 매 모델 시도 전에 사용량을 예약한다. `src/lib/limits.ts`에는 ARCHITECTURE의 파일/body/행수/모델 입력·출력 상수를 둔다. 서버의 호출 한도 값과 DB RPC 상한도 같아야 한다.
+`src/services/claude.ts` 하나를 작성한다. `src/lib/limits.ts`에는 ARCHITECTURE의 파일/body/행수/모델 입력·출력 상수를 둔다.
+
+**`src/services/llm-usage.ts`를 만들지 마라.** ADR-012에서 사용량 카운터·lease·호출 예약 RPC를 전부 걷어냈다. 이 서비스는 호출 전에 아무 예약도 하지 않는다. 폭주 방어는 `limits.ts`의 정적 상한(배치 50건·입력 24,000 bytes·`max_tokens=4096`·timeout 60초·SDK 재시도 끄기)으로만 한다.
 
 패키지는 `@anthropic-ai/sdk`. 모델은 **`claude-sonnet-5`**.
 
@@ -21,19 +23,19 @@
 `ARCHITECTURE.md`의 `## 공유 인터페이스` 시그니처를 그대로 구현한다.
 
 ```ts
-inferColumnMapping(input: SanitizedMappingInput, context: LlmCallContext):
+inferColumnMapping(input: SanitizedMappingInput):
   Promise<{ mapping: ColumnMapping; confidence: number }>
 
-classifyTransactions(items: { id: string; merchant: string; amountKrw: number }[], context: LlmCallContext):
+classifyTransactions(items: { id: string; merchant: string; amountKrw: number }[]):
   Promise<{ id: string; category: Category }[]>
 
-generateInsights(summary: MonthlySummary, context: LlmCallContext):
+generateInsights(summary: MonthlySummary):
   Promise<{ headline: string; items: { text: string; transactionIds: string[] }[] }>
 ```
 
 ### API 사용 규칙
 
-- 모든 함수는 서버 생성 `LlmCallContext`를 요구한다. SDK 호출 직전 RPC로 토큰 소유권과 만료를 확인하고 사용자당 UTC 하루 300회·분당 20회 상한 안에서 예약한다. 카운터 장애 시 호출하지 않는다. 시스템 지시 포함 입력 24,000 UTF-8 bytes, `max_tokens=4096` 상한을 강제한다
+- 시스템 지시 포함 입력 **24,000 UTF-8 bytes**, **`max_tokens=4096`** 상한을 코드에서 강제한다. 초과하면 SDK를 호출하지 않고 예외를 던진다. 큰 집계는 상위 항목만 뽑아 상한 안에서 구성한다
 - 구조화 출력은 **`output_config: { format: {...} }`**. 구식 `output_format` 파라미터가 아니다
 - 분류는 `output_config.effort: "low"` — 단순 분류에 높은 추론 비용을 쓸 이유가 없다
 - **Sonnet 5에서 400을 반환하는 것들: `temperature`, `top_p`, `top_k`, `budget_tokens`, assistant prefill.** 쓰지 마라
@@ -43,7 +45,7 @@ generateInsights(summary: MonthlySummary, context: LlmCallContext):
 
 `classifyTransactions`를 호출하기 **전에** 호출자가 ①`merchant_rules` ②`classifyByRule`(step 4의 `src/lib/merchant-rules.ts`)로 채울 수 있는 건 다 채운다. 이 서비스는 **그래도 남은 것만** 받는다.
 
-- 넘겨받은 배열이 비어 있으면 **모델을 호출하지 말고 즉시 빈 결과를 반환한다.** 사용량 예약도 하지 않는다. 이유: 규칙 사전이 전부 잡은 경우가 실제로 흔하고, 그때 호출 한도를 태우면 ADR-005의 한도가 무의미해진다
+- 넘겨받은 배열이 비어 있으면 **모델을 호출하지 말고 즉시 빈 결과를 반환한다.** 이유: 규칙 사전이 전부 잡는 경우가 실제로 흔하다. 여기서 빈 요청을 SDK로 보내면 돈만 나가고 얻는 게 없다
 - 규칙 사전을 이 서비스 안에서 호출하지 마라. 이유: `src/services/`는 외부 API 래퍼이고 규칙 사전은 `src/lib/`의 순수 함수다. 경계를 섞으면 `classifyTransactions`의 목킹 테스트가 사전 내용에 의존하게 된다. 3단 오케스트레이션은 step 7의 라우트가 한다
 
 ### `classifyTransactions` — 이 step에서 가장 중요한 규칙
@@ -69,7 +71,7 @@ LLM이 항목 하나를 누락하면 인덱스가 밀려 **엉뚱한 거래에 �
 
 ### 에러 처리
 
-- SDK 자동 재시도는 `maxRetries: 0`으로 끈다. 모델 요청 timeout 60초. provider rate limit / 5xx는 최대 2회 재시도하되 **매 시도마다 사용량을 예약**한다. 로컬 상한 429·lease 충돌 409·사용량 저장소 장애 503은 자동 반복하지 않는다
+- SDK 자동 재시도는 `maxRetries: 0`으로 끈다. 모델 요청 timeout 60초. provider rate limit / 5xx는 **최대 2회**까지만 수동 재시도한다. 무한 재시도 루프를 만들지 마라 — 이제 이걸 막아줄 사용량 카운터가 없다
 - 최종 실패 → 예외를 던진다. 호출자(step 7)가 부분 실패로 처리한다
 - **에러 로그에 가맹점명·금액을 남기지 마라.** 배치 인덱스와 건수만 남긴다
 
@@ -81,7 +83,7 @@ npm run build
 npm test
 ```
 
-**TDD 가드:** `claude.ts`·`llm-usage.ts`·`limits.ts` 각각 테스트를 먼저 작성한다. SDK와 RPC를 목킹하되 실제 Supabase 동시 예약 검증은 step 2에서 수행한다.
+**TDD 가드:** `claude.ts`·`limits.ts` 각각 테스트를 먼저 작성한다. SDK를 목킹한다.
 
 테스트에 반드시 포함할 케이스:
 1. **LLM이 항목을 누락한 응답** → 누락된 `id`가 미분류로 남고, 나머지는 **올바른 거래에** 매칭되는가 (순서 의존 구현이면 여기서 깨진다)
@@ -90,8 +92,8 @@ npm test
 4. 200자 초과 가맹점명 → 절단되는가
 5. enum에 없는 카테고리를 반환 → 미분류 처리되는가
 6. 계좌번호·카드번호가 들어간 원본 헤더/행에서 만든 입력 → 실제 SDK payload에 원본 값이 없는가
-7. 매핑·분류·인사이트·재시도 모두 호출 전 예약하며 429/503에서는 SDK를 호출하지 않는가
-8. 입력 byte/출력 token 상한 및 lease 해제의 토큰 조건을 지키는가
+7. 입력이 24,000 bytes를 넘으면 SDK를 호출하지 않고 예외를 던지는가
+8. 빈 배열을 받으면 SDK를 전혀 호출하지 않고 즉시 빈 결과를 반환하는가
 
 ## 검증 절차
 
@@ -103,7 +105,7 @@ npm test
    - `temperature`·`budget_tokens`·prefill을 쓰지 않았는가?
    - 분류 결과를 `id`로 매칭하는가?
    - enum이 `CATEGORIES` 상수에서 생성되는가?
-   - SDK 재시도가 꺼져 있고 매 실제 시도마다 사용량 예약을 하는가?
+   - SDK 재시도가 꺼져 있고 수동 재시도가 2회로 제한되는가?
    - 매핑 요청이 원본 데이터 대신 정제된 형식 정보만 사용하는가?
 4. `phases/1-ingest/index.json`의 step 5를 업데이트한다.
 
