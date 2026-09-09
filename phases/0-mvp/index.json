@@ -1,0 +1,71 @@
+{
+  "project": "FinSight",
+  "phase": "0-mvp",
+  "steps": [
+    {
+      "step": 0,
+      "name": "project-setup",
+      "status": "pending"
+    },
+    {
+      "step": 1,
+      "name": "core-types",
+      "status": "pending"
+    },
+    {
+      "step": 2,
+      "name": "db-schema",
+      "status": "pending"
+    },
+    {
+      "step": 3,
+      "name": "auth-flow",
+      "status": "pending"
+    },
+    {
+      "step": 4,
+      "name": "csv-parser",
+      "status": "pending"
+    },
+    {
+      "step": 5,
+      "name": "claude-service",
+      "status": "pending"
+    },
+    {
+      "step": 6,
+      "name": "analytics",
+      "status": "pending"
+    },
+    {
+      "step": 7,
+      "name": "upload-flow",
+      "status": "pending"
+    },
+    {
+      "step": 8,
+      "name": "dashboard",
+      "status": "pending"
+    },
+    {
+      "step": 9,
+      "name": "account-screens",
+      "status": "pending"
+    },
+    {
+      "step": 10,
+      "name": "landing",
+      "status": "pending"
+    },
+    {
+      "step": 11,
+      "name": "billing",
+      "status": "pending"
+    },
+    {
+      "step": 12,
+      "name": "deploy",
+      "status": "pending"
+    }
+  ]
+}

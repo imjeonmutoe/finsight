@@ -10,3 +10,11 @@ phases/**/step*-output.json
 
 # IDE
 .idea/
+
+# secrets — execute.py가 git add -A를 돌리므로 반드시 필요
+.env
+.env.*
+!.env.example
+
+# vercel
+.vercel

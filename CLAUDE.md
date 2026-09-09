@@ -1,21 +1,36 @@
-# 프로젝트: {프로젝트명}
+# 프로젝트: FinSight
+
+CSV로 받은 카드 명세서·은행 거래내역을 Claude API로 분석해 개인 지출을 보여주는 SaaS.
 
 ## 기술 스택
-- {프레임워크 (예: Next.js 15)}
-- {언어 (예: TypeScript strict mode)}
-- {스타일링 (예: Tailwind CSS)}
+- Next.js 15 (App Router)
+- TypeScript strict mode
+- Tailwind CSS
+- Supabase (Auth / Postgres / Storage)
+- Anthropic Claude API (`claude-sonnet-5`)
+- Polar (구독 결제)
+- Vercel (배포)
 
 ## 아키텍처 규칙
-- CRITICAL: {절대 지켜야 할 규칙 1 (예: 모든 API 로직은 app/api/ 라우트 핸들러에서만 처리)}
-- CRITICAL: {절대 지켜야 할 규칙 2 (예: 클라이언트 컴포넌트에서 직접 외부 API를 호출하지 말 것)}
-- {일반 규칙 (예: 컴포넌트는 components/ 폴더에, 타입은 types/ 폴더에 분리)}
+- CRITICAL: 모든 외부 API 호출(Claude, Supabase service role, Polar)은 서버에서만 한다. `src/app/api/` 라우트 핸들러 또는 Server Component/Server Action에서만 호출하고, 클라이언트 컴포넌트에서 직접 호출하지 않는다.
+- CRITICAL: `ANTHROPIC_API_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, `POLAR_ACCESS_TOKEN`, `POLAR_WEBHOOK_SECRET`은 절대 `NEXT_PUBLIC_` 접두사를 붙이지 않는다. 클라이언트 번들에 들어가면 즉시 유출이다.
+- CRITICAL: 집계·통계·탐지는 전부 코드(TypeScript 순수 함수 또는 SQL)로 계산한다. LLM에게 합계·평균·비율을 계산시키지 않는다. LLM의 역할은 (1) CSV 컬럼 매핑 추론, (2) 거래 카테고리 분류, (3) 이미 계산된 숫자를 설명하는 문장 생성 — 이 세 가지뿐이다.
+- CRITICAL: 금액은 원 단위 정수(`bigint` / TS `number` 정수)로만 다룬다. 부동소수점 금액 금지.
+- CRITICAL: 모든 사용자 데이터 테이블과 Storage 버킷에 RLS를 건다. RLS 없는 테이블을 만들지 않는다.
+- 카테고리는 `src/types/category.ts`의 고정 목록(12개)을 벗어나지 않는다. 새 카테고리를 임의로 추가하지 않는다.
+- CRITICAL: 금융 데이터를 로그에 남기지 마라. 거래 내용·가맹점명·금액을 `console.log`하지 않는다. 에러 로그에는 행 내용 대신 **행 번호**만 남긴다. Vercel 함수 로그도 유출 경로다.
+- CRITICAL: `dangerouslySetInnerHTML`을 쓰지 마라. LLM 출력에는 사용자가 올린 CSV에서 온 임의 문자열이 섞일 수 있다. React 기본 이스케이프가 유일한 XSS 방어선이다.
+- CRITICAL: RLS를 믿되 라우트 핸들러 쿼리에도 `user_id` 조건을 명시하라. RLS 정책을 나중에 잘못 고쳐도 한 겹이 남는다.
+- 디렉토리: 페이지·API는 `src/app/`, UI는 `src/components/`, 타입은 `src/types/`, 순수 유틸은 `src/lib/`, 외부 API 래퍼는 `src/services/`.
 
 ## 개발 프로세스
 - CRITICAL: 새 기능 구현 시 반드시 테스트를 먼저 작성하고, 테스트가 통과하는 구현을 작성할 것 (TDD)
-- 커밋 메시지는 conventional commits 형식을 따를 것 (feat:, fix:, docs:, refactor:)
+- CRITICAL: PreToolUse 훅이 테스트 없는 소스 파일 작성을 차단한다. `src/components/*.tsx`, `src/lib/*.ts`, `src/services/*.ts`, `src/app/api/**/route.ts`를 만들기 전에 같은 디렉토리에 `<이름>.test.ts(x)`를 먼저 만들어라. (`page.tsx`, `layout.tsx`, `src/types/*`, 설정 파일은 면제)
+- Stop 훅이 매 세션 종료 시 `npm run lint && npm run build && npm run test`를 실행한다. 세 개 모두 통과하는 상태로 끝내라.
+- 커밋 메시지는 conventional commits 형식을 따를 것 (feat:, fix:, docs:, refactor:, chore:)
 
 ## 명령어
 npm run dev      # 개발 서버
 npm run build    # 프로덕션 빌드
 npm run lint     # ESLint
-npm run test     # 테스트
+npm run test     # 테스트 (vitest run)
