@@ -1,0 +1,26 @@
+{
+  "project": "FinSight",
+  "phase": "0-foundation",
+  "steps": [
+    {
+      "step": 0,
+      "name": "project-setup",
+      "status": "pending"
+    },
+    {
+      "step": 1,
+      "name": "core-types",
+      "status": "pending"
+    },
+    {
+      "step": 2,
+      "name": "db-schema",
+      "status": "pending"
+    },
+    {
+      "step": 3,
+      "name": "auth-flow",
+      "status": "pending"
+    }
+  ]
+}

@@ -1,0 +1,21 @@
+{
+  "project": "FinSight",
+  "phase": "1-ingest",
+  "steps": [
+    {
+      "step": 4,
+      "name": "csv-parser",
+      "status": "pending"
+    },
+    {
+      "step": 5,
+      "name": "claude-service",
+      "status": "pending"
+    },
+    {
+      "step": 6,
+      "name": "analytics",
+      "status": "pending"
+    }
+  ]
+}

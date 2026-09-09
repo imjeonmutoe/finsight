@@ -1,0 +1,21 @@
+{
+  "project": "FinSight",
+  "phase": "3-monetization",
+  "steps": [
+    {
+      "step": 10,
+      "name": "landing",
+      "status": "pending"
+    },
+    {
+      "step": 11,
+      "name": "billing",
+      "status": "pending"
+    },
+    {
+      "step": 12,
+      "name": "deploy",
+      "status": "pending"
+    }
+  ]
+}

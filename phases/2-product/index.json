@@ -1,0 +1,21 @@
+{
+  "project": "FinSight",
+  "phase": "2-product",
+  "steps": [
+    {
+      "step": 7,
+      "name": "upload-flow",
+      "status": "pending"
+    },
+    {
+      "step": 8,
+      "name": "dashboard",
+      "status": "pending"
+    },
+    {
+      "step": 9,
+      "name": "account-screens",
+      "status": "pending"
+    }
+  ]
+}

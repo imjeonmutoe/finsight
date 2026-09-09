@@ -1,0 +1,20 @@
+{
+  "phases": [
+    {
+      "dir": "0-foundation",
+      "status": "pending"
+    },
+    {
+      "dir": "1-ingest",
+      "status": "pending"
+    },
+    {
+      "dir": "2-product",
+      "status": "pending"
+    },
+    {
+      "dir": "3-monetization",
+      "status": "pending"
+    }
+  ]
+}
