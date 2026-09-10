@@ -1,0 +1,6 @@
+:root{
+  /* one shadow tier only */
+  --shadow-soft:0 4px 12px rgba(0,0,0,0.04);
+  --border-hairline:1px solid var(--color-hairline);
+  --border-hairline-soft:1px solid var(--color-hairline-soft);
+}

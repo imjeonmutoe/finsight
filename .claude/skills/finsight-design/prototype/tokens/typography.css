@@ -1,0 +1,29 @@
+:root{
+  --font-weight-regular:400;
+  --font-weight-medium:500;
+  --font-weight-semibold:600;
+  --font-weight-bold:700;
+
+  /* display — always weight 400, negative tracking */
+  --type-display-mega-size:80px;   --type-display-mega-lh:1.0;  --type-display-mega-ls:-2px;
+  --type-display-xl-size:64px;     --type-display-xl-lh:1.0;    --type-display-xl-ls:-1.6px;
+  --type-display-lg-size:52px;     --type-display-lg-lh:1.0;    --type-display-lg-ls:-1.3px;
+  --type-display-md-size:44px;     --type-display-md-lh:1.09;   --type-display-md-ls:-1px;
+  --type-display-sm-size:36px;     --type-display-sm-lh:1.11;   --type-display-sm-ls:-0.5px;
+
+  /* titles */
+  --type-title-lg-size:32px;       --type-title-lg-lh:1.13;     --type-title-lg-ls:-0.4px;
+  --type-title-md-size:18px;       --type-title-md-lh:1.33;
+  --type-title-sm-size:16px;       --type-title-sm-lh:1.25;
+
+  /* body */
+  --type-body-md-size:16px;        --type-body-md-lh:1.5;
+  --type-body-sm-size:14px;        --type-body-sm-lh:1.5;
+  --type-caption-size:13px;        --type-caption-lh:1.5;
+  --type-caption-strong-size:12px; --type-caption-strong-lh:1.5;
+
+  /* utility */
+  --type-number-display-size:18px; --type-number-display-lh:1.4;
+  --type-button-size:16px;         --type-button-lh:1.15;
+  --type-nav-link-size:14px;       --type-nav-link-lh:1.4;
+}

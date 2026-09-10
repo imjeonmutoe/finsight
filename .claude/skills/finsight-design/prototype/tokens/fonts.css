@@ -1,0 +1,8 @@
+/* Finsight brand faces are licensed and were not supplied.
+   Documented substitutes: Inter (display + sans) and JetBrains Mono (numerals). */
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap");
+:root{
+  --font-display:"Inter","-apple-system",system-ui,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  --font-sans:"Inter","-apple-system",system-ui,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  --font-mono:"JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+}
