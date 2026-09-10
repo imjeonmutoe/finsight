@@ -22,9 +22,10 @@
 2. **자기완결성** — 각 step 파일은 독립된 Claude 세션에서 실행된다. "이전 대화에서 논의한 바와 같이" 같은 외부 참조는 금지한다. 필요한 정보는 전부 파일 안에 적는다.
 3. **사전 준비 강제** — 관련 문서 경로와 이전 step에서 생성/수정된 파일 경로를 명시한다. 세션이 코드를 읽고 맥락을 파악한 뒤 작업하도록 유도한다.
 4. **시그니처 수준 지시** — 함수/클래스의 인터페이스만 제시하고 내부 구현은 에이전트 재량에 맡긴다. 단, 설계 의도에서 벗어나면 안 되는 핵심 규칙(멱등성, 보안, 데이터 무결성 등)은 반드시 명시한다.
-5. **AC는 실행 가능한 커맨드** — "~가 동작해야 한다" 같은 추상적 서술이 아닌 `npm run build && npm test` 같은 실제 실행 가능한 검증 커맨드를 포함한다.
+5. **AC는 실행 가능한 커맨드** — "~가 동작해야 한다" 같은 추상적 서술이 아닌 실제 실행 가능한 검증 커맨드를 포함한다. **모든 step의 AC는 `npm run lint && npm run build && npm run test` 세 개를 전부 포함한다.** Stop 훅이 세션 종료 시 같은 세 개를 돌리므로, AC를 이보다 좁게 잡으면 step은 통과했는데 세션이 실패하는 상태가 된다.
 6. **주의사항은 구체적으로** — "조심해라" 대신 "X를 하지 마라. 이유: Y" 형식으로 적는다.
 7. **네이밍** — step name은 kebab-case slug로, 해당 step의 핵심 모듈/작업을 한두 단어로 표현한다 (예: `project-setup`, `api-layer`, `auth-flow`).
+8. **UI step은 육안 검증까지 AC에 넣는다** — 화면·컴포넌트·스타일을 만지는 step은 `npm run build` 통과만으로 끝내지 않는다. 실제 렌더된 화면을 보고 확인하는 절차를 AC에 적는다. 이유: Tailwind v4는 잘못된 문법을 **에러 없이 조용히 무시하고**, 빌드는 그대로 통과한다. "빌드 성공"과 "화면이 제대로 보인다"는 다른 명제다.
 
 ### D. 파일 생성
 
@@ -107,18 +108,33 @@
 ## Acceptance Criteria
 
 ```bash
+npm run lint    # 린트 통과
 npm run build   # 컴파일 에러 없음
-npm test        # 테스트 통과
+npm run test    # 테스트 통과
+```
+
+{UI를 만지는 step이면 아래도 AC에 포함한다}
+
+```bash
+bash scripts/preview-shot.sh {경로}   # 예: bash scripts/preview-shot.sh /
 ```
 
 ## 검증 절차
 
 1. 위 AC 커맨드를 실행한다.
-2. 아키텍처 체크리스트를 확인한다:
+2. **UI step이면 스크린샷을 실제로 열어본다.** `scripts/preview-shot.sh`가 출력한 PNG 경로를 Read로 열어 눈으로 확인한다. 찍기만 하고 넘어가지 마라 — 그러면 검증한 것이 아니다. 확인할 것:
+   - 라이트·다크 양쪽에서 대비가 깨지지 않는가
+   - 한글이 어절 중간에서 줄바꿈되지 않는가 (`word-break: keep-all`)
+   - 금액이 `tabular-nums`로 자리가 맞는가
+   - 하드코딩된 hex 없이 `docs/UI_GUIDE.md`의 토큰만 쓰였는가
+   - 문구가 전부 한국어인가. 버튼은 `저장하기`/`취소` 같은 동사형이고, 상태 메시지만 평서형(`저장했습니다`)인가
+
+   Chrome을 못 찾아 스크립트가 실패하면 **육안 검증을 건너뛰지 말고** `blocked`로 두고 사용자에게 확인을 요청한다.
+3. 아키텍처 체크리스트를 확인한다:
    - ARCHITECTURE.md 디렉토리 구조를 따르는가?
    - ADR 기술 스택을 벗어나지 않았는가?
    - CLAUDE.md CRITICAL 규칙을 위반하지 않았는가?
-3. 결과에 따라 `phases/{task-name}/index.json`의 해당 step을 업데이트한다:
+4. 결과에 따라 `phases/{task-name}/index.json`의 해당 step을 업데이트한다:
    - 성공 → `"status": "completed"`, `"summary": "산출물 한 줄 요약"`
    - 수정 3회 시도 후에도 실패 → `"status": "error"`, `"error_message": "구체적 에러 내용"`
    - 사용자 개입 필요 (API 키, 외부 인증, 수동 설정 등) → `"status": "blocked"`, `"blocked_reason": "구체적 사유"` 후 즉시 중단
@@ -132,9 +148,11 @@ npm test        # 테스트 통과
 ### E. 실행
 
 ```bash
-python3 scripts/execute.py {task-name}        # 순차 실행
-python3 scripts/execute.py {task-name} --push  # 실행 후 push
+python3 scripts/execute.py {task-name} --push  # 기본. 실행 후 push까지
+python3 scripts/execute.py {task-name}         # push 없이 로컬 커밋만
 ```
+
+**`--push`를 기본으로 쓴다.** 완료된 작업이 로컬에만 남아 있으면 다음 세션이 그 상태를 알 수 없고, 원격에서 확인할 방법도 없다. push를 생략하는 건 의도적으로 공유하고 싶지 않을 때뿐이다.
 
 execute.py가 자동으로 처리하는 것:
 
