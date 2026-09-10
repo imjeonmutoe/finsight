@@ -29,11 +29,13 @@ Tailwind v4의 `@theme`로 정의한다. **v3의 `bg-[--surface]` 문법을 쓰�
 @import "tailwindcss";
 
 @theme {
-  /* 한글 우선 시스템 폰트. 웹폰트를 받지 않는다 — FOUT과 번들 무게를 만들지 않기 위해서다.
-     macOS는 Apple SD Gothic Neo, Windows는 맑은 고딕이 잡힌다. */
-  --font-sans: -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo",
-               "Malgun Gothic", "맑은 고딕", "Segoe UI", system-ui, sans-serif;
-  --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  /* 본문은 Pretendard, 숫자는 JetBrains Mono. 뒤의 시스템 폰트는 fallback이다.
+     자세한 근거는 아래 `### 서체` 참조. @font-face 선언은 layout.tsx가 import한다. */
+  --font-sans: "Pretendard Variable", -apple-system, BlinkMacSystemFont,
+               "Apple SD Gothic Neo", "Malgun Gothic", "맑은 고딕", "Segoe UI",
+               system-ui, sans-serif;
+  --font-mono: var(--font-jetbrains), ui-monospace, SFMono-Regular, "SF Mono",
+               Menlo, Consolas, monospace;
 
   --color-bg: #ffffff;
   --color-surface: #f7f7f5;
@@ -49,6 +51,10 @@ Tailwind v4의 `@theme`로 정의한다. **v3의 `bg-[--surface]` 문법을 쓰�
   --color-accent: #2563a8;
 }
 
+/* 다크 값은 세 곳에 쓴다. CSS만으로 양방향 토글과 OS 기본값을 모두 만족시키려면 필요하다.
+   - @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) } — 최초 방문 기본값
+   - [data-theme="dark"]  — 명시 선택. 항상 이긴다
+   - [data-theme="light"] — 명시 선택. OS가 다크여도 이긴다. 하위 트리 테마 지정도 이 블록이 받는다 */
 [data-theme="dark"] {
   --color-bg: #0f0f0e;
   --color-surface: #191918;
@@ -84,6 +90,21 @@ v4는 테마 값을 실제 CSS 변수로 내보내고 유틸리티가 `var(--col
 | `down` | `text-down` | 지출 감소 / 절약 / 성공 |
 | `neutral-line` | `stroke-neutral-line` | 차트 기준선 |
 | `accent` | `text-accent` / `outline-accent` | 링크, 포커스 링 |
+
+### 서체
+
+| 용도 | 서체 | 전달 방식 |
+|---|---|---|
+| 본문·UI 전체 | Pretendard Variable | `pretendard` npm 패키지의 **dynamic subset**을 `layout.tsx`에서 import |
+| 숫자(금액·날짜) | JetBrains Mono 500 | `next/font/google`, 라틴 서브셋, 빌드 타임 self-host |
+
+**Pretendard를 쓰는 이유**: 시스템 폰트만 두면 macOS는 Apple SD Gothic Neo, Windows는 맑은 고딕이 잡힌다. 두 서체는 자소 비례와 굵기가 달라 **같은 화면이 OS마다 다르게 보인다.** 한국어가 기본인 제품에서 이건 그냥 두기 어려운 차이다.
+
+**dynamic subset을 쓰는 이유**: 통짜 variable 파일은 2.0MB다. dynamic subset은 92개 woff2를 `unicode-range`로 쪼개 두어 브라우저가 화면에 실제로 쓰인 글자의 청크만 받는다. 통짜 파일을 `next/font/local`로 preload하지 마라. 이유: 첫 렌더에 2MB를 기다리게 된다.
+
+**JetBrains Mono의 굵기를 500 하나로 고정한 이유**: 디자인 레퍼런스가 숫자를 항상 500으로 쓴다. 가변 폰트로 두면 100~800 전 굵기를 담아 preload가 40KB인데, 500만 받으면 21KB다. 금액만 칠하는 서체라 이 차이가 크다.
+
+폰트를 못 받은 환경에서도 뒤의 시스템 스택이 받는다. `tabular-nums`는 시스템 mono에서도 동작하므로 자리는 어긋나지 않는다.
 
 브랜드 포인트 색(`accent`)은 **링크와 포커스 링에만** 쓴다. Primary 버튼은 무채색이다 — 증감 색상(빨강/초록)과 경쟁하면 데이터를 못 읽는다.
 
