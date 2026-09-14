@@ -29,6 +29,13 @@ describe("지출 지표 카드", () => {
     expect(screen.getByText(amountKrw === 0 ? "₩0" : "-₩1,234,567")).toBeVisible();
   });
 
+  it("금액을 줄바꿈하지 않습니다", () => {
+    // body의 overflow-wrap: break-word가 좁은 카드에서 숫자를 어절 중간(₩1,090,42 / 0)에서 끊는다.
+    // 다른 컴포넌트의 금액과 동일하게 nowrap을 건다.
+    render(<KpiCard label="이번 달 총지출" amountKrw={1_234_567} />);
+    expect(screen.getByText("₩1,234,567")).toHaveClass("whitespace-nowrap");
+  });
+
   it("마크업에 하드코딩한 색이 없습니다", () => {
     expect(renderToStaticMarkup(<KpiCard label="총지출" amountKrw={1_234_567} deltaPercent={10} />))
       .not.toContain("#");
