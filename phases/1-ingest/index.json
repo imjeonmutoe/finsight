@@ -21,7 +21,9 @@
     {
       "step": 6,
       "name": "analytics",
-      "status": "pending"
+      "status": "completed",
+      "summary": "SQL 월별·카테고리별 순지출·중앙값 집계와 사용자 범위 조회, 순수 구독·이상치 탐지를 TDD로 구현하고 lint·build·전체 250개 테스트 및 로컬 PostgreSQL 집계·권한 검증 23개를 통과했습니다.",
+      "started_at": "2026-09-14T16:06:51+0900"
     }
   ],
   "created_at": "2026-09-14T15:43:19+0900"
