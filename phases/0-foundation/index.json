@@ -7,7 +7,8 @@
       "name": "project-setup",
       "status": "completed",
       "summary": "Node 20 호환 jsdom·Testing Library 환경과 Node·컴포넌트 샘플 테스트, UI 토큰·한글 스타일·테마 초기화·최소 페이지·환경변수 예시를 구성하고 AC 및 Chrome 화면 검증을 통과했습니다.",
-      "started_at": "2026-09-14T14:55:46+0900"
+      "started_at": "2026-09-14T14:55:46+0900",
+      "completed_at": "2026-09-14T15:02:52+0900"
     },
     {
       "step": 1,
