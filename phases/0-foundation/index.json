@@ -13,7 +13,9 @@
     {
       "step": 1,
       "name": "core-types",
-      "status": "pending"
+      "status": "completed",
+      "summary": "CATEGORIES 상수와 Category, FinancialSource, MappingLabel, SanitizedMappingInput, ColumnMapping, ImportContext, UploadStatus, TransactionKind, ParsedTransaction, CategorySource, Transaction, MappingResponse, ConfirmRequest, DuplicateDecision, ImportReviewResponse, ConfirmResponse, ClassifyResponse, Plan, Profile, MonthlySummary, Subscription, Outlier 타입을 정의·재수출하고 공유 인터페이스 일치·카테고리 12개·lint·build·test 검증을 통과했습니다.",
+      "started_at": "2026-09-14T15:02:52+0900"
     },
     {
       "step": 2,
