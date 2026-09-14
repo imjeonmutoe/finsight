@@ -15,6 +15,9 @@ export type DemoDataset = {
   transactions: Transaction[];
   months: MonthlySummary[];
   currentMonth: MonthlySummary;
+  previousMonthDeltaKrw: number | null;
+  previousMonthDeltaPercent: number | null;
+  subscriptionMonthlyKrw: number;
   subscriptions: Subscription[];
   outliers: Outlier[];
   unclassifiedCount: number;
@@ -100,12 +103,21 @@ export function buildDemoDataset(): DemoDataset {
   if (currentMonth === undefined) {
     throw new Error("데모 월별 지출을 만들지 못했습니다. 샘플 거래를 확인해 주세요.");
   }
+  const previousDate = new Date(`${currentMonth.month}-01T00:00:00Z`);
+  previousDate.setUTCMonth(previousDate.getUTCMonth() - 1);
+  const previousMonth = months.find((month) => month.month === previousDate.toISOString().slice(0, 7));
+  const previousMonthDeltaKrw = previousMonth ? currentMonth.totalKrw - previousMonth.totalKrw : null;
+  const subscriptions = detectSubscriptions(transactions);
 
   return {
     transactions,
     months,
     currentMonth,
-    subscriptions: detectSubscriptions(transactions),
+    previousMonthDeltaKrw,
+    previousMonthDeltaPercent: previousMonth && previousMonth.totalKrw !== 0 && previousMonthDeltaKrw !== null
+      ? previousMonthDeltaKrw / Math.abs(previousMonth.totalKrw) * 100 : null,
+    subscriptionMonthlyKrw: subscriptions.reduce((sum, subscription) => sum + subscription.monthlyKrw, 0),
+    subscriptions,
     outliers: detectOutliers(transactions, categoryMedians(transactions)),
     unclassifiedCount: transactions.filter((transaction) =>
       (transaction.kind === "expense" || transaction.kind === "refund") && transaction.category === null).length,

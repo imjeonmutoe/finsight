@@ -25,6 +25,38 @@ async function buildFromRows(rows: string[]) {
 }
 
 describe("데모 데이터셋", () => {
+  it("페이지가 재집계하지 않도록 구독 월 합계를 제공합니다", () => {
+    const dataset = buildDemoDataset();
+    expect(dataset.subscriptionMonthlyKrw).toBe(
+      dataset.subscriptions.reduce((sum, item) => sum + item.monthlyKrw, 0),
+    );
+    expect(Number.isSafeInteger(dataset.subscriptionMonthlyKrw)).toBe(true);
+  });
+
+  it.each([
+    { previous: 10_000, current: 15_000, delta: 5_000, percent: 50 },
+    { previous: 20_000, current: 15_000, delta: -5_000, percent: -25 },
+    { previous: 0, current: 15_000, delta: 15_000, percent: null },
+    { previous: -10_000, current: 15_000, delta: 25_000, percent: 250 },
+  ])("전월 $previous 원 대비 $current 원의 차액·비율을 제공합니다", async ({ previous, current, delta, percent }) => {
+    const dataset = await buildFromRows([
+      `2026.03.01,쿠팡,${previous},,0,1,${previous < 0 ? "취소" : "승인"},2026-03`,
+      `2026.04.01,쿠팡,${current},,0,2,승인,2026-04`,
+    ]);
+    expect(dataset.previousMonthDeltaKrw).toBe(delta);
+    expect(dataset.previousMonthDeltaPercent).toBe(percent);
+    expect(dataset.subscriptionMonthlyKrw).toBe(0);
+  });
+
+  it("바로 전 달 데이터가 없으면 오래된 달과 비교하지 않습니다", async () => {
+    const dataset = await buildFromRows([
+      "2026.01.01,쿠팡,10000,,0,1,승인,2026-01",
+      "2026.04.01,쿠팡,15000,,0,2,승인,2026-04",
+    ]);
+    expect(dataset.previousMonthDeltaKrw).toBeNull();
+    expect(dataset.previousMonthDeltaPercent).toBeNull();
+  });
+
   it("서로 다른 4개월을 오래된 순서로 반환하고 마지막 달을 현재 월로 사용합니다", () => {
     const dataset = buildDemoDataset();
     expect(dataset.months.map((month) => month.month)).toEqual(["2026-01", "2026-02", "2026-03", "2026-04"]);
