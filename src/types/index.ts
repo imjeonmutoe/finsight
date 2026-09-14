@@ -23,4 +23,4 @@ export type {
   ClassifyResponse,
 } from './api'
 export type { Plan, Profile } from './billing'
-export type { MonthlySummary, Subscription, Outlier } from './analytics'
+export type { MonthlySummary, Subscription, Outlier, InsightInput } from './analytics'
