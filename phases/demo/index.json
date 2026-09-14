@@ -5,12 +5,15 @@
     {
       "step": 13,
       "name": "demo-dataset",
-      "status": "pending"
+      "status": "completed",
+      "summary": "4개월·188건의 합성 CSV를 기존 인코딩·파싱·해시·규칙 분류·탐지 함수로 조립하고 데모 전용 집계로 DemoDataset의 transactions, months, currentMonth, subscriptions, outliers, unclassifiedCount를 제공하며 신규 테스트 15개와 lint·build·전체 265개 테스트를 통과했습니다.",
+      "started_at": "2026-09-14T16:20:20+0900"
     },
     {
       "step": 14,
       "name": "demo-page",
       "status": "pending"
     }
-  ]
+  ],
+  "created_at": "2026-09-14T16:20:20+0900"
 }
