@@ -1,14 +1,24 @@
 @import "tailwindcss";
 
 @theme {
-  /* 본문은 Pretendard, 숫자는 JetBrains Mono. 뒤의 시스템 폰트는 fallback이다.
-     자세한 근거는 아래 `### 서체` 참조. @font-face 선언은 layout.tsx가 import한다. */
+  /* 본문 서체. Pretendard를 앞에 두고 시스템 폰트를 fallback으로 남긴다 —
+     dynamic subset 청크를 아직 못 받은 순간과 네트워크 실패 시 이 스택이 받는다.
+     Pretendard를 쓰는 이유는 시스템 폰트만 두면 macOS(Apple SD Gothic Neo)와
+     Windows(맑은 고딕)의 자소 비례·굵기가 달라 같은 화면이 OS마다 다르게 보이기
+     때문이다. @font-face 선언은 layout.tsx가 import한다. */
   --font-sans: "Pretendard Variable", -apple-system, BlinkMacSystemFont,
                "Apple SD Gothic Neo", "Malgun Gothic", "맑은 고딕", "Segoe UI",
                system-ui, sans-serif;
-  --font-mono: var(--font-jetbrains), ui-monospace, SFMono-Regular, "SF Mono",
-               Menlo, Consolas, monospace;
 
+  /* 숫자 전용. JetBrains Mono는 next/font가 빌드 타임에 self-host한다(layout.tsx) —
+     외부 요청도 FOUT도 없다. 금액·날짜에만 쓰므로 한글은 이 스택에 닿지 않는다.
+     `var()`에 fallback을 함께 적은 이유: --font-jetbrains가 정의되지 않으면 선언 전체가
+     무효가 되어 font-mono가 본문 서체로 떨어진다. 그러면 금액의 tabular-nums가 깨진다. */
+  --font-mono: var(--font-jetbrains, ui-monospace), ui-monospace, SFMono-Regular,
+               "SF Mono", Menlo, Consolas, monospace;
+
+  /* 색 토큰. docs/UI_GUIDE.md의 `## 색상`이 단일 소스다.
+     컴포넌트에 hex를 하드코딩하지 말고 반드시 이 토큰명을 거쳐라. */
   --color-bg: #ffffff;
   --color-surface: #f7f7f5;
   --color-surface-2: #efefec;
@@ -21,6 +31,30 @@
   --color-down: #2f6b46;
   --color-neutral-line: #8a8a84;
   --color-accent: #2563a8;
+
+  /* UI_GUIDE: 허용 애니메이션은 fade-in, slide-up 두 개뿐이다. 그 외 추가 금지. */
+  --animate-fade-in: fade-in 0.4s ease-out;
+  --animate-slide-up: slide-up 0.5s ease-out;
+
+  @keyframes fade-in {
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
+  }
+
+  @keyframes slide-up {
+    from {
+      opacity: 0;
+      transform: translateY(8px);
+    }
+    to {
+      opacity: 1;
+      transform: none;
+    }
+  }
 }
 
 /* 다크 값은 세 곳에 쓴다. CSS만으로 양방향 토글과 OS 기본값을 모두 만족시키려면 필요하다.
@@ -78,11 +112,6 @@
 }
 
 @layer base {
-  :root {
-    /* Step 0에서는 웹폰트를 받지 않고 시스템 서체를 사용한다. */
-    --font-jetbrains: ui-monospace;
-  }
-
   body {
     word-break: keep-all;
     overflow-wrap: break-word;

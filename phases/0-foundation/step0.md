@@ -28,7 +28,7 @@
 | `eslint.config.mjs` | `eslint-config-next/core-web-vitals` 플랫 컨피그 |
 | `vitest.config.mts` | `include: src/**/*.{test,spec}.{ts,tsx}`, `@` alias. **확장자가 `.mts`인 이유는 ESM/CJS 경고를 없애기 위한 것이므로 `.ts`로 바꾸지 마라** |
 | `.env.example` | 키 목록 (아래 5번에서 보강만 한다) |
-| `src/app/{layout.tsx,page.tsx,globals.css}` | 최소 스텁 |
+| `src/app/{layout.tsx,page.tsx,globals.css}` | **색 토큰·한글 base 스타일·서체(Pretendard + JetBrains Mono)가 이미 들어 있다.** 아래 2·6번은 빠진 것만 보탠다 — 이미 있는 것을 걷어내지 마라 |
 | `.gitignore` | `.env` 포함 |
 | `src/{lib,services,types,components}/` | 빈 디렉토리 |
 
@@ -42,7 +42,9 @@
 
 ### 2. `src/app/globals.css`의 `@theme` 토큰 + 한글 base 스타일
 
-`/docs/UI_GUIDE.md`의 `## 색상 → 토큰 정의` 코드 블록을 **그대로** 옮긴다. `@theme` 블록의 라이트 값·다크 값 전부, 그리고 **`--font-sans`·`--font-mono` 폰트 스택까지** 포함한다(한글 우선 시스템 폰트. 웹폰트를 받지 않는다).
+`/docs/UI_GUIDE.md`의 `## 색상 → 토큰 정의` 코드 블록을 **그대로** 옮긴다. `@theme` 블록의 라이트 값·다크 값 전부, 그리고 `--font-sans`·`--font-mono` 폰트 스택까지 포함한다.
+
+**이미 들어 있다면 그대로 둔다.** 현재 `globals.css`에는 색 토큰·애니메이션 토큰(`--animate-fade-in`·`--animate-slide-up`)·한글 base 스타일과 함께 웹폰트 스택이 들어 있다 — `--font-sans`의 `"Pretendard Variable"`과 `--font-mono`의 `var(--font-jetbrains, ...)`다. **이 둘을 시스템 폰트로 되돌리지 마라.** 이유: 시스템 폰트만 두면 macOS(Apple SD Gothic Neo)와 Windows(맑은 고딕)의 자소 비례가 달라 같은 화면이 OS마다 다르게 보이고, `--font-jetbrains`를 지우면 금액의 `tabular-nums` 자리 맞춤이 깨진다.
 
 이걸 여기서 심어야 이후 step의 컴포넌트가 색과 폰트를 하드코딩하지 않는다.
 
@@ -101,6 +103,8 @@ NEXT_PUBLIC_SITE_URL=http://localhost:3000
 ### 6. 최소 `src/app/layout.tsx` + `src/app/page.tsx`
 
 빌드가 통과할 최소한만. 랜딩 실제 내용은 step 10에서 만든다.
+
+**`layout.tsx`에 이미 있는 것을 지우지 마라.** Pretendard CSS import, `next/font`의 `JetBrains_Mono`(weight 500, `variable: "--font-jetbrains"`), `<html>`의 `jetBrainsMono.variable` 클래스, `metadata`의 제목·설명이 이미 들어 있다. 이 step에서 **보태는 것은 테마 초기화 스크립트뿐이다.**
 `<html lang="ko">`를 세운다(스크린리더 발음과 브라우저 기본 줄바꿈 규칙이 이 값을 본다). `layout.tsx`의 `<head>`에 FOUC 방지 인라인 스크립트를 넣는다 — `localStorage`의 테마 값(없으면 `prefers-color-scheme`)을 읽어 hydration 전에 `<html>`의 `data-theme`을 세팅.
 `<body>`에 `bg-bg text-text`를 적용해 토큰이 실제로 동작하는지 확인한다.
 
@@ -152,6 +156,7 @@ console.log("고정 버전 OK");
 - `npm test`를 watch 모드로 두지 마라. 이유: Stop 훅이 이 명령을 실행하는데 watch면 영원히 끝나지 않는다.
 - `.env.local`을 만들지 마라. 이유: 이 step에는 실제 키가 없고, 빈 파일이 있으면 이후 step이 설정 완료로 오인한다.
 - 랜딩 페이지 UI를 만들지 마라. 이유: step 10의 작업이다. 여기서는 빌드가 통과할 최소 스텁만 만든다.
+- **`layout.tsx`의 서체 설정(Pretendard import, `JetBrains_Mono`)과 `globals.css`의 애니메이션 토큰을 제거하지 마라.** 이유: 이 step 파일보다 나중에 커밋된 결정이다(`d961704`). 이 문서에 안 적혀 있다는 이유로 지우면 OS별로 다른 한글 렌더링과 깨진 금액 정렬로 되돌아간다.
 - Supabase·Anthropic·Polar 패키지를 설치하지 마라. 이유: 각 step에서 실제로 쓸 때 설치한다. 여기서 깔면 미사용 의존성이 된다.
 - **ADR-010에 고정된 버전을 올리지 마라.** 이유: ESLint를 10으로 올리면 `eslint-config-next@16`이 번들한 플러그인 5개의 peer가 깨지고, Vitest를 5로 올리면 Node 20에서 실행 자체가 안 되며, `@types/node`를 26으로 올리면 Node 20에 없는 API가 타입 검사를 통과해 런타임에서만 터진다. 새 패키지는 `--save-exact`로 추가하고 `npm view <pkg> engines`로 Node 20 호환을 먼저 확인한다.
 - `vitest.config.mts`를 `.ts`로 바꾸지 마라. 이유: `.mts`가 아니면 ESM 문법이 CJS로 로드돼 Vite 경고가 뜬다.
