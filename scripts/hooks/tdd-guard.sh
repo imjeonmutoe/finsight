@@ -1,13 +1,40 @@
 #!/bin/bash
-# TDD Guard Hook — PreToolUse[Edit|Write]
+# TDD Guard Hook — PreToolUse[Edit|Write|Bash]
 # 구현 코드를 작성하려 할 때, 해당 모듈의 테스트 파일이 먼저 존재하는지 체크.
 # 테스트 없이 구현 코드를 작성하려 하면 차단.
+#
+# 한계: 셸 툴은 python·node 등 임의의 방법으로 파일을 쓸 수 있어 명령어 텍스트 검사로는
+# 전부 잡히지 않는다. 못 잡은 건 tdd-backstop.sh(PostToolUse)가 작업트리를 보고 잡는다.
+#
+# 회귀 테스트: bash scripts/hooks/test-tdd-guard.sh
 
 INPUT=$(cat)
-FILE_PATH=$(echo "$INPUT" | jq -r '.tool_input.file_path // empty')
 
-# 파일 경로가 없으면 통과
-if [ -z "$FILE_PATH" ]; then
+# 편집 대상 경로 수집. 에이전트마다 페이로드 모양이 다르다.
+#  - Claude(Edit/Write): tool_input.file_path
+#  - Codex(apply_patch): file_path 필드가 없고 tool_input.command에 패치 전문이 들어온다.
+#    헤더 줄(`*** Add File: <경로>`)에서 뽑아야 한다. 이걸 안 하면 Codex에서는
+#    file_path가 비어 가드가 전부 무사통과한다.
+#    Delete File은 삭제라 테스트를 요구하지 않으므로 제외한다.
+FILE_PATH=$(printf '%s' "$INPUT" | jq -r '.tool_input.file_path // empty')
+CMD=$(printf '%s' "$INPUT" | jq -r '.tool_input.command // empty')
+PATCH_PATHS=$(printf '%s\n' "$CMD" | sed -n \
+  -e 's/^\*\*\* Add File: //p' \
+  -e 's/^\*\*\* Update File: //p' \
+  -e 's/^\*\*\* Move to: //p')
+
+# Codex는 apply_patch 대신 셸 리다이렉션으로 파일을 쓰기도 한다.
+#   /bin/zsh -lc "mkdir -p src/lib && printf '%s' '...' > src/lib/pricing.ts"
+# 따옴표를 먼저 걷어내고 `>`·`>>`·`tee`의 대상만 뽑는다. `2>&1`·`>/dev/null`은
+# 대상이 소스 확장자가 아니므로 아래 루프에서 자연히 걸러진다.
+SHELL_WRITES=$(printf '%s\n' "$CMD" | tr -d '"'"'" | grep -oE \
+  '(>>?|[[:space:]]tee([[:space:]]+-a)?[[:space:]])[[:space:]]*[^[:space:];|&<>()]+' \
+  | sed -E 's/^([[:space:]]*(>>?|tee([[:space:]]+-a)?))[[:space:]]*//')
+
+TARGETS=$(printf '%s\n%s\n%s\n' "$FILE_PATH" "$PATCH_PATHS" "$SHELL_WRITES" | grep -v '^[[:space:]]*$')
+
+# 편집 대상이 없으면 통과 (파일을 건드리지 않는 툴 호출)
+if [ -z "$TARGETS" ]; then
   exit 0
 fi
 
@@ -20,95 +47,26 @@ if [ ! -f "$ROOT/package.json" ]; then
   exit 0
 fi
 
-# 테스트 파일 자체를 수정하는 건 허용
-case "$FILE_PATH" in
-  *test*|*spec*|*.test.*|*.spec.*|*__tests__*)
-    exit 0
-    ;;
-esac
+. "$(cd "$(dirname "$0")" && pwd)/tdd-rules.sh"
 
-# .claude/ 인프라(설정·훅·슬래시 커맨드)와 workflows/ 오케스트레이션 스크립트는 TDD 비대상 — 허용.
-# 이유: 워크플로우 스크립트는 런타임이 주입하는 전역(agent/pipeline/log)에 의존하는 오케스트레이션
-#       정의로, lib/services 비즈니스 로직이 아니며 유닛 테스트를 붙일 수 없다.
-case "$FILE_PATH" in
-  */.claude/*|*/workflows/*)
-    exit 0
-    ;;
-esac
+# 한 번의 편집이 여러 파일을 건드릴 수 있다(apply_patch). 하나라도 걸리면 차단한다.
+while IFS= read -r TARGET; do
+  [ -z "$TARGET" ] && continue
+  tdd_needs_test "$TARGET" || continue
 
-# 설정/타입/스타일 파일은 테스트 불필요 — 허용
-case "$FILE_PATH" in
-  *.json|*.css|*.scss|*.md|*.yml|*.yaml|*.env*|*.config.*|*tailwind*|*postcss*|*next.config*|*tsconfig*)
-    exit 0
-    ;;
-esac
-
-# types/ 폴더는 테스트 불필요 — 허용
-case "$FILE_PATH" in
-  */types/*|*/types.ts|*/types.d.ts)
-    exit 0
-    ;;
-esac
-
-# Next.js 프레임워크 파일은 허용 (layout, page, loading, error, not-found, global styles)
-case "$FILE_PATH" in
-  */layout.tsx|*/layout.ts|*/page.tsx|*/page.ts|*/loading.tsx|*/error.tsx|*/not-found.tsx|*/globals.css)
-    exit 0
-    ;;
-esac
-
-# lib/ 또는 소스 파일이면 테스트 파일 존재 여부 확인
-case "$FILE_PATH" in
-  *.ts|*.tsx|*.js|*.jsx)
-    # 파일명 추출
-    DIR=$(dirname "$FILE_PATH")
-    BASENAME=$(basename "$FILE_PATH" | sed -E 's/\.(ts|tsx|js|jsx)$//')
-
-    # 테스트 파일 후보 경로들
-    TEST_FOUND=false
-
-    # 같은 폴더에 .test 파일
-    for EXT in ts tsx js jsx; do
-      if [ -f "${DIR}/${BASENAME}.test.${EXT}" ] || [ -f "${DIR}/${BASENAME}.spec.${EXT}" ]; then
-        TEST_FOUND=true
-        break
-      fi
-    done
-
-    # __tests__ 폴더
-    if [ "$TEST_FOUND" = false ]; then
-      PARENT=$(dirname "$DIR")
-      for EXT in ts tsx js jsx; do
-        if [ -f "${PARENT}/__tests__/${BASENAME}.test.${EXT}" ] || [ -f "${DIR}/__tests__/${BASENAME}.test.${EXT}" ]; then
-          TEST_FOUND=true
-          break
-        fi
-      done
-    fi
-
-    # src/__tests__/ 루트 테스트 폴더
-    if [ "$TEST_FOUND" = false ]; then
-      PROJECT_ROOT=$(git rev-parse --show-toplevel 2>/dev/null || echo ".")
-      for EXT in ts tsx js jsx; do
-        if [ -f "${PROJECT_ROOT}/src/__tests__/${BASENAME}.test.${EXT}" ]; then
-          TEST_FOUND=true
-          break
-        fi
-      done
-    fi
-
-    if [ "$TEST_FOUND" = false ]; then
-      cat << EOF
+  MODULE=$(tdd_module_name "$TARGET")
+  cat << EOF
 {
   "hookSpecificOutput": {
     "hookEventName": "PreToolUse",
     "permissionDecision": "deny",
-    "permissionDecisionReason": "TDD GUARD: '${BASENAME}'에 대한 테스트 파일이 존재하지 않습니다. 구현 코드를 작성하기 전에 테스트를 먼저 작성하세요. (테스트 파일 예: ${BASENAME}.test.ts)"
+    "permissionDecisionReason": "TDD GUARD: '${MODULE}'에 대한 테스트 파일이 존재하지 않습니다. 구현 코드를 작성하기 전에 테스트를 먼저 작성하세요. (테스트 파일 예: ${MODULE}.test.ts)"
   }
 }
 EOF
-    fi
-    ;;
-esac
+  exit 0
+done <<EOF
+$TARGETS
+EOF
 
 exit 0

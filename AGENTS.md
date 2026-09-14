@@ -2,7 +2,7 @@
 
 CSV로 받은 카드 명세서·은행 거래내역을 Claude API로 분석해 개인 지출을 보여주는 SaaS.
 
-> 이 파일과 `AGENTS.md`는 같은 규칙을 담는다. Claude Code는 `CLAUDE.md`를, Codex는 `AGENTS.md`를
+> 이 파일과 `CLAUDE.md`는 같은 규칙을 담는다. Codex는 `AGENTS.md`를, Claude Code는 `CLAUDE.md`를
 > 자동으로 읽는다. **규칙을 고치면 두 파일을 함께 고쳐라.** 한쪽만 고치면 에이전트마다 다른 규칙으로
 > 움직인다.
 

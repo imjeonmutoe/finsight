@@ -1,14 +1,15 @@
 #!/bin/bash
 # 프로덕션 빌드를 띄우고 headless Chrome으로 스크린샷을 찍는다.
-# UI를 만지는 step의 육안 검증용. Claude 세션은 출력된 PNG 경로를 Read로 열어 확인한다.
+# UI를 만지는 step의 육안 검증용. 에이전트 세션은 출력된 PNG 경로를 열어 직접 확인한다.
 #
 # 사용법:
 #   bash scripts/preview-shot.sh [경로] [폭] [높이]
 #   bash scripts/preview-shot.sh                       # / 를 1440x2100으로
 #   bash scripts/preview-shot.sh /dashboard 1440 3000
 #
-# Chrome 확장(claude-in-chrome)이 연결돼 있으면 그쪽이 더 낫다. 이 스크립트는
-# 확장 없이도 육안 검증을 건너뛰지 않기 위한 fallback이다.
+# 브라우저 자동화 도구(예: Claude의 claude-in-chrome 확장)가 붙어 있으면 그쪽이 더 낫다.
+# 이 스크립트는 그런 도구 없이도 육안 검증을 건너뛰지 않기 위한 fallback이라,
+# codex·claude 어느 쪽에서 돌리든 동작한다.
 
 set -euo pipefail
 

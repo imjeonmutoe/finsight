@@ -3,7 +3,7 @@
 Harness Step Executor — phase 내 step을 순차 실행하고 자가 교정한다.
 
 Usage:
-    python3 scripts/execute.py <phase-dir> [--push]
+    python3 scripts/execute.py <phase-dir> [--push] [--agent codex|claude]
 """
 
 import argparse
@@ -20,6 +20,35 @@ from pathlib import Path
 from typing import Optional
 
 ROOT = Path(__file__).resolve().parent.parent
+
+DEFAULT_AGENT = "codex"
+
+# 가드레일 파일 우선순위. 앞에서 찾은 것 하나만 쓴다.
+# 두 파일은 같은 규칙을 담으므로 둘 다 넣으면 프롬프트가 두 배가 된다.
+RULES_FILES = ("AGENTS.md", "CLAUDE.md")
+
+
+def build_agent_command(agent: str, prompt: str) -> list[str]:
+    """에이전트 CLI를 비대화형으로 한 번 돌리는 커맨드를 만든다.
+
+    codex: `--dangerously-bypass-hook-trust`가 없으면 .codex/hooks.json의 훅이
+    신뢰 검토를 기다리며 비대화형 실행에서 동작하지 않는다.
+    """
+    if agent == "codex":
+        return [
+            "codex", "exec",
+            "--dangerously-bypass-approvals-and-sandbox",
+            "--dangerously-bypass-hook-trust",
+            prompt,
+        ]
+    if agent == "claude":
+        return [
+            "claude", "-p",
+            "--dangerously-skip-permissions",
+            "--output-format", "json",
+            prompt,
+        ]
+    raise ValueError(f"unknown agent: {agent}")
 
 
 @contextlib.contextmanager
@@ -58,7 +87,12 @@ class StepExecutor:
     CHORE_MSG = "chore({phase}): step {num} output"
     TZ = timezone(timedelta(hours=9))
 
-    def __init__(self, phase_dir_name: str, *, auto_push: bool = False):
+    def __init__(self, phase_dir_name: str, *, auto_push: bool = False,
+                 agent: str = DEFAULT_AGENT):
+        if agent not in ("codex", "claude"):
+            print(f"ERROR: unknown agent '{agent}' (codex|claude)")
+            sys.exit(1)
+        self._agent = agent
         self._root = str(ROOT)
         self._phases_dir = ROOT / "phases"
         self._phase_dir = self._phases_dir / phase_dir_name
@@ -176,9 +210,9 @@ class StepExecutor:
 
     def _load_guardrails(self) -> str:
         sections = []
-        claude_md = ROOT / "CLAUDE.md"
-        if claude_md.exists():
-            sections.append(f"## 프로젝트 규칙 (CLAUDE.md)\n\n{claude_md.read_text()}")
+        rules = next((ROOT / name for name in RULES_FILES if (ROOT / name).exists()), None)
+        if rules is not None:
+            sections.append(f"## 프로젝트 규칙 ({rules.name})\n\n{rules.read_text()}")
         docs_dir = ROOT / "docs"
         if docs_dir.is_dir():
             for doc in sorted(docs_dir.glob("*.md")):
@@ -224,9 +258,9 @@ class StepExecutor:
             f"   {commit_example}\n\n---\n\n"
         )
 
-    # --- Claude 호출 ---
+    # --- 에이전트 호출 ---
 
-    def _invoke_claude(self, step: dict, preamble: str) -> dict:
+    def _invoke_agent(self, step: dict, preamble: str) -> dict:
         step_num, step_name = step["step"], step["name"]
         step_file = self._phase_dir / f"step{step_num}.md"
 
@@ -235,18 +269,22 @@ class StepExecutor:
             sys.exit(1)
 
         prompt = preamble + step_file.read_text()
+        # stdin=DEVNULL: codex exec는 stdin이 TTY가 아니면 EOF까지 읽으려 대기한다.
+        # 상속하면 "Reading additional input from stdin..."에서 영구히 멈춘다.
         result = subprocess.run(
-            ["claude", "-p", "--dangerously-skip-permissions", "--output-format", "json", prompt],
+            build_agent_command(self._agent, prompt),
             cwd=self._root, capture_output=True, text=True, timeout=1800,
+            stdin=subprocess.DEVNULL,
         )
 
         if result.returncode != 0:
-            print(f"\n  WARN: Claude가 비정상 종료됨 (code {result.returncode})")
+            print(f"\n  WARN: {self._agent}가 비정상 종료됨 (code {result.returncode})")
             if result.stderr:
                 print(f"  stderr: {result.stderr[:500]}")
 
         output = {
             "step": step_num, "name": step_name,
+            "agent": self._agent,
             "exitCode": result.returncode,
             "stdout": result.stdout, "stderr": result.stderr,
         }
@@ -261,7 +299,7 @@ class StepExecutor:
     def _print_header(self):
         print(f"\n{'='*60}")
         print(f"  Harness Step Executor")
-        print(f"  Phase: {self._phase_name} | Steps: {self._total}")
+        print(f"  Phase: {self._phase_name} | Steps: {self._total} | Agent: {self._agent}")
         if self._auto_push:
             print(f"  Auto-push: enabled")
         print(f"{'='*60}")
@@ -306,7 +344,7 @@ class StepExecutor:
                 tag += f" [retry {attempt}/{self.MAX_RETRIES}]"
 
             with progress_indicator(tag) as pi:
-                self._invoke_claude(step, preamble)
+                self._invoke_agent(step, preamble)
                 elapsed = int(pi.elapsed)
 
             index = self._read_json(self._index_file)
@@ -408,9 +446,11 @@ def main():
     parser = argparse.ArgumentParser(description="Harness Step Executor")
     parser.add_argument("phase_dir", help="Phase directory name (e.g. 0-mvp)")
     parser.add_argument("--push", action="store_true", help="Push branch after completion")
+    parser.add_argument("--agent", choices=("codex", "claude"), default=DEFAULT_AGENT,
+                        help=f"Coding agent CLI to drive each step (default: {DEFAULT_AGENT})")
     args = parser.parse_args()
 
-    StepExecutor(args.phase_dir, auto_push=args.push).run()
+    StepExecutor(args.phase_dir, auto_push=args.push, agent=args.agent).run()
 
 
 if __name__ == "__main__":

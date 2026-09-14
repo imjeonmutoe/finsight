@@ -173,6 +173,29 @@ class TestLoadGuardrails:
         assert "CLAUDE.md" not in result
         assert "Architecture" in result
 
+    def test_prefers_agents_md_over_claude_md(self, executor, tmp_project):
+        (tmp_project / "AGENTS.md").write_text("# Agent Rules\n- agents rule")
+        with patch.object(ex, "ROOT", tmp_project):
+            result = executor._load_guardrails()
+        assert "agents rule" in result
+        assert "AGENTS.md" in result
+        # 두 파일이 같은 내용을 담으므로 둘 다 넣으면 프롬프트가 두 배가 된다.
+        assert "rule one" not in result
+        assert "CLAUDE.md" not in result
+
+    def test_falls_back_to_claude_md_when_no_agents_md(self, executor, tmp_project):
+        with patch.object(ex, "ROOT", tmp_project):
+            result = executor._load_guardrails()
+        assert "rule one" in result
+        assert "CLAUDE.md" in result
+
+    def test_no_rules_file_at_all(self, executor, tmp_project):
+        (tmp_project / "CLAUDE.md").unlink()
+        with patch.object(ex, "ROOT", tmp_project):
+            result = executor._load_guardrails()
+        assert "AGENTS.md" not in result
+        assert "Architecture" in result
+
     def test_no_docs_dir(self, executor, tmp_project):
         import shutil
         shutil.rmtree(tmp_project / "docs")
@@ -420,32 +443,79 @@ class TestCommitStep:
 
 
 # ---------------------------------------------------------------------------
-# _invoke_claude (mocked)
+# 에이전트 커맨드 빌더
 # ---------------------------------------------------------------------------
 
-class TestInvokeClaude:
-    def test_invokes_claude_with_correct_args(self, executor):
-        mock_result = MagicMock(returncode=0, stdout='{"result": "ok"}', stderr="")
-        step = {"step": 2, "name": "ui"}
-        preamble = "PREAMBLE\n"
+class TestAgentCommand:
+    def test_codex_command(self):
+        cmd = ex.build_agent_command("codex", "PROMPT")
+        assert cmd[0] == "codex"
+        assert cmd[1] == "exec"
+        assert "--dangerously-bypass-approvals-and-sandbox" in cmd
+        assert "--dangerously-bypass-hook-trust" in cmd
+        assert cmd[-1] == "PROMPT"
 
-        with patch("subprocess.run", return_value=mock_result) as mock_run:
-            output = executor._invoke_claude(step, preamble)
-
-        cmd = mock_run.call_args[0][0]
+    def test_claude_command(self):
+        cmd = ex.build_agent_command("claude", "PROMPT")
         assert cmd[0] == "claude"
         assert "-p" in cmd
         assert "--dangerously-skip-permissions" in cmd
         assert "--output-format" in cmd
+        assert cmd[-1] == "PROMPT"
+
+    def test_unknown_agent_raises(self):
+        with pytest.raises(ValueError):
+            ex.build_agent_command("gemini", "PROMPT")
+
+    def test_codex_is_default_agent(self):
+        assert ex.DEFAULT_AGENT == "codex"
+
+
+# ---------------------------------------------------------------------------
+# _invoke_agent (mocked)
+# ---------------------------------------------------------------------------
+
+class TestInvokeAgent:
+    def test_invokes_codex_by_default(self, executor):
+        mock_result = MagicMock(returncode=0, stdout="ok", stderr="")
+        step = {"step": 2, "name": "ui"}
+        preamble = "PREAMBLE\n"
+
+        with patch("subprocess.run", return_value=mock_result) as mock_run:
+            executor._invoke_agent(step, preamble)
+
+        cmd = mock_run.call_args[0][0]
+        assert cmd[0] == "codex"
+        assert cmd[1] == "exec"
+        assert "--dangerously-bypass-approvals-and-sandbox" in cmd
         assert "PREAMBLE" in cmd[-1]
         assert "UI를 구현하세요" in cmd[-1]
+
+    def test_invokes_claude_when_selected(self, tmp_project, phase_dir):
+        with patch.object(ex, "ROOT", tmp_project):
+            inst = ex.StepExecutor("0-mvp", agent="claude")
+        inst._root = str(tmp_project)
+        inst._phase_dir = phase_dir
+
+        mock_result = MagicMock(returncode=0, stdout="{}", stderr="")
+        with patch("subprocess.run", return_value=mock_result) as mock_run:
+            inst._invoke_agent({"step": 2, "name": "ui"}, "PREAMBLE\n")
+
+        cmd = mock_run.call_args[0][0]
+        assert cmd[0] == "claude"
+        assert "--dangerously-skip-permissions" in cmd
+
+    def test_rejects_unknown_agent(self, tmp_project):
+        with patch.object(ex, "ROOT", tmp_project):
+            with pytest.raises(SystemExit):
+                ex.StepExecutor("0-mvp", agent="gemini")
 
     def test_saves_output_json(self, executor):
         mock_result = MagicMock(returncode=0, stdout='{"ok": true}', stderr="")
         step = {"step": 2, "name": "ui"}
 
         with patch("subprocess.run", return_value=mock_result):
-            executor._invoke_claude(step, "preamble")
+            executor._invoke_agent(step, "preamble")
 
         output_file = executor._phase_dir / "step2-output.json"
         assert output_file.exists()
@@ -453,11 +523,12 @@ class TestInvokeClaude:
         assert data["step"] == 2
         assert data["name"] == "ui"
         assert data["exitCode"] == 0
+        assert data["agent"] == "codex"
 
     def test_nonexistent_step_file_exits(self, executor):
         step = {"step": 99, "name": "nonexistent"}
         with pytest.raises(SystemExit) as exc_info:
-            executor._invoke_claude(step, "preamble")
+            executor._invoke_agent(step, "preamble")
         assert exc_info.value.code == 1
 
     def test_timeout_is_1800(self, executor):
@@ -465,9 +536,22 @@ class TestInvokeClaude:
         step = {"step": 2, "name": "ui"}
 
         with patch("subprocess.run", return_value=mock_result) as mock_run:
-            executor._invoke_claude(step, "preamble")
+            executor._invoke_agent(step, "preamble")
 
         assert mock_run.call_args[1]["timeout"] == 1800
+
+    def test_stdin_is_closed(self, executor):
+        """codex exec는 stdin이 TTY가 아니면 EOF를 기다린다.
+
+        stdin을 상속하면 'Reading additional input from stdin...' 상태로 영구히 멈춘다.
+        """
+        mock_result = MagicMock(returncode=0, stdout="{}", stderr="")
+        step = {"step": 2, "name": "ui"}
+
+        with patch("subprocess.run", return_value=mock_result) as mock_run:
+            executor._invoke_agent(step, "preamble")
+
+        assert mock_run.call_args[1]["stdin"] == subprocess.DEVNULL
 
 
 # ---------------------------------------------------------------------------
