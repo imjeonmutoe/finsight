@@ -21,7 +21,9 @@
     {
       "step": 2,
       "name": "db-schema",
-      "status": "pending"
+      "status": "completed",
+      "summary": "초기 SQL에 도메인 테이블 6개·복합 FK·출처별 중복 키·CHECK·인덱스·RLS·비공개 Storage 정책·무료 프로필 생성 트리거를 정의하고, 정적 검증 및 lint·build·test를 통과했습니다.",
+      "started_at": "2026-09-14T15:06:07+0900"
     },
     {
       "step": 3,
