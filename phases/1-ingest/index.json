@@ -5,7 +5,9 @@
     {
       "step": 4,
       "name": "csv-parser",
-      "status": "pending"
+      "status": "completed",
+      "summary": "CSV 인코딩·청구 기준 파싱, 가맹점 정규화·규칙 분류, 출처별 중복·후보 해시, LLM 입력 정제 순수 모듈 6개를 TDD로 구현하고 lint·build·전체 163개 테스트를 통과했습니다.",
+      "started_at": "2026-09-14T15:43:19+0900"
     },
     {
       "step": 5,
@@ -17,5 +19,6 @@
       "name": "analytics",
       "status": "pending"
     }
-  ]
+  ],
+  "created_at": "2026-09-14T15:43:19+0900"
 }
