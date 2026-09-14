@@ -6,7 +6,8 @@
     },
     {
       "dir": "1-ingest",
-      "status": "pending"
+      "status": "completed",
+      "completed_at": "2026-09-14T16:17:01+0900"
     },
     {
       "dir": "2-product",
