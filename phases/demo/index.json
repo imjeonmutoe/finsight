@@ -1,0 +1,16 @@
+{
+  "project": "FinSight",
+  "phase": "demo",
+  "steps": [
+    {
+      "step": 13,
+      "name": "demo-dataset",
+      "status": "pending"
+    },
+    {
+      "step": 14,
+      "name": "demo-page",
+      "status": "pending"
+    }
+  ]
+}

@@ -13,6 +13,10 @@
 
 ## 작업
 
+**컴포넌트 4종은 demo phase(step 14)에서 이미 만들었다.** `src/components/`의 `KpiCard`, `CategoryBars`, `TransactionTable`, `DetectionList`를 먼저 읽고 **재사용하라. 같은 역할의 컴포넌트를 새로 만들지 마라.** 부족한 props가 있으면 기존 컴포넌트를 확장한다. 이유: 두 벌이 되면 대시보드와 데모의 금액 표기·증감 색이 갈라진다.
+
+이 대시보드의 데이터는 `src/lib/queries.ts`(SQL 집계)에서 온다. **`src/lib/demo/`를 import하지 마라** — 그쪽은 DB 없이 도는 데모 전용 메모리 집계다.
+
 담당 화면: **S3**(빈 상태) · **S4**(Free 1개월) · **S5**(Free 2개월+) · **S6**(Pro).
 전부 `/dashboard` 한 경로다. 데이터 상태와 플랜에 따라 다르게 렌더한다.
 
