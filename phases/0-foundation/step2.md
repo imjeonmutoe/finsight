@@ -12,6 +12,8 @@
 
 `supabase/migrations/0001_init.sql` 하나를 작성한다. 테이블 6개 + 인덱스 + RLS + Storage 버킷/정책.
 
+**이 step의 범위는 SQL 파일 작성과 정적 검증까지다.** 실제 Supabase 프로젝트에 적용하지 않는다. 프로젝트가 아직 생성되지 않았으므로 적용과 권한 통합검증은 아래 `## 배포 전 검증`으로 미룬다. **Supabase 키가 없다는 이유로 `blocked`로 두지 마라 — 이 step은 키 없이 완주할 수 있다.**
+
 ### 테이블
 
 `ARCHITECTURE.md`의 `## 데이터 모델` 블록을 그대로 구현한다. 요약:
@@ -69,43 +71,53 @@ bucket_id = 'statements' AND (storage.foldername(name))[1] = auth.uid()::text
 ## Acceptance Criteria
 
 ```bash
-npm run lint
-npm run build
-npm test
+npm run lint    # 린트 통과
+npm run build   # 컴파일 에러 없음
+npm run test    # 테스트 통과
 ```
 
-**그리고 마이그레이션을 실제 Supabase 프로젝트에 적용한 뒤 아래를 실행한다. 결과가 비어야 통과다:**
+마이그레이션 SQL을 정적으로 검증하는 테스트를 함께 작성한다. 파일은 `src/lib/migration-sql.test.ts`이며 **대응하는 소스 파일이 없다** — 검증 대상이 `supabase/migrations/0001_init.sql`이기 때문이다. 파일을 읽어야 하므로 맨 위에 `// @vitest-environment node`를 붙인다.
+
+테스트에 반드시 포함할 것:
+- 도메인 테이블 6개(`profiles`, `financial_sources`, `uploads`, `transactions`, `merchant_rules`, `insight_cache`)가 전부 생성되는가
+- **모든 도메인 테이블에 `enable row level security`가 걸려 있는가.** 하나라도 빠지면 실패시킨다
+- `category` CHECK의 12개 문자열이 `src/types/category.ts`의 `CATEGORIES`와 **문자열까지 정확히 일치**하는가. 목록을 테스트에 다시 적지 말고 `@/types/category`에서 import해 비교한다 — 두 곳에 적으면 한쪽만 고쳐진다
+- `statements` 버킷이 **public이 아닌** 상태로 생성되는가
+- `llm_usage`라는 이름이 SQL 어디에도 **등장하지 않는가** (ADR-012에서 제거했다. 다시 나타나면 실패시킨다)
+
+SQL 문법 자체는 실제 Postgres 없이는 검증할 수 없다. 이 테스트는 문법이 아니라 **설계 규칙이 SQL에 반영됐는지**를 고정하는 용도다.
+
+## 배포 전 검증 — 이 step에서 하지 않는다
+
+아래는 Supabase 프로젝트가 준비된 뒤에 수행한다. **지금은 실행하지 않으며, 못 한다고 해서 이 step이 실패한 것이 아니다.**
+
+마이그레이션을 실제 프로젝트에 적용한 뒤 아래 쿼리 결과가 비어야 한다:
 
 ```sql
 select tablename from pg_tables
 where schemaname = 'public' and rowsecurity = false;
 ```
 
-위 쿼리는 정책의 정확성이나 쓰기 권한을 검증하지 않는다. 서로 다른 두 사용자 JWT로 Data API 통합 검증도 통과해야 한다(service role로 대체 금지):
+위 쿼리는 RLS 활성화 여부만 검사하며 정책의 정확성이나 쓰기 권한은 검증하지 않는다. 서로 다른 두 사용자 JWT로 Data API 통합 검증도 통과해야 한다(service role로 대체 금지):
 
 - 다른 사용자의 거래/출처/업로드 조회·수정·참조 insert가 거부되는가
 - 자기 profiles의 plan·만료일·Polar ID 변경 및 INSERT·DELETE가 거부되는가
 - 일반 사용자의 `insight_cache` INSERT·UPDATE·DELETE가 거부되는가
 - 다른 사용자의 `insight_cache` 행이 조회되지 않는가
-
-CHECK 제약 확인:
-```sql
--- 테스트 사용자 소유의 유효한 출처·업로드·거래를 먼저 준비한다.
--- 나머지 FK·NOT NULL 조건은 모두 만족한 상태에서 category만 허용 목록 밖으로 바꾼다.
--- SQLSTATE 23514 및 category CHECK 제약 이름으로 실패 원인을 확인한다.
-```
+- `category`를 허용 목록 밖 값으로 바꾸면 SQLSTATE 23514로 거부되는가 (FK·NOT NULL을 전부 만족한 행에서 category만 바꿔 확인한다)
 
 ## 검증 절차
 
-1. 위 AC를 실행한다. **Supabase 연결이 필요하다.**
-2. `NEXT_PUBLIC_SUPABASE_URL`이나 `SUPABASE_SERVICE_ROLE_KEY`가 없어서 마이그레이션을 적용할 수 없으면 → `"status": "blocked"`, `"blocked_reason": "Supabase 프로젝트 미생성 또는 .env.local에 키 없음. 필요한 키: NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_ANON_KEY, SUPABASE_SERVICE_ROLE_KEY"` 후 즉시 중단.
-3. 아키텍처 체크리스트:
-   - 도메인 테이블이 6개이고 출처·사용량 테이블이 있는가? (웹훅 이벤트 테이블은 없음)
+1. 위 AC 커맨드를 실행한다.
+2. 아키텍처 체크리스트:
+   - 도메인 테이블이 6개이고 출처 테이블이 있는가? (웹훅 이벤트 테이블·사용량 테이블은 없음)
    - 복합 FK와 출처별 중복 키, 거래 유형·금액 절댓값 제약이 있는가?
-   - profiles 쓰기 및 사용량/RPC 권한 거부를 사용자 JWT로 검증했는가?
+   - profiles에 anon/authenticated 쓰기 권한이 철회돼 있고 쓰기 정책이 없는가?
    - `category` CHECK의 12개가 `src/types/category.ts`와 **문자열까지 정확히 일치**하는가?
    - Storage 버킷이 private인가?
-4. `phases/0-foundation/index.json`의 step 2를 업데이트한다.
+3. `phases/0-foundation/index.json`의 step 2를 업데이트한다:
+   - 성공 → `"status": "completed"`, `"summary"`에 산출물 한 줄 요약
+   - 3회 시도 후에도 실패 → `"status": "error"`, `"error_message"`
 
 ## 금지사항
 
@@ -113,4 +125,6 @@ CHECK 제약 확인:
 - `category`에 Postgres enum 타입을 쓰지 마라. CHECK 제약을 써라. 이유: enum은 값 추가에 마이그레이션이 필요하고 롤백이 까다롭다. CHECK가 MVP에 맞다.
 - 웹훅 이벤트 테이블을 만들지 마라. 이유: 핸들러가 멱등해서 필요 없다. 안 쓰는 테이블에도 RLS 정책을 관리해야 한다.
 - Storage 버킷을 public으로 만들지 마라. 이유: 버킷 안에 계좌번호가 든 원본 CSV가 들어간다.
+- **Supabase 프로젝트에 접속하거나 마이그레이션을 적용하려 하지 마라.** 이유: 프로젝트가 아직 없다. 키를 찾지 못했다는 이유로 `blocked`로 두지도 마라 — 이 step의 범위는 SQL 작성까지다.
+- `.env` 또는 `.env.local`에 키를 만들어 넣지 마라. 이유: 실제 값이 없고, 빈 키가 있으면 이후 step이 설정 완료로 오인한다.
 - 프로덕션에 시드 데이터를 넣지 마라. 권한·제약 검증에는 격리된 테스트 사용자/프로젝트의 합성 데이터를 사용하고 종료 후 정리한다.
