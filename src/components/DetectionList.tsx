@@ -8,8 +8,8 @@ export function DetectionList({ subscriptions, outliers }: {
 }) {
   return (
     <div className="grid items-start gap-4 lg:grid-cols-2">
-      <section className="min-w-0 rounded-md border border-border-default bg-surface p-5">
-        <h3 className="text-sm font-medium leading-snug text-muted">정기결제 {subscriptions.length}건</h3>
+      <section aria-labelledby="subscriptions-heading" className="min-w-0 rounded-md border border-border-default bg-surface p-5">
+        <h3 id="subscriptions-heading" className="text-sm font-medium leading-snug text-muted">정기결제 {subscriptions.length}건</h3>
         {subscriptions.length === 0 ? (
           <p className="mt-4 text-sm leading-relaxed text-muted">정기결제가 발견되지 않았습니다.</p>
         ) : (
@@ -35,8 +35,8 @@ export function DetectionList({ subscriptions, outliers }: {
           </ul>
         )}
       </section>
-      <section className="min-w-0 rounded-md border border-border-default bg-surface p-5">
-        <h3 className="text-sm font-medium leading-snug text-muted">이상거래 {outliers.length}건</h3>
+      <section aria-labelledby="outliers-heading" className="min-w-0 rounded-md border border-border-default bg-surface p-5">
+        <h3 id="outliers-heading" className="text-sm font-medium leading-snug text-muted">이상거래 {outliers.length}건</h3>
         {outliers.length === 0 ? (
           <p className="mt-4 text-sm leading-relaxed text-muted">이상거래가 발견되지 않았습니다.</p>
         ) : (

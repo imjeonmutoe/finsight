@@ -44,6 +44,18 @@ describe("거래 내역 표", () => {
     expect(container.querySelector("img")).toBeNull();
   });
 
+  it("좁은 폭에서는 유형·카테고리 열을 접어 금액까지 한 화면에 넣습니다", () => {
+    // 가로 스크롤 컨테이너 안에서 금액 열이 화면 밖으로 밀리면, 오버레이 스크롤바 환경에서는
+    // 스크롤이 된다는 표시조차 없어 사용자가 보러 온 열이 그냥 사라진 것처럼 보입니다.
+    render(<TransactionTable transactions={[{ ...transaction, category: "쇼핑" }]} />);
+    const table = screen.getByRole("table", { name: "거래 내역" });
+    expect(table).not.toHaveClass("min-w-xl");
+    for (const name of ["유형", "카테고리"]) {
+      expect(within(table).getByRole("columnheader", { name })).toHaveClass("hidden", "sm:table-cell");
+    }
+    expect(within(table).getByText("지출 · 쇼핑")).toHaveClass("sm:hidden");
+  });
+
   it("거래가 없으면 한국어 빈 상태를 표시합니다", () => {
     render(<TransactionTable transactions={[]} />);
     expect(screen.getByText("표시할 거래 내역이 없습니다.")).toBeVisible();

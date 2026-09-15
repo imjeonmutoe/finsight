@@ -28,6 +28,12 @@ describe("구독 누수·이상거래 목록", () => {
     expect(screen.getByText("결제 금액이 인상되었습니다.")).not.toHaveClass("text-down");
   });
 
+  it("두 목록 모두 제목으로 이름 지어진 영역입니다", () => {
+    render(<DetectionList subscriptions={[]} outliers={[]} />);
+    expect(screen.getByRole("region", { name: "정기결제 0건" })).toBeVisible();
+    expect(screen.getByRole("region", { name: "이상거래 0건" })).toBeVisible();
+  });
+
   it("인상되지 않은 구독에 인상 문구를 붙이지 않습니다", () => {
     render(<DetectionList subscriptions={[{ ...subscription, amountIncreased: false }]} outliers={[]} />);
     expect(screen.queryByText("결제 금액이 인상되었습니다.")).not.toBeInTheDocument();

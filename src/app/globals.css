@@ -13,7 +13,11 @@
   /* 숫자 전용. JetBrains Mono는 next/font가 빌드 타임에 self-host한다(layout.tsx) —
      외부 요청도 FOUT도 없다. 금액·날짜에만 쓰므로 한글은 이 스택에 닿지 않는다.
      `var()`에 fallback을 함께 적은 이유: --font-jetbrains가 정의되지 않으면 선언 전체가
-     무효가 되어 font-mono가 본문 서체로 떨어진다. 그러면 금액의 tabular-nums가 깨진다. */
+     무효가 되어 font-mono가 본문 서체로 떨어진다. 그러면 금액의 tabular-nums가 깨진다.
+
+     원화 기호(U+20A9)는 layout.tsx가 latin-ext 서브셋까지 받아 JetBrains가 직접 그린다.
+     뒤의 시스템 mono 대부분은 ₩가 없고, next/font의 로컬 fallback face가 --font-jetbrains
+     안에 들어 있어 여기서 뒤에 무엇을 적어도 ₩는 그 face가 가져간다. 서브셋 쪽이 답이다. */
   --font-mono: var(--font-jetbrains, ui-monospace), ui-monospace, SFMono-Regular,
                "SF Mono", Menlo, Consolas, monospace;
 
@@ -32,9 +36,8 @@
   --color-neutral-line: #8a8a84;
   --color-accent: #2563a8;
 
-  /* UI_GUIDE: 허용 애니메이션은 fade-in, slide-up 두 개뿐이다. 그 외 추가 금지. */
-  --animate-fade-in: fade-in 0.4s ease-out;
-  --animate-slide-up: slide-up 0.5s ease-out;
+  /* UI_GUIDE `## 애니메이션`이 허용하는 것은 fade-in 0.2s 하나뿐이다. 그 외 추가 금지. */
+  --animate-fade-in: fade-in 0.2s ease-out;
 
   @keyframes fade-in {
     from {
@@ -42,17 +45,6 @@
     }
     to {
       opacity: 1;
-    }
-  }
-
-  @keyframes slide-up {
-    from {
-      opacity: 0;
-      transform: translateY(8px);
-    }
-    to {
-      opacity: 1;
-      transform: none;
     }
   }
 }

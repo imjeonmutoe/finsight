@@ -31,7 +31,9 @@ export default function DemoPage() {
         </header>
       </div>
 
-      <section aria-label="월간 지출 지표" className="grid gap-4 md:grid-cols-3">
+      {/* md(768px)에서 3열로 가면 카드 콘텐츠 폭이 187px인데 text-3xl 원화 금액은 200px을
+          넘어 카드 밖으로 삐져나온다. 3열은 lg부터 연다. */}
+      <section aria-label="월간 지출 지표" className="grid gap-4 lg:grid-cols-3">
         <KpiCard label="이번 달 총지출" amountKrw={currentMonth.totalKrw} hint="지출에서 환불을 차감했습니다." />
         {dataset.previousMonthDeltaKrw === null ? (
           <div className="space-y-3 rounded-md border border-border-default bg-surface p-5">
