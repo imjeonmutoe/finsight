@@ -46,6 +46,7 @@ CSV로 받은 카드 명세서·은행 거래내역을 Claude API로 분석해 �
 - CRITICAL: 훅이 테스트 없는 소스 파일 작성을 막는다. `src/components/*.tsx`, `src/lib/*.ts`, `src/services/*.ts`, `src/app/api/**/route.ts`를 만들기 전에 같은 디렉토리에 `<이름>.test.ts(x)`를 먼저 만들어라. (`page.tsx`, `layout.tsx`, `src/types/*`, 설정 파일은 면제). 자세한 동작은 아래 `## 에이전트 하네스`.
 - Stop 훅이 매 세션 종료 시 `npm run lint && npm run build && npm run test`를 실행한다. 세 개 모두 통과하는 상태로 끝내라.
 - CRITICAL: UI(화면·컴포넌트·스타일)를 만졌으면 **렌더된 화면을 실제로 보고** 끝낸다. `bash scripts/preview-shot.sh <경로>`로 스크린샷을 찍고 그 PNG를 열어 확인한다. 이유: Tailwind v4는 잘못된 문법을 에러 없이 조용히 무시하므로 `npm run build` 통과가 화면이 맞다는 뜻이 아니다. Chrome을 못 찾으면 건너뛰지 말고 사용자에게 확인을 요청한다.
+- UI 작업 전에 `docs/UX_GUIDE.md`를 읽는다. 화면 순서·단계 전환·빈 상태와 실패 상태의 다음 행동을 정한다. 스타일 값은 `docs/UI_GUIDE.md`가, 레이아웃은 `finsight-design` 스킬이 정한다.
 - 커밋 메시지는 conventional commits 형식을 따를 것 (feat:, fix:, docs:, refactor:, chore:)
 - 작업을 마치면 커밋하고 push까지 한다. 기본 브랜치(main)에 직접 커밋하지 말고 브랜치를 먼저 판다.
 
