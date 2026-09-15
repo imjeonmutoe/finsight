@@ -37,6 +37,12 @@ describe("CSV 구조", () => {
     },
   );
 
+  it("구분자와 여는 따옴표 사이의 공백을 허용합니다", () => {
+    // 닫는 따옴표 뒤 공백은 이미 허용하므로 여는 쪽만 거부하면 비대칭입니다.
+    expect(parseCsvRows('a,b\n1, "가게, 본점"')).toEqual([["a", "b"], ["1", "가게, 본점"]]);
+    expect(parseCsvRows('a,b\n"가게" ,1')).toEqual([["a", "b"], ["가게", "1"]]);
+  });
+
   it("상단 요약 3행 뒤의 헤더를 찾고 요약·빈 행을 데이터 위치에서 제외합니다", () => {
     const rows = parseCsvRows("조회기간: 2026-01-01~2026-01-31\n고객: 합성이름\n청구금액,5000\n거래일자,가맹점명,금액\n2026-01-02,카페,5000\n합계,,5000\n\n2026-01-03,식당,1000");
     const skipRows = detectHeaderRow(rows);
@@ -119,11 +125,35 @@ describe("거래 생성", () => {
       .toEqual([["expense", 5000, "2026-01"], ["income", 3000000, "2026-01"], ["expense", 1000, "2026-01"]]);
   });
 
-  it("E6: 명시 유형을 최우선으로 쓰며 모르는 값과 빈 값은 지출입니다", () => {
-    const values = ["환불", "승인취소", "카드대금 납부", "본인 계좌 이체", "급여", "미지정", "", "income", "transfer"];
+  it("E6: 명시 유형을 최우선으로 쓰며 모르는 값은 지출입니다", () => {
+    const values = ["환불", "승인취소", "카드대금 납부", "본인 계좌 이체", "급여", "미지정", "income", "transfer"];
     const result = buildTransactions([[...header, "거래구분"], ...values.map((value) => ["2026-01-02", "카페", "-5000", value])], { ...mapping, transactionKind: 3 }, card);
-    expect(result.map((item) => item.kind)).toEqual(["refund", "refund", "transfer", "transfer", "income", "expense", "expense", "income", "transfer"]);
+    expect(result.map((item) => item.kind)).toEqual(["refund", "refund", "transfer", "transfer", "income", "expense", "income", "transfer"]);
     expect(result.every((item) => item.amountKrw === 5000)).toBe(true);
+  });
+
+  it("거래구분 셀이 비면 미지정으로 보고 아래 규칙으로 내려갑니다", () => {
+    // 빈 셀까지 '사전에 없는 값'으로 보면 거래구분이 매핑된 은행 파일의 입금이 전부 지출이 됩니다.
+    const result = buildTransactions([["날짜", "적요", "출금액", "입금액", "거래구분"],
+      ["2026-01-25", "급여", "", "3000000", ""],
+      ["2026-01-05", "이마트", "50000", "", ""],
+      ["2026-01-26", "이자", "", "1500", "이자"]],
+    { date: 0, merchant: 1, withdrawal: 2, deposit: 3, transactionKind: 4, skipRows: 0 }, bank);
+    expect(result.map((item) => [item.kind, item.amountKrw]))
+      .toEqual([["income", 3000000], ["expense", 50000], ["expense", 1500]]);
+    expect(buildTransactions([[...header, "거래구분"], ["2026-01-02", "카페", "-5000", ""]], { ...mapping, transactionKind: 3 }, card)[0]?.kind)
+      .toBe("refund");
+  });
+
+  it("안 쓰는 원장 컬럼의 0은 값이 없는 것으로 봅니다", () => {
+    // 빈칸 대신 0을 찍는 명세서가 있습니다. 0을 값으로 보면 입금이 0원 지출이 됩니다.
+    const result = buildTransactions([["날짜", "적요", "출금액", "입금액"],
+      ["2026-01-25", "급여입금", "0", "3200000"],
+      ["2026-01-05", "카드대금", "450000", "0"],
+      ["2026-01-31", "잔액 이월", "0", "0"]],
+    { date: 0, merchant: 1, withdrawal: 2, deposit: 3, skipRows: 0 }, bank);
+    expect(result.map((item) => [item.kind, item.amountKrw]))
+      .toEqual([["income", 3200000], ["expense", 450000]]);
   });
 
   it("명시 유형이 분리 입출금보다 우선하고 가맹점으로 유형을 추정하지 않습니다", () => {
@@ -148,6 +178,32 @@ describe("거래 생성", () => {
       ["2026-01-02", "영원", "5000", "0", "0"]], { ...mapping, krwEquivalent: 3 }, card);
     expect(result.map((item) => [item.amountKrw, item.kind]))
       .toEqual([[13500, "expense"], [5000, "expense"], [13500, "refund"], [0, "expense"]]);
+  });
+
+  it("해외결제 행의 부호는 외화로 적힌 금액 컬럼에서 읽습니다", () => {
+    // 원화환산액을 절댓값으로만 적는 명세서가 있어, 환산액 부호로 판정하면 환불이 지출이 됩니다.
+    const result = buildTransactions([[...header, "원화환산금액"],
+      ["2026-01-02", "해외취소", "-19.99 USD", "27900"],
+      ["2026-01-03", "해외결제", "19.99 USD", "27900"]], { ...mapping, krwEquivalent: 3 }, card);
+    expect(result.map((item) => [item.kind, item.amountKrw]))
+      .toEqual([["refund", 27900], ["expense", 27900]]);
+  });
+
+  it("금액이 없는 행은 건너뛰고 모든 행이 그러면 매핑 오류로 처리합니다", () => {
+    const rows = [header, ["2026-01-02", "카페", "5000"], ["2026-01-03", "잔액 이월", ""], ["2026-01-04", "구분선", "-"]];
+    expect(buildTransactions(rows, mapping, card).map((item) => [item.merchantRaw, item.dataRowIndex]))
+      .toEqual([["카페", 0]]);
+    expect(() => buildTransactions([header, ["2026-01-03", "잔액 이월", ""]], mapping, card)).toThrow(/금액/);
+  });
+
+  it.each(["합계", "총계", "소계", "누계", "이월", "중간합계", "합 계"])(
+    "요약행 %s를 건너뜁니다", (label) => {
+      expect(buildTransactions([header, ["2026-01-02", "카페", "5000"], [label, "", "9999"]], mapping, card)).toHaveLength(1);
+    },
+  );
+
+  it("요약 표시는 날짜 위치에서만 인정합니다", () => {
+    expect(() => buildTransactions([header, ["2026-01-02", "합계", "5000"], ["알수없음", "카페", "5000"]], mapping, card)).toThrow(/3행/);
   });
 
   it("E7: 할부 청구월이 다르면 같은 승인번호·승인일·회차금액도 별개입니다", () => {
@@ -213,6 +269,17 @@ describe("거래 생성", () => {
     expect(result[0]?.sourceTransactionKey).toBe(createHash("sha256").update("00123456").digest("hex"));
   });
 
+  it("12자리까지의 숫자 승인번호를 보존하고 카드번호 길이대는 버립니다", () => {
+    // 10~12자리 거래번호가 흔합니다. 버리면 파일 기반 해시로 떨어져 중복 확인이 상시 발생합니다.
+    for (const value of ["1234567890", "123456789012"]) {
+      expect(buildTransactions([[...header, "승인번호"], [...row, value]], { ...mapping, transactionId: 3 }, card)[0]?.sourceTransactionKey)
+        .toBe(createHash("sha256").update(value).digest("hex"));
+    }
+    // 13자리부터는 카드번호 자리수와 겹치므로 보존하지 않습니다.
+    expect(buildTransactions([[...header, "승인번호"], [...row, "1234567890123"]], { ...mapping, transactionId: 3 }, card)[0]?.sourceTransactionKey)
+      .toBeNull();
+  });
+
   it.each(["계좌번호", "카드 번호", "account_number", "card_number"])(
     "%s 컬럼을 가맹점에 잘못 매핑해도 결과로 전파하지 않습니다", (name) => {
       expect(() => buildTransactions([["날짜", name, "금액"], ["2026-01-02", "4111111111111111", "5000"]], mapping, card)).toThrow(/매핑/);
@@ -226,6 +293,8 @@ describe("거래 생성", () => {
     expect(() => buildTransactions([header, row], { date: 0, merchant: 1, skipRows: 0 }, card)).toThrow(/금액/);
     expect(() => buildTransactions([header, ["2026-01-02", "비밀가맹점"]], mapping, card)).toThrow(/2행/);
     expect(() => buildTransactions([header, ["잘못된날짜", "비밀가맹점", "5000"]], mapping, card)).toThrow(/2행/);
+    // catch 블록을 건너뛰면 아무것도 검사하지 않고 통과하므로 실행 횟수를 고정합니다.
+    expect.assertions(7);
     try {
       buildTransactions([header, ["2026-01-02", "비밀가맹점", "비밀금액"]], mapping, card);
     } catch (error) {

@@ -60,7 +60,9 @@ export function parseCsvRows(text: string): string[][] {
     } else if (closedQuote) {
       if (character !== " " && character !== "\t") throw invalid();
     } else if (character === '"') {
-      if (cell !== "") throw invalid();
+      // 닫는 따옴표 뒤 공백은 이미 허용하므로 여는 쪽 앞의 공백도 허용합니다.
+      if (cell.trim() !== "") throw invalid();
+      cell = "";
       quoted = true;
     } else {
       cell += character;
@@ -150,11 +152,31 @@ function readCell(row: string[], index: number | undefined): string {
   return value;
 }
 
+// 날짜 위치에서만 인정하는 요약·푸터 표시입니다. 공백을 지워 '합 계'까지 같은 항목으로 봅니다.
+const summaryLabels = ["합계", "총합계", "소계", "총계", "누계", "이월", "전월이월", "중간합계"];
+const placeholder = /^[-‐-―−]+$/;
+
+// 빈칸과 '-' 같은 자리표시자는 값이 없는 것으로 봅니다.
+function toAmount(raw: string): number | null {
+  const value = raw.normalize("NFKC").replace(/\s/g, "");
+  return !value || placeholder.test(value) ? null : parseAmount(raw);
+}
+
+// 해외결제 행의 금액 컬럼은 외화 표기일 수 있어 금액 자체는 원화환산 컬럼이 담당합니다.
+// 부호만은 이 컬럼에서 읽습니다 — 원화환산액을 절댓값으로만 적는 명세서가 있습니다.
+function toAmountSign(raw: string): -1 | 1 | null {
+  const value = raw.normalize("NFKC").replace(/\s/g, "");
+  if (!value || placeholder.test(value)) return null;
+  if (value.startsWith("(") && value.endsWith(")")) return -1;
+  return /^[-−]/.test(value) ? -1 : 1;
+}
+
 function safeReference(raw: string): string | null {
   const reference = raw.trim();
   if (!reference || reference.length > 200) return null;
   // 짧은 숫자 승인번호는 허용합니다. 길거나 구분자가 있는 개인정보 패턴은 보존하지 않습니다.
-  if (!/^\d{1,9}$/.test(reference) && sanitizeMerchantForLlm(reference) !== reference) return null;
+  // 10~12자리 거래번호가 흔합니다. 13자리부터는 카드번호 자리수와 겹치므로 보존하지 않습니다.
+  if (!/^\d{1,12}$/.test(reference) && sanitizeMerchantForLlm(reference) !== reference) return null;
   return createHash("sha256").update(reference).digest("hex");
 }
 
@@ -187,30 +209,41 @@ export function buildTransactions(
   const transactions: ParsedTransaction[] = [];
   const referenceScopes = new Set<string>();
   let uniqueReferences = true;
+  let amountlessRows = 0;
   for (let rowIndex = mapping.skipRows + 1; rowIndex < rows.length; rowIndex += 1) {
     const row = rows[rowIndex];
     if (row === undefined || row.every((value) => value.trim() === "")) continue;
     try {
       const rawDate = readCell(row, mapping.date);
       // 합계 표시는 날짜 위치에서만 인정합니다. 잘못된 거래 날짜를 요약행으로 숨기지 않습니다.
-      if (["합계", "총합계", "소계", "총계"].includes(rawDate.trim())) continue;
+      if (summaryLabels.includes(rawDate.replace(/\s/g, ""))) continue;
       const occurredOn = parseDate(rawDate);
       const merchantRaw = readCell(row, mapping.merchant);
       if (!merchantRaw.trim()) throw new Error("가맹점이 비어 있습니다. 가맹점 컬럼을 확인해 주세요.");
-      const withdrawal = readCell(row, mapping.withdrawal);
-      const deposit = readCell(row, mapping.deposit);
-      const converted = readCell(row, mapping.krwEquivalent);
-      const rawAmount = converted.trim() ? converted
-        : withdrawal.trim() ? withdrawal
-        : deposit.trim() ? deposit
-        : readCell(row, mapping.amount);
-      const signedAmount = parseAmount(rawAmount);
+      // 안 쓰는 원장 컬럼에 빈칸 대신 0을 찍는 명세서가 있어, 값 유무를 파싱한 금액으로 판정합니다.
+      const withdrawal = toAmount(readCell(row, mapping.withdrawal));
+      const deposit = toAmount(readCell(row, mapping.deposit));
+      const converted = toAmount(readCell(row, mapping.krwEquivalent));
+      const hasWithdrawal = withdrawal !== null && withdrawal !== 0;
+      const hasDeposit = deposit !== null && deposit !== 0;
+      const ledger = hasWithdrawal ? withdrawal : hasDeposit ? deposit : null;
+      // 원화환산이나 입출금이 금액을 정하면 금액 컬럼은 파싱하지 않습니다 — 외화 표기일 수 있습니다.
+      const amountCell = readCell(row, mapping.amount);
+      const signedAmount = converted ?? ledger ?? toAmount(amountCell);
+      if (signedAmount === null) {
+        // 잔액 캐리 행처럼 어느 금액 컬럼에도 값이 없는 행은 거래가 아닙니다.
+        amountlessRows += 1;
+        continue;
+      }
       const kindValue = readCell(row, mapping.transactionKind).normalize("NFKC").toLowerCase().replace(/\s/g, "");
-      const kind: TransactionKind = mapping.transactionKind !== undefined
+      // 빈 셀은 '사전에 없는 값'이 아니라 미지정입니다. 지출로 굳히면 은행 입금이 전부 지출이 됩니다.
+      const declaredKind = mapping.transactionKind !== undefined && kindValue !== ""
         ? (Object.hasOwn(kindDictionary, kindValue) ? kindDictionary[kindValue] ?? "expense" : "expense")
-        : withdrawal.trim() ? "expense"
-        : deposit.trim() ? "income"
-        : signedAmount < 0 || Object.is(signedAmount, -0) ? "refund" : "expense";
+        : undefined;
+      const negative = (toAmountSign(amountCell)
+        ?? (signedAmount < 0 || Object.is(signedAmount, -0) ? -1 : 1)) < 0;
+      const kind: TransactionKind = declaredKind
+        ?? (hasWithdrawal ? "expense" : hasDeposit ? "income" : negative ? "refund" : "expense");
       const accountingMonth = context.sourceKind === "bank" ? occurredOn.slice(0, 7)
         : parseAccountingMonth(readCell(row, mapping.billingMonth).trim() || context.accountingMonth || "");
       const sourceTransactionKey = safeReference(readCell(row, mapping.transactionId));
@@ -230,6 +263,11 @@ export function buildTransactions(
       const message = error instanceof Error ? error.message : "매핑과 행의 형식을 확인해 주세요.";
       throw new Error(`${rowIndex + 1}행을 읽지 못했습니다. ${message}`);
     }
+  }
+
+  // 한 행도 금액을 읽지 못했다면 행이 아니라 매핑이 잘못된 것이므로 조용히 비우지 않습니다.
+  if (transactions.length === 0 && amountlessRows > 0) {
+    throw new Error("금액을 읽은 행이 없습니다. 금액 컬럼 선택을 확인해 주세요.");
   }
 
   for (const transaction of transactions) {
