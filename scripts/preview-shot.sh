@@ -19,10 +19,23 @@ HEIGHT="${3:-2100}"
 PORT="${PORT:-3210}"
 OUT="${OUT:-/tmp/finsight-preview.png}"
 CHROME="/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
+# macOS의 최소 창 너비 때문에 --window-size가 이 아래로는 줄어들지 않는다. 그런데도 Chrome은
+# 요청한 폭으로 PNG를 잘라 내놓기 때문에, 넓은 뷰포트로 그려진 레이아웃의 크롭이 좁은 화면인
+# 것처럼 보인다. 실제로 450px 요청에도 카드가 오른쪽 여백 없이 잘려 나와 없는 오버플로가 있는
+# 것처럼 읽혔다. 조용히 틀린 근거를 만드느니 거부한다.
+MIN_WIDTH=500
 
 if [ ! -x "$CHROME" ]; then
   echo "Chrome을 찾지 못했습니다: $CHROME" >&2
   echo "육안 검증을 건너뛰지 말고, 사용자에게 직접 확인을 요청하십시오." >&2
+  exit 1
+fi
+
+if [ "$WIDTH" -lt "$MIN_WIDTH" ]; then
+  echo "폭 ${WIDTH}px는 이 스크립트로 검증할 수 없습니다 (최소 ${MIN_WIDTH}px)." >&2
+  echo "headless Chrome이 창을 그보다 좁게 만들지 못해, 넓게 그린 화면을 잘라낸 PNG가 나옵니다." >&2
+  echo "폰 폭은 브라우저 자동화 도구의 기기 에뮬레이션(Emulation.setDeviceMetricsOverride)으로" >&2
+  echo "확인하거나, 사용자에게 직접 확인을 요청하십시오." >&2
   exit 1
 fi
 
