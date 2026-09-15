@@ -170,5 +170,9 @@ describe("집계 SQL의 경계", () => {
     expect(sql()).toContain("sample_count >= 3");
     expect(sql()).toContain("round(avg(amount_krw))");
     expect(sql()).not.toContain("double precision");
+    // 가운데 순위를 고르는 절이 없으면 round(avg())는 카테고리 전체 평균이 된다. 평균은 이상치가
+    // 스스로 끌어올리므로 3배 규칙이 조용히 덜 발동한다. 이 두 줄이 그 변형을 잡는다.
+    expect(sql()).toContain("row_number() over (partition by t.category order by t.amount_krw) as position");
+    expect(sql()).toContain("position in ((sample_count + 1) / 2, (sample_count + 2) / 2)");
   });
 });

@@ -82,6 +82,9 @@ const rules = ([
 ] satisfies { pattern: string; category: Category }[])
   .sort((left, right) => right.pattern.length - left.pattern.length);
 
+// 정렬 규약을 테스트로 고정하기 위해 노출합니다. 분류는 classifyByRule만 사용하세요.
+export const RULE_PATTERNS: readonly string[] = rules.map(({ pattern }) => pattern);
+
 export function classifyByRule(merchantNorm: string): Category | null {
   return rules.find(({ pattern }) => merchantNorm.includes(pattern))?.category ?? null;
 }

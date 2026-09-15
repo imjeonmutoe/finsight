@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 import { CATEGORIES } from "@/types/category";
 import type { Category } from "@/types/category";
 import { normalizeMerchant } from "./merchant";
-import { classifyByRule } from "./merchant-rules";
+import { RULE_PATTERNS, classifyByRule } from "./merchant-rules";
 
 const examples: Record<Category, string[]> = {
   식비: ["김밥천국", "본죽", "한솥도시락", "맥도날드", "버거킹", "롯데리아"],
@@ -29,6 +29,16 @@ describe("내장 가맹점 규칙", () => {
       for (const merchant of examples[category]) {
         expect(classifyByRule(normalizeMerchant(merchant))).toBe(category);
       }
+    }
+  });
+
+  it("규칙을 길이 내림차순으로 정렬해 구체적인 패턴이 먼저 매칭되게 합니다", () => {
+    // 소스 배열 순서가 우연히 맞아도 동작하므로, 정렬 자체가 사라진 것을 행동 테스트로는 못 잡습니다.
+    const lengths = RULE_PATTERNS.map((pattern) => pattern.length);
+    expect(lengths).toEqual([...lengths].sort((left, right) => right - left));
+    // 패턴이 normalizeMerchant 결과와 같은 형태여야 부분 문자열 매칭이 성립합니다.
+    for (const pattern of RULE_PATTERNS) {
+      expect(normalizeMerchant(pattern)).toBe(pattern);
     }
   });
 

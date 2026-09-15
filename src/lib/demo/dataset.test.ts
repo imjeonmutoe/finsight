@@ -1,5 +1,6 @@
 // @vitest-environment node
 
+import { readFileSync } from "node:fs";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { CATEGORIES } from "@/types/category";
 import { computeCandidateHash, computeDedupeHash, computeFileHash } from "../dedupe";
@@ -25,6 +26,16 @@ async function buildFromRows(rows: string[]) {
 }
 
 describe("데모 데이터셋", () => {
+  it("메모리 집계가 흉내 내는 SQL 규약을 함께 고정합니다", () => {
+    // SQL을 고치면 이 테스트도 깨져야 한다. 한쪽만 깨지면 데모 사본이 조용히 어긋난다.
+    const sql = readFileSync(new URL("../../../supabase/migrations/0002_analytics.sql", import.meta.url), "utf8")
+      .replace(/--[^\n]*/g, "").replace(/\s+/g, " ").toLowerCase();
+    expect(sql).toContain("sample_count >= 3");
+    expect(sql).toContain("round(avg(amount_krw))");
+    expect(sql).toContain('order by category collate "c" nulls last');
+    expect(sql).toContain("case t.kind when 'expense' then t.amount_krw when 'refund' then -t.amount_krw");
+  });
+
   it("페이지가 재집계하지 않도록 구독 월 합계를 제공합니다", () => {
     const dataset = buildDemoDataset();
     expect(dataset.subscriptionMonthlyKrw).toBe(
