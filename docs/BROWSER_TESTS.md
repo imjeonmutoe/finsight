@@ -23,14 +23,31 @@
 
 세 가지 경로가 있고 **할 수 있는 일이 다르다.** 위에서부터 우선한다.
 
-### 1. Claude in Chrome 확장 (권장)
+### 공통 제약 — 폭 500px 미만은 실제 창으로 만들 수 없다
 
-붙어 있으면 이게 가장 낫다. 실제 뷰포트 폭, 클릭, 폼 입력, 콘솔·네트워크 읽기가 전부 된다.
-`scripts/preview-shot.sh`의 주석도 "브라우저 자동화 도구가 붙어 있으면 그쪽이 더 낫다"고 말한다.
+**macOS의 Chrome은 창 폭을 500px 밑으로 내리지 않는다.** 390px를 요청해도 뷰포트는 500px가 된다.
+실측(2026-09-15, Chrome 확장 `resize_window`):
 
-### 2. CDP 직접 제어 (확장이 없을 때)
+| 요청 폭 | 실제 `clientWidth` |
+|---|---|
+| 800 · 640 · 500 | 그대로 |
+| 450 · 400 · 390 | **전부 500** |
 
-확장이 없어도 **폭과 테마를 정확히 제어**할 수 있는 유일한 경로다. 아래 3.의 한계를 우회한다.
+그래서 좁은 폭 검증은 **CDP의 `Emulation.setDeviceMetricsOverride`로만** 가능하다(방법 2).
+확장도, `preview-shot.sh`도 이 벽을 넘지 못한다.
+
+### 1. Claude in Chrome 확장 (기본)
+
+클릭·폼 입력·콘솔·네트워크를 읽는다. **테마를 실제 경로로 검증할 수 있는 유일한 방법**이기도 하다 —
+`localStorage.setItem('theme','light')` 후 새로고침하면 `layout.tsx`의 FOUC 방지 인라인 스크립트가
+실제로 도는 것을 확인할 수 있다. CDP의 미디어 에뮬레이션은 `prefers-color-scheme`만 바꾸므로
+`localStorage` 분기를 타지 않는다.
+
+폭은 500px까지만 줄어든다(위 공통 제약). 500px에서 잘못된 값을 보고하지는 않으므로 **거짓 버그는 만들지 않는다.**
+
+### 2. CDP 직접 제어
+
+**좁은 폭 검증의 유일한 경로다.** 확장이 있어도 BT-02는 이쪽으로 한다.
 
 ```bash
 npm run build && npm run start -- --port 3211 &
@@ -42,9 +59,9 @@ npm run build && npm run start -- --port 3211 &
 
 ```python
 # uv run --with websocket-client python <파일>
-# Emulation.setDeviceMetricsOverride  → 진짜 뷰포트 폭 (390px 등)
-# Emulation.setEmulatedMedia          → prefers-color-scheme 라이트/다크
-# Page.captureScreenshot              → 전체 페이지 캡처
+# Emulation.setDeviceMetricsOverride  → 진짜 뷰포트 폭 (390px 등). 창 최소 폭을 우회한다
+# Emulation.setEmulatedMedia          → prefers-color-scheme (단, localStorage 분기는 안 탄다)
+# Page.captureScreenshot              → captureBeyondViewport로 전체 페이지
 ```
 
 ### 3. `bash scripts/preview-shot.sh <경로> [폭] [높이]`
@@ -53,10 +70,10 @@ npm run build && npm run start -- --port 3211 &
 
 | 한계 | 결과 |
 |---|---|
-| `--window-size`의 폭이 **500px 미만이면 뷰포트가 500px로 고정**된다 (Chrome이 창 최소 폭을 강제). 스크린샷 이미지만 지정 폭으로 잘린다 | 390px로 찍으면 **멀쩡한 화면이 오른쪽이 잘린 것처럼 보인다.** 좁은 폭 검증에 쓸 수 없다 |
-| 테마를 지정할 수 없다. `prefers-color-scheme`이 **OS 설정을 따라간다** | 라이트·다크 양쪽 검증을 하려면 OS 설정을 바꿔야 한다 |
+| 폭 500px 미만 불가(위 공통 제약). 게다가 **스크린샷 이미지만 요청한 폭으로 잘린다** | 390px로 찍으면 멀쩡한 화면이 **오른쪽이 잘린 것처럼 보인다.** 확장과 달리 거짓 버그를 만든다 |
+| 테마를 지정할 수 없다. `prefers-color-scheme`이 **OS 설정을 따라간다** | 라이트·다크 양쪽을 보려면 OS 설정을 바꿔야 한다 |
 
-**좁은 폭이나 테마를 검증해야 하면 1.이나 2.를 쓴다.** 3.으로는 데스크톱 폭 + 현재 OS 테마만 볼 수 있다.
+데스크톱 폭 + 현재 OS 테마의 빠른 확인용으로만 쓴다.
 
 ---
 
@@ -90,7 +107,7 @@ npm run build && npm run start -- --port 3211 &
 
 ### ✅ BT-02 · 좁은 폭 (390px)
 
-- **전제**: 실행 방법 1 또는 2. **3번으로는 검증할 수 없다**(위 한계 표)
+- **전제**: **실행 방법 2(CDP)만 가능하다.** 확장도 `preview-shot.sh`도 500px 밑으로 못 내려간다(위 공통 제약)
 - **절차**: 뷰포트 390px로 `/demo` 접속
 - **통과 기준**
   - `document.documentElement.scrollWidth === clientWidth` — **가로 스크롤이 없다**
@@ -102,8 +119,8 @@ npm run build && npm run start -- --port 3211 &
 
 ### ✅ BT-03 · 라이트 · 다크 양쪽
 
-- **전제**: 실행 방법 1 또는 2 (3번은 OS 테마를 따라간다)
-- **절차**: `prefers-color-scheme`을 `light`/`dark`로 각각 지정해 `/demo` 접속
+- **전제**: 실행 방법 1(권장 — 실제 `localStorage` 경로를 탄다) 또는 2
+- **절차**: `localStorage.setItem('theme', 'light'|'dark')` 후 새로고침. 확장이 없으면 `prefers-color-scheme` 에뮬레이션
 - **통과 기준**
   - `document.documentElement.dataset.theme`이 각각 `light`·`dark`
   - `body` 배경이 각각 `rgb(255,255,255)` · `rgb(15,15,14)` (`docs/UI_GUIDE.md` 토큰 값)
@@ -126,6 +143,19 @@ npm run build && npm run start -- --port 3211 &
   - `backdrop-filter: blur()` (glass morphism) · 그라데이션 텍스트 · 배경 blur orb
   - 네온 글로우 · 보라/인디고 브랜드색 · `Powered by AI` 배지
   - 모든 카드가 동일한 큰 반경(`rounded-2xl`)
+- **코드로 검사한다** (확장의 `javascript_tool`에 붙여 넣는다):
+  ```js
+  (()=>{const h={backdrop:0,gradText:0,purple:[],glow:0};
+    document.querySelectorAll('body *').forEach(e=>{const s=getComputedStyle(e);
+      if(s.backdropFilter&&s.backdropFilter!=='none')h.backdrop++;
+      if(s.backgroundImage.includes('gradient')&&s.backgroundClip==='text')h.gradText++;
+      [s.color,s.backgroundColor].forEach(c=>{const m=c.match(/rgba?\((\d+), ?(\d+), ?(\d+)/);
+        if(m){const[r,g,b]=[+m[1],+m[2],+m[3]];if(b>r+40&&b>g+40&&r>g+15&&b>90)h.purple.push(c)}});
+    });
+    return {...h,radii:[...new Set([...document.querySelectorAll('body *')]
+      .map(e=>getComputedStyle(e).borderRadius).filter(r=>r!=='0px'))]};})()
+  ```
+  `backdrop`·`gradText`·`glow`가 0, `purple`이 빈 배열, `radii`에 `16px` 이상이 균일하게 깔려 있지 않아야 한다
 - **출처**: `docs/UI_GUIDE.md` AI 슬롭 안티패턴 표
 
 ### ⏸ BT-06 · 랜딩 첫인상 (S1) — step 10
