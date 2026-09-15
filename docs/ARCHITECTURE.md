@@ -6,6 +6,7 @@ middleware.ts                        # Supabase 세션 갱신 (필수)
 src/
 ├── app/
 │   ├── page.tsx                     # 랜딩 (public)
+│   ├── demo/page.tsx                # 샘플 대시보드 (public)
 │   ├── privacy/page.tsx             # 개인정보처리방침 (public)
 │   ├── layout.tsx                   # 루트 레이아웃 + 테마 스크립트
 │   ├── error.tsx / not-found.tsx    # 전역 에러 경계
@@ -28,6 +29,7 @@ src/
 ├── components/         # UI 컴포넌트 (전부 테스트 파일 필요)
 ├── types/              # TypeScript 타입 정의 (테스트 불필요)
 ├── lib/                # 순수 유틸 (파싱, 해시, 가맹점 규칙 사전, 집계, 탐지) + 집계 쿼리
+│   └── demo/           # 샘플 대시보드 전용 합성 CSV·데이터셋 (DB 없는 경로)
 └── services/           # 외부 API 래퍼 (Claude, Supabase, Polar)
 supabase/migrations/    # SQL 마이그레이션
 ```
@@ -38,6 +40,7 @@ step 파일은 담당 화면을 이 ID로 지칭한다. 독립 세션끼리 같�
 
 | ID | 경로 | 상태 | 이 화면의 단일 목표 |
 |---|---|---|---|
+| S0 | `/demo` | 익명 | 키 없이 제품이 무엇인지 보여주기 |
 | S1 | `/` | 익명 | CTA 클릭 |
 | S1b | `/` | 로그인됨 | 대시보드로 보내기 |
 | S2 | `/login` | — | Google 버튼 하나 |
@@ -56,7 +59,7 @@ step 파일은 담당 화면을 이 ID로 지칭한다. 독립 세션끼리 같�
 ## 패턴
 - **Server Components 기본.** 데이터를 읽어 렌더하는 화면은 Server Component에서 Supabase를 직접 조회한다. 인터랙션(차트 hover, 토글, 폼)이 필요한 곳만 `'use client'`.
 - **외부 API는 서버에서만.** Claude·Polar·service role Supabase는 라우트 핸들러 또는 Server Component에서만 호출한다.
-- **순수 함수 우선.** 파싱·해시·탐지 로직은 `src/lib/`에 I/O 없는 순수 함수로 두고 단위 테스트한다. DB나 fetch를 섞지 않는다.
+- **순수 함수 우선.** 파싱·해시·탐지 로직은 `src/lib/`에 I/O 없는 순수 함수로 두고 단위 테스트한다. DB나 fetch를 섞지 않는다. **예외는 집계 쿼리(`queries.ts`) 하나뿐이며, 이것도 Supabase 클라이언트를 인자로 주입받아 쓰고 모듈 안에서 생성하지 않는다.**
 - **Supabase 클라이언트는 지연 생성.** 모듈 최상위에서 `createClient()`를 호출하지 않는다. 이유: 환경변수 없이 `next build`가 도는 CI/훅 환경에서 빌드가 깨진다. 함수 안에서 호출한다.
 - **인덱스 접근을 `!`로 뭉개지 않는다.** `noUncheckedIndexedAccess`가 켜져 있어 배열·객체 인덱스 접근 결과는 `T | undefined`다. CSV 행·컬럼 인덱싱이 이 앱의 핵심 로직이고, 없는 컬럼 접근이 조용히 `undefined`로 흘러들어가면 금액 집계가 틀린다. non-null assertion은 그 방어선을 무력화한다.
 
@@ -167,10 +170,13 @@ insight_cache(user_id FK → auth.users, accounting_month date,
 
 - `amount_krw`는 **원 단위 정수**. 소수점 금액은 반올림해 정수로 저장한다.
 - **금액과 거래 유형:** `amount_krw`는 항상 절댓값이다. `kind`는 지출·수입·환불·이체를 구분하며 카테고리와 별개다. **LLM 분류로 정하지 않는다.** `kind`는 NOT NULL이고 아래 순서로 **결정론적으로 도출한다**(ADR-013). 사용자 확인 단계를 두지 않는다:
-  1. `transactionKind` 컬럼이 매핑돼 있으면 서버의 값 사전으로 매핑한다. 사전에 없는 값은 `expense`
-  2. `withdrawal` 컬럼에 값이 있으면 `expense`
-  3. `deposit` 컬럼에 값이 있으면 `income`
+  1. `transactionKind` 컬럼이 매핑돼 **있고 그 셀에 값이 있으면** 서버의 값 사전으로 매핑한다. 사전에 없는 값은 `expense`. **셀이 비어 있으면 미지정으로 보고 아래 규칙으로 내려간다**
+  2. `withdrawal` 컬럼에 **0이 아닌** 값이 있으면 `expense`
+  3. `deposit` 컬럼에 **0이 아닌** 값이 있으면 `income`
   4. 단일 `amount` 컬럼이면 양수 `expense`, 음수 `refund`
+
+  2·3에서 값 유무를 문자열이 아니라 파싱된 금액으로 판정하는 이유: 안 쓰는 쪽에 빈칸 대신 `0`을 찍는 명세서가 있다.
+  4의 부호는 **원화 금액 컬럼의 표기**에서 읽는다. 해외결제 행의 금액 컬럼은 외화 표기일 수 있어 금액 자체는 원화환산 컬럼이 담당하지만, 부호는 금액 컬럼에서 읽는다. 금액 컬럼이 없으면 원화환산 값의 부호를 쓴다.
 
   카드대금 납부와 본인 계좌 간 이동은 `transfer`이지만, 거래구분 컬럼 없이 이를 자동 판정하지 않는다 — 은행 출금은 2번 규칙에 따라 `expense`가 되며 사용자가 `PATCH`로 고친다. **은행 데이터에서 환불 입금이 `income`으로 잡혀 총지출에서 차감되지 않는 손실을 감수한다**(ADR-013). `income`으로 기울이는 쪽이 안전하다 — 수입은 총지출·카테고리 집계·탐지에서 제외되므로 잘못 들어가도 숫자를 오염시키지 않는다. 카드 명세서는 4번 규칙으로 정확히 갈린다.
 - **총지출:** `SUM(CASE kind WHEN 'expense' THEN amount_krw WHEN 'refund' THEN -amount_krw ELSE 0 END)`. 수입·이체는 지출 KPI·카테고리 집계·구독·이상치 탐지에서 제외한다. 환불은 해당 카테고리에서 차감하고 탐지는 지출만 대상으로 한다. 환불만 있는 월의 음수 순지출은 허용한다. 급여 300만 원 + 지출 100만 원 → 총지출 100만 원이다.
@@ -186,6 +192,7 @@ insight_cache(user_id FK → auth.users, accounting_month date,
 - **`merchant_norm` 생성:** NFKC 정규화 → 소문자화 → 법인격 표기(`(주)`·`㈜`·`주식회사`) 제거 → 공백·특수문자 제거.
   **지점명·지역명은 제거하지 않는다.** 이유: 잘못된 병합은 되돌릴 수 없고(스타벅스 ≠ 스타벅스리저브), 분리된 채로 두면 사용자가 규칙으로 합칠 수 있다.
 - **청구 기준 파싱:** 할부는 그달 청구 회차분을 `accounting_month`에 기록한다. 원래 승인일은 `occurred_on`에 유지한다. 해외결제는 원화환산 컬럼을 우선하되 국내 행에서 그 값이 비면 원화 금액 컬럼으로 대체한다. 둘을 더하지 않는다. 카드 청구월별 지출-환불은 지원하는 명세서의 청구액과 대조한다. 은행 입출금 순액과 총지출을 같다고 검증하지 않는다.
+  금액 컬럼이 모두 비었거나 `-` 같은 자리표시자뿐인 행(잔액 캐리 행)은 거래가 아니므로 건너뛴다. 단 **모든 데이터 행이 그렇게 걸러지면 매핑이 잘못된 것이므로 오류로 처리한다.**
 - **업로드 삭제:** Storage 파일 + `transactions` 행을 함께 지운다. `upload_id`에 `ON DELETE CASCADE`. Storage 삭제가 실패하면 DB 삭제도 롤백한다.
   기간이 겹치는 CSV를 여러 개 올린 경우, 겹치는 거래는 **먼저 올린 업로드에만 귀속**된다(UNIQUE 제약 때문). 따라서 그 업로드를 지우면 나중 파일에도 있던 거래가 함께 사라진다. **이건 버그가 아니라 명시된 동작이다** — 삭제 확인 UI가 함께 삭제될 건수를 사용자에게 알려야 한다.
 - **전체 삭제 순서: Storage → DB.** `auth.users` 삭제의 CASCADE는 Storage 객체를 지우지 않는다.
@@ -194,6 +201,7 @@ insight_cache(user_id FK → auth.users, accounting_month date,
 ## 아키텍처 경계
 
 - **집계 분담:** 월별·카테고리별 합계는 **SQL `group by`** (`src/lib/queries.ts`). 거래 수천 건을 서버 메모리로 끌어오지 않는다. 구독 탐지·이상치 탐지는 **`src/lib/analytics.ts`의 순수 함수** — 대상 거래만 조회해 넘긴다. 집계 로직이 두 군데 생기지 않게 이 경계를 지킨다.
+- **메모리 집계의 예외는 `src/lib/demo/` 하나다.** 샘플 대시보드(S0)에는 DB가 없으므로 `dataset.ts`의 `summarizeMonths`·`categoryMedians`가 SQL이 하던 월별 합계와 카테고리 중앙값을 메모리로 계산한다. 이 함수들은 모듈 밖으로 export하지 않고, `src/app/dashboard/**`는 `src/lib/demo/`를 import하지 않고 `queries.ts`를 쓴다. `dataset.ts`는 `supabase/migrations/0002_analytics.sql`과 **표본 하한(3건)·중앙값 반올림·카테고리 정렬(`collate "C" nulls last`)·총지출 공식**이 일치해야 하며, 이 일치는 테스트로 고정한다. 이유: 두 경로가 갈라지면 데모 화면이 실제 대시보드와 다른 숫자를 보여준다.
 - **분류 3단 순서:** ① `merchant_rules` ② 내장 규칙 사전 ③ 남은 것만 Claude. 순서 고정이며 단계를 건너뛰지 않는다(ADR-011). ①②는 `src/lib/`의 순수 함수라 단위 테스트로 고정하고, ③만 `src/services/claude.ts`를 탄다. **①②로 전부 채워지면 모델을 호출하지 않는다.**
 - **분류 배치:** **1 요청 = 1 배치(최대 50건).** 서버가 루프를 돌지 않는다. 근거는 ① 진행률 피드백 ② 부분 실패 복구 ③ 재시도 단위 축소다. 클라이언트는 remaining이 0이면 완료하고 한도·오류·무진척 응답에서는 정지한다. 중간 이탈 시 미분류 지출/환불은 다음 방문에 이어서 처리된다.
 - **분류는 멱등해야 한다.** `WHERE kind IN ('expense','refund') AND category IS NULL ... LIMIT 50`으로 선택하고, 갱신에도 `category IS NULL`을 넣어 사용자 수정을 보존한다. 동시 호출 시 두 번째 UPDATE는 아무 행도 바꾸지 않으므로 결과는 멱등하다. **동시 호출 자체를 막는 락은 두지 않는다**(ADR-012) — 낭비되는 것은 모델 호출 몇 회이고, 총량은 미분류 거래 수로 상한이 잡힌다.
@@ -344,6 +352,55 @@ export type ParsedTransaction = {
   dataRowIndex: number
   dedupeHash: string | null // 유형·청구월 확정 후 최종 계산
   candidateHash: string | null
+}
+export type CategorySource = 'ai' | 'rule' | 'user'
+export type Transaction = Omit<ParsedTransaction, 'kind' | 'dedupeHash' | 'candidateHash'> & {
+  kind: TransactionKind
+  dedupeHash: string
+  candidateHash: string
+  id: string
+  userId: string
+  uploadId: string
+  category: Category | null
+  categorySource: CategorySource | null
+}
+
+// types/analytics.ts
+export type MonthlySummary = {
+  month: string                                   // 'YYYY-MM'
+  totalKrw: number                                 // 지출-환불, 수입/이체 제외
+  byCategory: { category: Category | null; amountKrw: number; count: number }[]
+}
+export type Subscription = {
+  merchantNorm: string; displayName: string
+  monthlyKrw: number; occurrences: number
+  lastChargedOn: string; amountIncreased: boolean
+}
+export type Outlier = {
+  transactionId: string; merchantRaw: string
+  amountKrw: number; category: Category; medianKrw: number
+}
+// 숫자는 호출자가 코드로 집계한다. evidence는 해당 월 집계의 근거 UUID만 담는다.
+// Free는 summary/evidence만, Pro는 선택적으로 추이·탐지 결과까지 사용한다.
+export type InsightInput = {
+  summary: MonthlySummary
+  evidence: { category: Category | null; transactionIds: string[] }[]
+  trends?: MonthlySummary[]
+  subscriptions?: Subscription[]
+  outliers?: Outlier[]
+}
+
+// types/billing.ts
+export type Plan = 'free' | 'pro'
+export type Profile = {
+  id: string
+  email: string
+  plan: Plan
+  planExpiresAt: string | null
+  polarCustomerId: string | null
+  polarSubscriptionId: string | null
+  planUpdatedAt: string
+  createdAt: string
 }
 
 // types/api.ts

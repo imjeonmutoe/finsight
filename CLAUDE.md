@@ -39,7 +39,7 @@ CSV로 받은 카드 명세서·은행 거래내역을 Claude API로 분석해 �
 - CRITICAL: 금융 데이터를 로그에 남기지 마라. 거래 내용·가맹점명·금액을 `console.log`하지 않는다. 에러 로그에는 행 내용 대신 **행 번호**만 남긴다. Vercel 함수 로그도 유출 경로다.
 - CRITICAL: `dangerouslySetInnerHTML`을 쓰지 마라. LLM 출력에는 사용자가 올린 CSV에서 온 임의 문자열이 섞일 수 있다. React 기본 이스케이프가 유일한 XSS 방어선이다.
 - CRITICAL: RLS를 믿되 라우트 핸들러 쿼리에도 `user_id` 조건을 명시하라. RLS 정책을 나중에 잘못 고쳐도 한 겹이 남는다.
-- 디렉토리: 페이지·API는 `src/app/`, UI는 `src/components/`, 타입은 `src/types/`, 순수 유틸은 `src/lib/`, 외부 API 래퍼는 `src/services/`.
+- 디렉토리: 페이지·API는 `src/app/`, UI는 `src/components/`, 타입은 `src/types/`, 순수 유틸과 집계 쿼리는 `src/lib/`(집계 쿼리만 I/O 예외이며 Supabase 클라이언트를 주입받아 쓰고 모듈 안에서 생성하지 않는다), 외부 API 래퍼는 `src/services/`.
 
 ## 개발 프로세스
 - CRITICAL: 새 기능 구현 시 반드시 테스트를 먼저 작성하고, 테스트가 통과하는 구현을 작성할 것 (TDD)
