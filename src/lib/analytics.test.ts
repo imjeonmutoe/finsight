@@ -56,6 +56,16 @@ describe("구독 탐지", () => {
     expect(detectSubscriptions(payments(undefined, ["2026-01-31", "2026-02-28", "2026-03-31"]))).toHaveLength(1);
   });
 
+  it("같은 날 중복 결제가 섞여도 서로 다른 결제일 간격으로 판정합니다", () => {
+    // 기프트카드 동시 결제나 재시도 청구로 간격 0이 생기면 구독 전체가 버려집니다.
+    expect(detectSubscriptions(payments([10_000, 10_000, 10_000, 10_000], ["2026-01-05", "2026-01-05", "2026-02-05", "2026-03-05"])))
+      .toMatchObject([{ occurrences: 4, lastChargedOn: "2026-03-05" }]);
+  });
+
+  it("서로 다른 결제일이 3개 미만이면 탐지하지 않습니다", () => {
+    expect(detectSubscriptions(payments(undefined, ["2026-01-05", "2026-01-05", "2026-02-05"]))).toEqual([]);
+  });
+
   it("30% 금액 편차는 제외합니다", () => {
     expect(detectSubscriptions(payments([10_000, 10_000, 13_000]))).toEqual([]);
   });
@@ -114,20 +124,27 @@ describe("이상치 탐지", () => {
     expect(detectOutliers(input, medians(5_000))).toHaveLength(1);
   });
 
-  it.each([1, 2])("카테고리 지출이 %i건뿐이면 탐지하지 않습니다", (count) => {
-    expect(detectOutliers(payments().slice(0, count).map((item) => ({ ...item, amountKrw: 100_000 })), medians(5_000)))
-      .toEqual([]);
+  it("표본이 부족한 카테고리는 중앙값이 0이므로 탐지하지 않습니다", () => {
+    // 표본 하한은 중앙값을 만드는 쪽(SQL·데모 집계)이 판정해 0으로 알려줍니다. 여기서 다시 세면
+    // 넘겨받은 부분집합만 세게 되어, 전체 표본은 충분한 카테고리를 통째로 놓칩니다.
+    expect(detectOutliers(payments([100_000, 100_000, 100_000]), medians(0))).toEqual([]);
+    expect(detectOutliers([transaction({ id: "한건", amountKrw: 100_000 })], medians(5_000)))
+      .toMatchObject([{ transactionId: "한건", medianKrw: 5_000 }]);
   });
 
-  it("카테고리별로 지출 표본 수를 따로 세며 미분류와 다른 유형은 제외합니다", () => {
+  it("중앙값이 없는 카테고리도 크래시 없이 건너뜁니다", () => {
+    expect(detectOutliers([transaction({ amountKrw: 100_000 })], {} as Record<Category, number>)).toEqual([]);
+  });
+
+  it("카테고리별 중앙값을 각각 적용하며 미분류와 다른 유형은 제외합니다", () => {
     const input = [
-      transaction({ id: "작은지출", amountKrw: 5_000 }), transaction({ id: "큰지출", amountKrw: 100_000 }),
-      transaction({ category: "쇼핑" }), transaction({ category: null }),
-      ...(["income", "transfer", "refund"] as const).map((kind) => transaction({ kind, amountKrw: 100_000 })),
+      transaction({ id: "큰지출", amountKrw: 100_000 }),
+      transaction({ id: "쇼핑", category: "쇼핑", amountKrw: 100_000 }),
+      transaction({ id: "미분류", category: null, amountKrw: 100_000 }),
+      ...(["income", "transfer", "refund"] as const).map((kind) => transaction({ id: kind, kind, amountKrw: 100_000 })),
     ];
-    expect(detectOutliers(input, medians(5_000))).toEqual([]);
-    expect(detectOutliers([...input, transaction({ id: "세번째", amountKrw: 5_000 })], medians(5_000)))
-      .toMatchObject([{ transactionId: "큰지출" }]);
+    expect(detectOutliers(input, { ...medians(5_000), 쇼핑: 100_000 }).map((item) => item.transactionId))
+      .toEqual(["큰지출"]);
   });
 
   it("금융/이체 카테고리의 지출은 분석하고 입력은 변경하지 않습니다", () => {
@@ -137,8 +154,7 @@ describe("이상치 탐지", () => {
     expect(input).toEqual(before);
   });
 
-  it("빈 목록과 중앙값이 0인 충분한 표본도 처리합니다", () => {
+  it("빈 목록을 처리합니다", () => {
     expect(detectOutliers([], medians(0))).toEqual([]);
-    expect(detectOutliers(payments([0, 0, 30_000]), medians(0))).toHaveLength(1);
   });
 });
