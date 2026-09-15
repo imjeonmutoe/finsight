@@ -8,8 +8,14 @@ description: FinSight의 화면을 만들거나 고칠 때 쓴다. 랜딩·로�
 `prototype/`은 Claude Design에서 만든 **동작하는 FinSight 프로토타입**이다. 앱 전체 화면이 들어 있고, 이 리포가 만들 UI의 **레이아웃·구성·문구 기준**이다.
 
 ```
-open .claude/skills/finsight-design/prototype/index.html
+cd .claude/skills/finsight-design/prototype && python3 -m http.server 8173
+# → http://127.0.0.1:8173/
 ```
+
+**`file://`로 열지 마라 — 빈 화면이 나온다.** 화면은 `<script type="text/babel" src="*.jsx">`로 붙는데,
+Babel standalone이 그 파일들을 fetch로 읽기 때문에 `file://`에서는 CORS로 막힌다. 콘솔에만 에러가
+찍히고 `<div id="root">`는 빈 채로 남아 실패한 줄도 모른 채 넘어가기 쉽다.
+React와 Babel은 unpkg에서 받으므로 인터넷 연결도 필요하다.
 
 라우트: 랜딩 → 가입 → 대시보드 5탭(개요 · 거래 · 기간별 추이 · 구독·이상거래 · 업로드) → 결제.
 상단 우측 `Free`/`Pro` 토글로 플랜 게이팅을, `다크`/`라이트`로 테마를 바로 확인할 수 있다.
