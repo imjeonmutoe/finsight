@@ -32,7 +32,7 @@
       "status": "completed",
       "started_at": "2026-09-16T14:44:27+0900",
       "summary": "@supabase/ssr 기반 클라이언트 3종(브라우저·서버·service role)을 지연 생성으로 두고, getAll/setAll 쿠키 어댑터와 갱신 쿠키를 request·response 양쪽에 쓰는 src/middleware.ts, Google 전용 로그인 화면(S2)·Server Action·OAuth 콜백·대시보드 스텁을 추가해 lint·build·test와 로그인 화면 렌더(라이트/다크·390px)·미인증 /dashboard 차단·Google 동의 화면 도달까지 확인했습니다.",
-      "completed_at": "2026-09-16T15:04:06+0900"
+      "completed_at": "2026-09-16T15:04:57+0900"
     }
   ],
   "created_at": "2026-09-14T14:55:46+0900"
