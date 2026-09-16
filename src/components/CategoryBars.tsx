@@ -1,3 +1,4 @@
+import { categoryColor } from "@/lib/palette";
 import type { MonthlySummary } from "@/types/analytics";
 
 const won = new Intl.NumberFormat("ko-KR", { style: "currency", currency: "KRW" });
@@ -19,7 +20,13 @@ export function CategoryBars({ items, totalKrw }: {
         <li key={item.category ?? "unclassified"} className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 sm:grid-cols-[7rem_minmax(0,1fr)_10rem]">
           <span className="text-sm text-text">{item.category ?? "미분류"}</span>
           <span aria-hidden="true" className="col-span-2 row-start-2 h-2 overflow-hidden rounded-sm bg-surface-2 sm:col-span-1 sm:col-start-2 sm:row-start-1">
-            <span className="block h-full bg-text" style={{ width: `${Math.abs(item.amountKrw) / scale * 100}%` }} />
+            <span
+              className="block h-full"
+              style={{
+                width: `${Math.abs(item.amountKrw) / scale * 100}%`,
+                backgroundColor: categoryColor(item.category),
+              }}
+            />
           </span>
           <span className="col-start-2 row-start-1 text-right font-mono text-sm whitespace-nowrap tabular-nums text-text sm:col-start-3">
             {won.format(item.amountKrw)}

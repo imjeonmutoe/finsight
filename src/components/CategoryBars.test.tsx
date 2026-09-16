@@ -43,6 +43,19 @@ describe("카테고리별 지출 막대", () => {
     expect(screen.getByText("표시할 카테고리별 지출이 없습니다.")).toBeVisible();
   });
 
+  it("카테고리마다 팔레트 토큰 색을 쓰고 이름·금액을 항상 함께 보여줍니다", () => {
+    // 라이트 모드에서 표면 대비가 낮은 색이 있어 색만으로 항목을 구분하면 안 됩니다.
+    const markup = renderToStaticMarkup(<CategoryBars items={[
+      { category: "식비", amountKrw: 10_000, count: 1 },
+      { category: null, amountKrw: 5_000, count: 1 },
+    ]} totalKrw={15_000} />);
+
+    expect(markup).toContain("var(--color-category-food)");
+    expect(markup).toContain("var(--color-disabled)");
+    expect(markup).toContain("식비");
+    expect(markup).toContain("₩10,000");
+  });
+
   it("마크업에 하드코딩한 색이 없습니다", () => {
     expect(renderToStaticMarkup(<CategoryBars items={[
       { category: "식비", amountKrw: 10_000, count: 1 },

@@ -14,7 +14,10 @@
     {
       "step": 8,
       "name": "dashboard",
-      "status": "pending"
+      "status": "completed",
+      "started_at": "2026-09-16T16:44:41+0900",
+      "summary": "대시보드 S3~S6를 /dashboard 한 경로에 완성했다. lib/dashboard.ts의 loadDashboard가 queries.ts(SQL 집계)·analytics.ts(탐지)만 써서 데이터를 모으고, Pro 게이팅을 여기서 끝낸다 — Free 호출은 추이·구독·이상거래 상세를 조회하지도 만들지도 않고 코드로 센 요약 수치(건수·월 합계)만 넘기므로 응답 본문에 상세 배열이 실리지 않는다. lib/insights.ts는 insight_cache를 (user_id, accounting_month) + txn_fingerprint + plan 삼중 일치로 판정해 미스일 때만 generateInsights를 부르고, 모델 실패는 캐싱하지 않고 그 섹션에만 에러를 띄운다. 컴포넌트는 기존 KpiCard·CategoryBars·TransactionTable·DetectionList를 재사용·확장하고 EmptyDashboard(카드사 8곳 CSV 경로 안내, 기본 펼침)·InsightPanel·TrendChart·TransactionList만 새로 만들었다. 카테고리 12색은 dataviz 검증기를 통과한 값으로 globals.css 토큰에 두고 lib/palette.ts가 유일한 참조 경로다(라이트 CVD ΔE 9.2·정상시야 19.6, 다크 9.0·19.3). 라이트 모드 4색이 표면 대비 3:1 미만이라 차트는 항상 이름·금액을 글자로 함께 보여준다.",
+      "completed_at": "2026-09-16T17:20:07+0900"
     },
     {
       "step": 9,

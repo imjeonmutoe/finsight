@@ -3,7 +3,7 @@
 import { readFileSync } from "node:fs";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { CATEGORIES } from "@/types/category";
-import { getCategoryMedians, getMonthlySummary, getMonthlyTrend, getTransactionsForMerchants } from "./queries";
+import { getCategoryMedians, getMonthlySummary, getMonthlyTrend, getTransactionsForMerchants, getTransactionsForMonth } from "./queries";
 
 vi.mock("server-only", () => ({}));
 afterEach(() => vi.useRealTimers());
@@ -135,6 +135,7 @@ describe("조회 실패", () => {
     (supabase: ReturnType<typeof client>) => getMonthlyTrend(supabase, "사용자", 3),
     (supabase: ReturnType<typeof client>) => getCategoryMedians(supabase, "사용자"),
     (supabase: ReturnType<typeof client>) => getTransactionsForMerchants(supabase, "사용자", ["정기서비스"]),
+    (supabase: ReturnType<typeof client>) => getTransactionsForMonth(supabase, "사용자", "2026-02"),
   ])("DB 오류를 빈 성공 결과로 숨기거나 원문으로 노출하지 않습니다", async (query) => {
     await expect(query(client(null, { message: "DB 내부 오류" }))).rejects.toThrow("거래 정보를 불러오지 못했습니다. 다시 시도해 주세요.");
     await expect(query(client(null))).rejects.toThrow("조회 결과를 확인할 수 없습니다. 다시 시도해 주세요.");
@@ -174,5 +175,52 @@ describe("집계 SQL의 경계", () => {
     // 스스로 끌어올리므로 3배 규칙이 조용히 덜 발동한다. 이 두 줄이 그 변형을 잡는다.
     expect(sql()).toContain("row_number() over (partition by t.category order by t.amount_krw) as position");
     expect(sql()).toContain("position in ((sample_count + 1) / 2, (sample_count + 2) / 2)");
+  });
+});
+
+describe("청구월 거래 목록 조회", () => {
+  it("user_id와 청구월 첫날로 조회하고 최근 거래부터 정렬합니다", async () => {
+    const supabase = client([row]);
+    const transactions = await getTransactionsForMonth(supabase, "사용자", "2026-02");
+
+    expect(transactions).toHaveLength(1);
+    expect(transactions[0]?.accountingMonth).toBe("2026-02");
+    expect(supabase.filter.eq).toHaveBeenCalledWith("user_id", "사용자");
+    expect(supabase.filter.eq).toHaveBeenCalledWith("accounting_month", "2026-02-01");
+    expect(supabase.filter.order).toHaveBeenCalledWith("occurred_on", { ascending: false });
+    expect(supabase.filter.order).toHaveBeenCalledWith("id", { ascending: true });
+    expect(supabase.select.mock.calls[0]?.[0]).not.toContain("*");
+  });
+
+  it("지출뿐 아니라 수입·이체·환불도 그대로 돌려줍니다", async () => {
+    // 총지출에서 제외되는 유형도 목록에는 보여야 사용자가 유형을 고칠 수 있습니다.
+    const kinds = ["expense", "income", "refund", "transfer"] as const;
+    const supabase = client(kinds.map((kind, index) => ({ ...row, id: `거래-${index}`, kind })));
+
+    expect((await getTransactionsForMonth(supabase, "사용자", "2026-02")).map((t) => t.kind)).toEqual([...kinds]);
+  });
+
+  it("거래 유형을 조회에서 걸러내지 않습니다", async () => {
+    const supabase = client([row]);
+    await getTransactionsForMonth(supabase, "사용자", "2026-02");
+
+    expect(supabase.filter.eq).not.toHaveBeenCalledWith("kind", "expense");
+  });
+
+  it.each(["2026-00", "2026-13", "2026-1", "2026-02-01"])("잘못된 청구월 %s는 DB 호출 전에 거절합니다", async (month) => {
+    const supabase = client();
+    await expect(getTransactionsForMonth(supabase, "사용자", month)).rejects.toThrow("조회할 월을 확인해 주세요.");
+    expect(supabase.from).not.toHaveBeenCalled();
+  });
+
+  it("서버 행 제한으로 잘리지 않도록 페이지마다 같은 필터를 다시 겁니다", async () => {
+    const supabase = client();
+    supabase.filter.range.mockResolvedValueOnce({ data: Array(1000).fill(row), error: null })
+      .mockResolvedValueOnce({ data: [{ ...row, id: "마지막거래" }], error: null });
+
+    expect(await getTransactionsForMonth(supabase, "사용자", "2026-02")).toHaveLength(1001);
+    expect(supabase.filter.range.mock.calls).toEqual([[0, 999], [1000, 1999]]);
+    expect(supabase.filter.eq.mock.calls.filter(([key]) => key === "accounting_month"))
+      .toEqual([["accounting_month", "2026-02-01"], ["accounting_month", "2026-02-01"]]);
   });
 });

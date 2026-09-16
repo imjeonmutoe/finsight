@@ -11,14 +11,27 @@ type QueryResult = { data: unknown; error: unknown };
 type RpcClient = {
   rpc(name: string, args: Record<string, unknown>): PromiseLike<QueryResult>;
 };
-type TransactionFilter = {
+interface TransactionFilter {
   eq(column: string, value: string): TransactionFilter;
   in(column: string, values: string[]): TransactionFilter;
   order(column: string, options: { ascending: boolean }): TransactionFilter;
   range(from: number, to: number): PromiseLike<QueryResult>;
-};
+}
+/**
+ * `select`의 반환을 unknown으로 받는 이유: Supabase 쿼리 빌더의 제네릭이 깊어, 우리 필터
+ * 타입과 직접 맞추면 실제 클라이언트를 넘길 때 타입 인스턴스화 깊이 제한(TS2589)에 걸린다.
+ * 좁히기는 transactionFilter() 한 곳에서만 한다.
+ */
 type TransactionClient = {
-  from(table: "transactions"): { select(columns: string): TransactionFilter };
+  from(table: "transactions"): { select(columns: string): unknown };
+};
+/**
+ * 대시보드처럼 집계 RPC와 거래 조회를 함께 쓰는 호출자용. 두 타입의 교차(&)로 쓰면
+ * Supabase 클라이언트를 넘길 때 타입 인스턴스화 깊이 제한(TS2589)에 걸린다.
+ */
+export type QueriesClient = {
+  rpc(name: string, args: Record<string, unknown>): PromiseLike<QueryResult>;
+  from(table: "transactions"): { select(columns: string): unknown };
 };
 
 const integer = z.union([z.number(), z.string().regex(/^-?\d+$/)]).transform(Number).pipe(z.number().int());
@@ -34,7 +47,7 @@ const transactionsSchema = z.array(z.object({
   id: z.string(), user_id: z.string(), source_id: z.string(), upload_id: z.string(),
   occurred_on: z.iso.date(), accounting_month: z.iso.date().regex(/-01$/),
   merchant_raw: z.string(), merchant_norm: z.string(), amount_krw: nonnegativeInteger,
-  kind: z.literal("expense"), category: category.nullable(),
+  kind: z.enum(["expense", "income", "refund", "transfer"]), category: category.nullable(),
   category_source: z.enum(["ai", "rule", "user"]).nullable(),
   source_transaction_key: z.string().nullable(), data_row_index: nonnegativeInteger,
   dedupe_hash: z.string(), candidate_hash: z.string(),
@@ -105,17 +118,20 @@ const TRANSACTION_COLUMNS = [
 ].join(",");
 const PAGE_SIZE = 1000;
 
-export async function getTransactionsForMerchants(
-  supabase: TransactionClient, userId: string, merchantNorms: string[],
+/**
+ * 서버 행 제한으로 결과가 조용히 잘리지 않도록 페이지마다 필터를 다시 건다. Supabase 필터는
+ * 재사용할 수 없으므로 호출자가 페이지마다 질의를 새로 만든다.
+ */
+function transactionFilter(supabase: TransactionClient): TransactionFilter {
+  return supabase.from("transactions").select(TRANSACTION_COLUMNS) as TransactionFilter;
+}
+
+async function collectTransactions(
+  buildPage: (offset: number) => PromiseLike<QueryResult>,
 ): Promise<Transaction[]> {
-  if (merchantNorms.length === 0) return [];
   const transactions: Transaction[] = [];
-  const merchants = [...new Set(merchantNorms)];
   for (let offset = 0; ; offset += PAGE_SIZE) {
-    const rows = await readQuery(supabase.from("transactions").select(TRANSACTION_COLUMNS)
-      .eq("user_id", userId).eq("kind", "expense").in("merchant_norm", merchants)
-      .order("occurred_on", { ascending: true }).order("id", { ascending: true })
-      .range(offset, offset + PAGE_SIZE - 1), transactionsSchema);
+    const rows = await readQuery(buildPage(offset), transactionsSchema);
     for (const row of rows) {
       transactions.push({
         id: row.id, userId: row.user_id, sourceId: row.source_id, uploadId: row.upload_id,
@@ -128,4 +144,29 @@ export async function getTransactionsForMerchants(
     }
     if (rows.length < PAGE_SIZE) return transactions;
   }
+}
+
+export async function getTransactionsForMerchants(
+  supabase: TransactionClient, userId: string, merchantNorms: string[],
+): Promise<Transaction[]> {
+  if (merchantNorms.length === 0) return [];
+  const merchants = [...new Set(merchantNorms)];
+  return collectTransactions((offset) => transactionFilter(supabase)
+    .eq("user_id", userId).eq("kind", "expense").in("merchant_norm", merchants)
+    .order("occurred_on", { ascending: true }).order("id", { ascending: true })
+    .range(offset, offset + PAGE_SIZE - 1));
+}
+
+/**
+ * 화면에 표시할 청구월의 거래 전부. 유형으로 거르지 않는다 — 수입·이체도 목록에 보여야
+ * 사용자가 유형을 고칠 수 있다. 총지출 집계는 여기가 아니라 SQL(getMonthlySummary)이 한다.
+ */
+export async function getTransactionsForMonth(
+  supabase: TransactionClient, userId: string, month: string,
+): Promise<Transaction[]> {
+  monthIndex(month);
+  return collectTransactions((offset) => transactionFilter(supabase)
+    .eq("user_id", userId).eq("accounting_month", `${month}-01`)
+    .order("occurred_on", { ascending: false }).order("id", { ascending: true })
+    .range(offset, offset + PAGE_SIZE - 1));
 }

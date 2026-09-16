@@ -1,6 +1,6 @@
-import { render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { Transaction } from "@/types/transaction";
 import { TransactionTable } from "./TransactionTable";
 
@@ -63,5 +63,83 @@ describe("거래 내역 표", () => {
 
   it("마크업에 하드코딩한 색이 없습니다", () => {
     expect(renderToStaticMarkup(<TransactionTable transactions={[transaction]} />)).not.toContain("#");
+  });
+});
+
+describe("거래 내역 표 — 분류 출처와 수정", () => {
+  it("요약의 근거 거래 링크가 도착할 앵커를 행마다 둡니다", () => {
+    const { container } = render(<TransactionTable transactions={[transaction]} />);
+
+    expect(container.querySelector("#transaction-transaction-1")).not.toBeNull();
+  });
+
+  it.each([
+    { categorySource: "user", label: "내 규칙" },
+    { categorySource: "rule", label: "가맹점 사전" },
+    { categorySource: "ai", label: "Claude" },
+  ] as const)("$categorySource 분류는 $label 배지로 보여줍니다", ({ categorySource, label }) => {
+    render(<TransactionTable transactions={[{ ...transaction, category: "쇼핑", categorySource }]} />);
+
+    expect(screen.getAllByText(label).length).toBeGreaterThan(0);
+  });
+
+  it("미분류 거래를 회색으로 구분해 보여줍니다", () => {
+    render(<TransactionTable transactions={[
+      { ...transaction, category: "쇼핑", categorySource: "rule" },
+      { ...transaction, id: "transaction-2", category: null, categorySource: null },
+    ]} />);
+
+    const table = screen.getByRole("table", { name: "거래 내역" });
+    expect(within(table).getAllByText("미분류")[0]).toHaveClass("text-muted");
+    expect(within(table).getAllByText("쇼핑")[0]).not.toHaveClass("text-muted");
+  });
+
+  it("수정 모드에서 카테고리와 유형을 그 자리에서 고칩니다", () => {
+    const onCategoryChange = vi.fn();
+    const onKindChange = vi.fn();
+    render(<TransactionTable
+      transactions={[transaction]} onCategoryChange={onCategoryChange} onKindChange={onKindChange}
+    />);
+
+    fireEvent.change(screen.getByLabelText("동네 상점 카테고리"), { target: { value: "쇼핑" } });
+    fireEvent.change(screen.getByLabelText("동네 상점 거래 유형"), { target: { value: "refund" } });
+
+    expect(onCategoryChange).toHaveBeenCalledExactlyOnceWith("transaction-1", "쇼핑");
+    expect(onKindChange).toHaveBeenCalledExactlyOnceWith("transaction-1", "refund");
+  });
+
+  it("수입·이체는 카테고리를 고르지 못하게 합니다", () => {
+    // 총지출·카테고리 집계에서 빠지는 유형이라 카테고리가 의미를 갖지 않습니다.
+    render(<TransactionTable
+      transactions={[{ ...transaction, kind: "income" }]} onCategoryChange={vi.fn()} onKindChange={vi.fn()}
+    />);
+
+    expect(screen.getByLabelText("동네 상점 카테고리")).toBeDisabled();
+    expect(screen.getByLabelText("동네 상점 거래 유형")).toBeEnabled();
+  });
+
+  it("저장 중인 행은 다시 고치지 못하게 잠급니다", () => {
+    render(<TransactionTable
+      transactions={[transaction]} onCategoryChange={vi.fn()} onKindChange={vi.fn()} pendingId="transaction-1"
+    />);
+
+    expect(screen.getByLabelText("동네 상점 카테고리")).toBeDisabled();
+    expect(screen.getByLabelText("동네 상점 거래 유형")).toBeDisabled();
+  });
+
+  it("수정 모드에서는 고치는 칸을 가맹점 아래로 모아 금액과 같은 화면에 둡니다", () => {
+    // 셀렉트를 열로 따로 세우면 폰 폭에서 글자가 잘리거나 금액 열이 화면 밖으로 밀립니다.
+    render(<TransactionTable transactions={[transaction]} onCategoryChange={vi.fn()} onKindChange={vi.fn()} />);
+
+    const table = screen.getByRole("table", { name: "거래 내역" });
+    expect(within(table).getByRole("columnheader", { name: "날짜" })).toHaveClass("hidden", "sm:table-cell");
+    expect(within(table).queryByRole("columnheader", { name: "유형" })).toBeNull();
+    expect(within(table).queryByRole("columnheader", { name: "카테고리" })).toBeNull();
+    expect(within(table).getByRole("columnheader", { name: "금액" })).not.toHaveClass("hidden");
+
+    const merchantCell = within(table).getByText("동네 상점").closest("td");
+    expect(merchantCell).not.toBeNull();
+    expect(within(merchantCell as HTMLElement).getByLabelText("동네 상점 카테고리")).toBeVisible();
+    expect(within(merchantCell as HTMLElement).getByLabelText("동네 상점 거래 유형")).toBeVisible();
   });
 });

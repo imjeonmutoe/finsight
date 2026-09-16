@@ -36,6 +36,21 @@
   --color-neutral-line: #8a8a84;
   --color-accent: #2563a8;
 
+  /* 카테고리 12색. 차트는 src/lib/palette.ts를 거쳐서만 이 토큰에 닿는다.
+     dataviz 스킬의 검증기로 고정한 값·순서다 — 바꾸려면 검증기를 다시 돌려라. */
+  --color-category-food: #a35f2a;
+  --color-category-cafe: #0e93b0;
+  --color-category-delivery: #eb6834;
+  --color-category-transit: #1baf7a;
+  --color-category-housing: #2a78d6;
+  --color-category-subscription: #e34948;
+  --color-category-shopping: #3f6fb5;
+  --color-category-health: #eda100;
+  --color-category-culture: #e87ba4;
+  --color-category-education: #7d8f1f;
+  --color-category-finance: #c0407e;
+  --color-category-etc: #008300;
+
   /* UI_GUIDE `## 애니메이션`이 허용하는 것은 fade-in 0.2s 하나뿐이다. 그 외 추가 금지. */
   --animate-fade-in: fade-in 0.2s ease-out;
 
@@ -66,6 +81,19 @@
   --color-down: #6fbd8e;
   --color-neutral-line: #6e6e69;
   --color-accent: #7fb0e0;
+
+  --color-category-food: #b0703a;
+  --color-category-cafe: #2f9cb8;
+  --color-category-delivery: #d95926;
+  --color-category-transit: #199e70;
+  --color-category-housing: #3987e5;
+  --color-category-subscription: #e66767;
+  --color-category-shopping: #3a6fbf;
+  --color-category-health: #c98500;
+  --color-category-culture: #d55181;
+  --color-category-education: #7f9126;
+  --color-category-finance: #d1568f;
+  --color-category-etc: #2e9b3f;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -82,6 +110,19 @@
     --color-down: #6fbd8e;
     --color-neutral-line: #6e6e69;
     --color-accent: #7fb0e0;
+
+    --color-category-food: #b0703a;
+    --color-category-cafe: #2f9cb8;
+    --color-category-delivery: #d95926;
+    --color-category-transit: #199e70;
+    --color-category-housing: #3987e5;
+    --color-category-subscription: #e66767;
+    --color-category-shopping: #3a6fbf;
+    --color-category-health: #c98500;
+    --color-category-culture: #d55181;
+    --color-category-education: #7f9126;
+    --color-category-finance: #d1568f;
+    --color-category-etc: #2e9b3f;
   }
 }
 
@@ -101,6 +142,19 @@
   --color-down: #2f6b46;
   --color-neutral-line: #8a8a84;
   --color-accent: #2563a8;
+
+  --color-category-food: #a35f2a;
+  --color-category-cafe: #0e93b0;
+  --color-category-delivery: #eb6834;
+  --color-category-transit: #1baf7a;
+  --color-category-housing: #2a78d6;
+  --color-category-subscription: #e34948;
+  --color-category-shopping: #3f6fb5;
+  --color-category-health: #eda100;
+  --color-category-culture: #e87ba4;
+  --color-category-education: #7d8f1f;
+  --color-category-finance: #c0407e;
+  --color-category-etc: #008300;
 }
 
 @layer base {
