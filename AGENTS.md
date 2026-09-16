@@ -10,6 +10,12 @@ CSV로 받은 카드 명세서·은행 거래내역을 Claude API로 분석해 �
 
 버전은 ADR-010에 따라 의도적으로 고정돼 있다. **임의로 올리지 마라.**
 
+Next 16은 학습 데이터와 관례가 다르다. Next API·파일 규칙(미들웨어 위치, 라우트 시그니처 등)을
+건드리기 전에 `node_modules/next/dist/docs/`의 해당 가이드를 읽고, 사용 중단 경고를 무시하지 마라.
+이유: 규칙이 틀려도 `next build`는 통과한다. 미들웨어를 리포 루트에 두면 조용히 무시되어
+세션 갱신이 통째로 사라진다. (`next dev`가 AGENTS.md에 같은 경고를 자동으로 덧붙이던 것을
+`next.config.ts`의 `agentRules: false`로 끄고 두 규칙 파일에 직접 옮겼다.)
+
 - Next.js 16.3.4 (App Router)
 - React 19.2.8
 - TypeScript 5.9.3 strict mode + `noUncheckedIndexedAccess` + `verbatimModuleSyntax`
