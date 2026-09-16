@@ -25,7 +25,7 @@
       "name": "account-screens",
       "status": "completed",
       "started_at": "2026-09-16T17:21:11+0900",
-      "completed_at": "2026-09-16T17:33:54+0900",
+      "completed_at": "2026-09-16T17:34:29+0900",
       "summary": "S11(/dashboard/uploads)·S12(/dashboard/settings)를 열었다. UploadHistory는 별칭·파일명·KST 일시·상태·추가/중복 건수를 보여주고 mapped를 '미완료'로 구분해 /dashboard/upload?resume={id}로 이어서 진행시킨다. pending은 제한시간(300초) 기준을 서버가 staleBefore로 내려주어 목록에서만 실패로 보이고 DB 행은 고치지 않는다(목록 조회가 쓰기를 하지 않게). 삭제는 브라우저 confirm 대신 인라인 role=dialog이며, 건수는 GET /api/uploads/[id]가 실제로 센 값을 열 때 받아와 표시하고 받기 전에는 실행 버튼이 disabled다(ADR-008 고지 조건). 삭제 실행은 step 7의 DELETE를 그대로 쓴다. 전체 삭제는 DELETE /api/account/data 하나만 새로 만들었다 — 확인 문구('삭제') 검증 → service role 확보 → Storage 사용자 폴더 페이지네이션 삭제 → transactions·uploads·merchant_rules·financial_sources → service role로 insight_cache 순이고, Storage가 실패하면 DB를 손대지 않는다. profiles는 건드리지 않아 구독 상태가 남고, ADR-012대로 되돌릴 사용량 테이블 자체가 없다. 마이그레이션은 추가하지 않았다(기존 권한으로 충분). 곁들여 대시보드에 업로드·이력·설정 진입 링크를 붙이고, UploadFlow에 resume prop을 더해 upload 페이지가 ?resume=를 읽어 2단계부터 시작한다.",
       "note": "S11·S12는 인증 화면이라 preview-shot.sh(HTTP 200 대기)가 닿지 않는다. 두 컴포넌트를 실제 빌드 CSS로 렌더해 라이트·다크 스크린샷으로 육안 확인했다(/tmp/finsight-s11-s12-{light,dark}.png). 세션이 필요한 BT-18은 키가 있는 환경에서 실행해야 한다."
     }
