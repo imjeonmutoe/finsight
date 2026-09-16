@@ -9,7 +9,7 @@
       "started_at": "2026-09-16T16:05:01+0900",
       "summary": "업로드 4단계(S7~S10) 완성: 라우트 6개(sources GET/POST, uploads POST, uploads/[id] GET·DELETE, uploads/[id]/confirm POST, transactions/classify POST, transactions/[id] PATCH) + 컴포넌트 4개(UploadFilePicker·MappingReview·ClassifyProgress·UploadSummary)를 UploadFlow가 묶고 /dashboard/upload 페이지가 호스팅한다. confirm은 supabase/migrations/0003_upload_confirm.sql의 confirm_upload RPC(security invoker, 출처 행 잠금)로 후보 재검증·insert·parsed 전이를 한 트랜잭션에 묶는다. 분류는 1요청=1배치(50건), merchant_rules→내장 사전→남은 것만 Claude 순, id로 매칭, UPDATE에 category IS NULL 유지. 공용 nextKstMonthStart를 lib/api.ts로 올렸다.",
       "open_issue": "Free 업로드 한도를 uploads 행으로 직접 세므로(ADR-005·카운터 테이블 금지), 업로드를 삭제하면 그 달 한도가 함께 풀린다. step 7 AC의 '금융 데이터 삭제 후 한도가 초기화되지 않는가'와 충돌하며 리텐션 마커 없이는 양립 불가다. 금융 데이터 삭제를 만드는 step 9에서 결정해야 한다.",
-      "completed_at": "2026-09-16T16:45:00+0900"
+      "completed_at": "2026-09-16T16:44:41+0900"
     },
     {
       "step": 8,
