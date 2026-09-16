@@ -306,3 +306,31 @@ describe("승인과 중복 확인", () => {
     expect(screen.getByLabelText("CSV 파일 선택")).toBeVisible();
   });
 });
+
+describe("이어서 진행", () => {
+  it("업로드 이력에서 돌아오면 매핑 확인 단계부터 시작합니다", () => {
+    // mapped는 Storage에 파일만 있고 거래는 0건인 상태다. 파일을 다시 고르게 하지 않는다.
+    setup({
+      resume: {
+        mapping: { ...MAPPED, status: "mapped" as const, reused: true }, filename: "8월 명세서.csv",
+        sourceKind: "card", encoding: "euc-kr",
+      },
+    });
+
+    const steps = within(screen.getByTestId("upload-steps")).getAllByRole("listitem");
+    expect(steps[1]).toHaveAttribute("aria-current", "step");
+    expect(screen.getByRole("button", { name: "이대로 진행" })).toBeVisible();
+    expect(screen.queryByLabelText("CSV 파일 선택")).toBeNull();
+  });
+
+  it("보관된 인코딩을 그대로 이어받습니다", () => {
+    setup({
+      resume: {
+        mapping: { ...MAPPED, status: "mapped" as const, reused: true }, filename: "8월 명세서.csv",
+        sourceKind: "card", encoding: "euc-kr",
+      },
+    });
+
+    expect(screen.getByLabelText("인코딩")).toHaveValue("euc-kr");
+  });
+});

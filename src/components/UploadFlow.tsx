@@ -18,6 +18,12 @@ const REVIEW_NOTICE = "비슷한 거래를 찾았습니다. 아래에서 추가�
 const PRIMARY = "rounded-md bg-text px-4 py-2 text-sm font-medium text-bg hover:opacity-90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent";
 
 type Candidate = { dataRowIndex: number; transactionIds: string[] };
+type Resume = {
+  mapping: MappingResponse;
+  filename: string;
+  sourceKind: "card" | "bank";
+  encoding: "utf-8" | "euc-kr";
+};
 
 function currentKstMonth(): string {
   const kst = new Date(Date.now() + 9 * 60 * 60 * 1000);
@@ -36,15 +42,18 @@ function messageOf(body: Record<string, unknown>, fallback: string): string {
   return typeof body.message === "string" ? body.message : fallback;
 }
 
-export function UploadFlow({ sources, plan, limitReached, resetsAt, monthsHeld }: {
+export function UploadFlow({ sources, plan, limitReached, resetsAt, monthsHeld, resume = null }: {
   sources: FinancialSource[];
   plan: Plan;
   limitReached: boolean;
   resetsAt: string | null;
   monthsHeld: number;
+  // 매핑 확인에서 이탈한 업로드를 이어서 진행합니다. 원본은 Storage에 있으므로
+  // 파일을 다시 고르게 하지 않고 2단계부터 시작합니다.
+  resume?: Resume | null;
 }) {
   const router = useRouter();
-  const [step, setStep] = useState(1);
+  const [step, setStep] = useState(resume ? 2 : 1);
   const [list, setList] = useState(sources);
   const [listVersion, setListVersion] = useState(0);
   const [blocked, setBlocked] = useState(limitReached);
@@ -52,9 +61,9 @@ export function UploadFlow({ sources, plan, limitReached, resetsAt, monthsHeld }
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const [mapped, setMapped] = useState<MappingResponse | null>(null);
-  const [filename, setFilename] = useState("");
-  const [sourceKind, setSourceKind] = useState<"card" | "bank">("card");
+  const [mapped, setMapped] = useState<MappingResponse | null>(resume?.mapping ?? null);
+  const [filename, setFilename] = useState(resume?.filename ?? "");
+  const [sourceKind, setSourceKind] = useState<"card" | "bank">(resume?.sourceKind ?? "card");
   const [candidates, setCandidates] = useState<Candidate[]>([]);
 
   const [confirmed, setConfirmed] = useState<ConfirmResponse | null>(null);
@@ -238,7 +247,7 @@ export function UploadFlow({ sources, plan, limitReached, resetsAt, monthsHeld }
       {step === 2 && mapped && (
         <MappingReview
           mapping={mapped.mapping} confidence={mapped.confidence} preview={mapped.preview}
-          encoding={mapped.preview.length > 0 ? "utf-8" : "utf-8"} filename={filename}
+          encoding={resume?.encoding ?? "utf-8"} filename={filename}
           sourceKind={sourceKind} reused={mapped.reused}
           accountingMonth={sourceKind === "card" && mapped.mapping?.billingMonth === undefined ? currentKstMonth() : ""}
           duplicateCandidates={candidates} busy={busy} error={error}

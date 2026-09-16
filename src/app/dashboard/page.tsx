@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { z } from "zod";
@@ -21,6 +22,19 @@ export const metadata: Metadata = {
 };
 
 const won = new Intl.NumberFormat("ko-KR", { style: "currency", currency: "KRW" });
+
+const NAV_LINK = "rounded-md border border-border-default px-4 py-2 text-sm text-text hover:bg-surface-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent";
+
+/** 대시보드에서 업로드·이력·설정으로 나가는 경로입니다. 막다른 화면을 만들지 않습니다. */
+function DashboardNav() {
+  return (
+    <nav aria-label="대시보드" className="flex flex-wrap gap-3">
+      <Link href="/dashboard/upload" className={NAV_LINK}>명세서 올리기</Link>
+      <Link href="/dashboard/uploads" className={NAV_LINK}>업로드 이력</Link>
+      <Link href="/dashboard/settings" className={NAV_LINK}>설정</Link>
+    </nav>
+  );
+}
 
 const profileSchema = z.object({
   plan: z.enum(["free", "pro"]),
@@ -79,6 +93,7 @@ export default async function DashboardPage() {
           <p className="text-sm text-muted">FinSight · 대시보드</p>
           <h1 className="text-2xl font-semibold leading-snug text-text">지출 요약</h1>
         </header>
+        <DashboardNav />
         <EmptyDashboard />
       </main>
     );
@@ -120,6 +135,8 @@ export default async function DashboardPage() {
           청구월 기준{sourceLabels === "" ? "" : ` · ${sourceLabels}`}
         </p>
       </header>
+
+      <DashboardNav />
 
       {/* md(768px)에서 3열로 가면 카드 폭이 원화 금액보다 좁아 숫자가 카드 밖으로 나간다. */}
       <section aria-label="월간 지출 지표" className="grid gap-4 lg:grid-cols-3">
