@@ -189,3 +189,79 @@ describe("초기 마이그레이션 설계 규칙", () => {
     expect(rawSql).not.toMatch(/llm_usage/i);
   });
 });
+
+const rawConfirmSql = readFileSync(
+  new URL("../../supabase/migrations/0003_upload_confirm.sql", import.meta.url),
+  "utf8",
+);
+const confirmSql = rawConfirmSql.replace(/--[^\n]*/g, "").replace(/\s+/g, " ").trim();
+
+describe("업로드 승인 트랜잭션", () => {
+  it("승인을 하나의 함수로 처리하며 세션 UID와 소유권을 검증합니다", () => {
+    expect(confirmSql).toContain("create function public.confirm_upload(");
+    expect(confirmSql).toContain("language plpgsql");
+    // security definer면 RLS를 우회합니다. 승인은 사용자 세션 권한으로만 수행합니다.
+    expect(confirmSql).toContain("security invoker");
+    expect(confirmSql).toContain("set search_path = ''");
+    expect(confirmSql).toContain("v_user uuid := (select auth.uid())");
+    expect(confirmSql).toContain("where id = p_upload_id and user_id = v_user for update");
+  });
+
+  it("같은 출처의 동시 승인을 출처 행 잠금으로 직렬화합니다", () => {
+    expect(confirmSql).toContain(
+      "perform 1 from public.financial_sources where user_id = v_user and id = v_upload.source_id for update",
+    );
+  });
+
+  it("parsed 재승인은 저장된 카운트를 돌려주고 insert하지 않습니다", () => {
+    const guard = confirmSql.match(/if v_upload\.status = 'parsed' then (.*?)end if;/)?.[1];
+    expect(guard).toBeDefined();
+    expect(guard).toContain("v_upload.inserted_count");
+    expect(guard).toContain("v_upload.duplicate_count");
+    expect(guard).toContain("v_upload.unclassified_count");
+    expect(guard).not.toMatch(/insert into/i);
+    expect(confirmSql).toContain("if v_upload.status <> 'mapped' then");
+  });
+
+  it("결정하지 않은 후보가 남아 있으면 review를 돌려주고 insert하지 않습니다", () => {
+    // 후보 재조회는 같은 출처의 다른 업로드만 봅니다. 같은 파일 내 별개 행은 보존합니다.
+    expect(confirmSql).toContain("t.candidate_hash = r.\"candidateHash\" and t.upload_id <> p_upload_id");
+    expect(confirmSql).toContain("where r.\"sourceTransactionKey\" is null");
+    expect(confirmSql).toContain("not (c.ids <@ coalesce(d.\"candidateIds\", '[]'::jsonb))");
+    const review = confirmSql.match(/if v_review is not null then (.*?)end if;/)?.[1];
+    expect(review).toContain("jsonb_build_object('review', v_review)");
+    expect(review).not.toMatch(/insert into/i);
+  });
+
+  it("중복 결정은 소유권·출처·후보를 재검증하고 한 거래의 다중 대응을 거부합니다", () => {
+    expect(confirmSql).toContain("array_length(v_duplicate_ids, 1) <> (select count(distinct id) from unnest(v_duplicate_ids) as id)");
+    expect(confirmSql).toContain("where t.id = d.\"transactionId\" and t.user_id = v_user and t.source_id = v_upload.source_id and t.candidate_hash = r.\"candidateHash\" and t.upload_id <> p_upload_id");
+    expect(confirmSql).toContain("raise exception 'DUPLICATE_DECISION_INVALID'");
+  });
+
+  it("확정 해시 충돌만 자동 중복 처리하고 카운트와 parsed 전이를 함께 기록합니다", () => {
+    expect(confirmSql).toContain("on conflict (user_id, source_id, dedupe_hash) do nothing");
+    expect(confirmSql).toContain("coalesce(d.action, 'keep') <> 'duplicate'");
+    expect(confirmSql).toContain("count(*) filter (where kind in ('expense', 'refund') and category is null)");
+    const update = confirmSql.match(/update public\.uploads set (.*?) where id = p_upload_id/)?.[1];
+    expect(update).toContain("status = 'parsed'");
+    expect(update).toContain("inserted_count = v_inserted");
+    expect(update).toContain("duplicate_count = jsonb_array_length(p_rows) - v_inserted");
+    expect(update).toContain("unclassified_count = v_unclassified");
+  });
+
+  it("거래는 세션 사용자와 업로드의 출처로만 기록합니다", () => {
+    // 클라이언트가 보낸 user_id·source_id를 신뢰하지 않습니다.
+    expect(confirmSql).toContain("select v_user, v_upload.source_id, p_upload_id,");
+  });
+
+  it("함수 실행 권한을 authenticated로 제한합니다", () => {
+    const signature = "public.confirm_upload(uuid, jsonb, jsonb, integer, text, jsonb, jsonb)";
+    expect(confirmSql).toContain(`revoke all on function ${signature} from public, anon;`);
+    expect(confirmSql).toContain(`grant execute on function ${signature} to authenticated;`);
+  });
+
+  it("제거한 사용량 테이블과 lease 개념을 도입하지 않습니다", () => {
+    expect(rawConfirmSql).not.toMatch(/llm_usage|lease/i);
+  });
+});

@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import type { ParsedTransaction, TransactionKind } from "@/types/transaction";
 import type { ColumnMapping, ImportContext } from "@/types/upload";
 import { computeCandidateHash, computeDedupeHash } from "./dedupe";
+import { isSensitiveHeader } from "./mapping-labels";
 import { normalizeMerchant } from "./merchant";
 import { buildSanitizedMappingInput, sanitizeMerchantForLlm } from "./sanitize";
 
@@ -193,8 +194,7 @@ export function buildTransactions(
     if (!Number.isSafeInteger(index) || index < 0 || index >= headers.length) {
       throw new Error("컬럼 매핑이 올바르지 않습니다. 선택한 컬럼 위치를 확인해 주세요.");
     }
-    const name = headers[index]?.normalize("NFKC").toLowerCase().replace(/[\s_()-]/g, "") ?? "";
-    if (["계좌번호", "카드번호", "accountnumber", "accountno", "cardnumber", "cardno", "iban"].some((label) => name.includes(label))) {
+    if (isSensitiveHeader(headers[index] ?? "")) {
       throw new Error("계좌번호·카드번호는 거래 고유번호나 다른 필드로 매핑할 수 없습니다. 컬럼 선택을 확인해 주세요.");
     }
   }
