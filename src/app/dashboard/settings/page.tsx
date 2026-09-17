@@ -9,6 +9,7 @@ import { UpgradeButton } from "@/components/UpgradeButton";
 import { requireUserId } from "@/lib/api";
 import { createServerSupabase } from "@/services/supabase";
 import type { Plan } from "@/types/billing";
+import { signOut } from "./actions";
 
 export const metadata: Metadata = {
   title: "설정 | FinSight",
@@ -23,11 +24,15 @@ const profileSchema = z.object({
 });
 
 export default async function SettingsPage(
-  { searchParams }: { searchParams: Promise<{ checkout?: string | string[] }> },
+  { searchParams }: {
+    searchParams: Promise<{ checkout?: string | string[]; error?: string | string[] }>;
+  },
 ) {
   // 체크아웃 success_url이 `?checkout=success`로 돌려보냅니다. 웹훅이 늦을 수 있어
   // 그동안 CheckoutReturn이 플랜을 잠시 폴링합니다.
-  const returned = (await searchParams).checkout === "success";
+  const params = await searchParams;
+  const returned = params.checkout === "success";
+  const signOutFailed = params.error === "signout";
   const supabase = createServerSupabase(await cookies());
   // 미들웨어가 이미 막지만, 세션이 끊긴 채 렌더되면 빈 화면이 되므로 한 겹 더 둡니다.
   const userId = await requireUserId(supabase);
@@ -90,6 +95,25 @@ export default async function SettingsPage(
             <UpgradeButton />
           </>
         )}
+      </section>
+
+      <section
+        aria-labelledby="account-heading"
+        className="max-w-2xl space-y-3 rounded-md border border-border-default bg-surface p-5"
+      >
+        <h2 id="account-heading" className="text-sm font-medium leading-snug text-text">계정</h2>
+        <p className="text-sm leading-relaxed text-text-body">
+          이 브라우저에서만 로그아웃합니다. 다른 기기의 로그인과 올려 둔 데이터는 그대로 둡니다.
+        </p>
+        {signOutFailed && (
+          <p role="alert" className="text-sm leading-relaxed text-up">
+            로그아웃하지 못했습니다. 세션이 그대로 남아 있으니 다시 시도해 주세요.
+          </p>
+        )}
+        {/* Server Action 폼이라 JS 없이도 동작합니다. 확인 절차는 두지 않습니다 — 되돌리는 비용이 로그인 한 번입니다. */}
+        <form action={signOut}>
+          <button type="submit" className={SECONDARY}>로그아웃</button>
+        </form>
       </section>
 
       <DeleteDataForm />
