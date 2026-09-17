@@ -40,7 +40,7 @@ function csv(name = "8월 명세서.csv"): File {
 }
 
 async function pickFile() {
-  fireEvent.change(screen.getByLabelText("CSV 파일 선택"), { target: { files: [csv()] } });
+  fireEvent.change(screen.getByLabelText("명세서 파일 선택"), { target: { files: [csv()] } });
   await act(async () => {
     fireEvent.click(screen.getByRole("button", { name: "이 파일 올리기" }));
   });
@@ -313,7 +313,7 @@ describe("승인과 중복 확인", () => {
     });
     fireEvent.click(screen.getByRole("button", { name: "다른 파일 올리기" }));
 
-    expect(screen.getByLabelText("CSV 파일 선택")).toBeVisible();
+    expect(screen.getByLabelText("명세서 파일 선택")).toBeVisible();
     const steps = within(screen.getByTestId("upload-steps")).getAllByRole("listitem");
     expect(steps[0]).toHaveAttribute("aria-current", "step");
   });
@@ -324,7 +324,7 @@ describe("승인과 중복 확인", () => {
     await pickFile();
     fireEvent.click(screen.getByRole("button", { name: "뒤로" }));
 
-    expect(screen.getByLabelText("CSV 파일 선택")).toBeVisible();
+    expect(screen.getByLabelText("명세서 파일 선택")).toBeVisible();
   });
 });
 
@@ -341,7 +341,7 @@ describe("이어서 진행", () => {
     const steps = within(screen.getByTestId("upload-steps")).getAllByRole("listitem");
     expect(steps[1]).toHaveAttribute("aria-current", "step");
     expect(screen.getByRole("button", { name: "이대로 진행" })).toBeVisible();
-    expect(screen.queryByLabelText("CSV 파일 선택")).toBeNull();
+    expect(screen.queryByLabelText("명세서 파일 선택")).toBeNull();
   });
 
   it("보관된 인코딩을 그대로 이어받습니다", () => {

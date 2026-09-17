@@ -1,7 +1,8 @@
 import { cookies } from "next/headers";
 import { z } from "zod";
 import { columnMappingSchema, errorResponse, jsonResponse, requireUserId } from "@/lib/api";
-import { buildTransactions, parseCsvRows } from "@/lib/csv";
+import { buildTransactions } from "@/lib/csv";
+import { parseStatementRows } from "@/lib/statement";
 import { decodeCsv } from "@/lib/encoding";
 import { MAX_CSV_ROWS } from "@/lib/limits";
 import { classifyByRule } from "@/lib/merchant-rules";
@@ -118,7 +119,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   let parsed: ParsedTransaction[];
   let rowCount: number;
   try {
-    const rows = parseCsvRows(decodeCsv(new Uint8Array(await stored.data.arrayBuffer()), encoding));
+    const rows = parseStatementRows(decodeCsv(new Uint8Array(await stored.data.arrayBuffer()), encoding));
     rowCount = rows.length;
     if (rowCount > MAX_CSV_ROWS) {
       return errorResponse(413, "TOO_MANY_ROWS", "행이 10,000개를 넘습니다. 기간을 나눠 다시 올려 주세요.");

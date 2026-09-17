@@ -204,20 +204,36 @@ describe("POST /api/uploads 입력 검증", () => {
     expect(inferColumnMapping).not.toHaveBeenCalled();
   });
 
-  it("HTML을 .csv로 올리면 다시 저장하라고 안내하고 보관·모델 호출을 하지 않습니다", async () => {
-    // 카드사 '엑셀 내려받기'는 HTML 표를 .xls로 내려줍니다. 앞에 빈 행이 붙어 `<`로 시작하지
-    // 않으므로 기존 검사를 그냥 통과했습니다. 파서 오류로 뭉뚱그리면 다음 행동을 못 줍니다.
-    enqueue("financial_sources:select", { data: { id: SOURCE_ID, kind: "card" } });
-    const html = ",,\n,,\n,,\n<html><body><table><tr><td>1</td></tr></table></body></html>";
+  it("HTML 표로 된 명세서를 그대로 읽습니다", async () => {
+    // 카드사 '엑셀 내려받기'는 HTML 표를 내려줍니다. 사용자에게 스프레드시트로 열어
+    // CSV로 내보내라고 시키지 않습니다. 앞에 빈 행이 붙어 `<`로 시작하지도 않습니다.
+    happyPath();
+    const html = ",,\n,,\n<html><head><style>td{color:red}</style></head><body><table>"
+      + "<tr><th>이용일</th><th>이용가맹점</th><th>이용금액</th></tr>"
+      + "<tr><td>2026.08.03</td><td>가게, 본점</td><td>38,400</td></tr>"
+      + "</table></body></html>";
 
     const response = await post(await multipart({ sourceId: SOURCE_ID, file: csvFile(html) }));
 
-    expect(response.status).toBe(400);
-    const body = await response.json() as { code: string; message: string };
-    expect(body.code).toBe("HTML_NOT_CSV");
-    expect(body.message).toMatch(/CSV로 다시 저장/);
-    expect(inferColumnMapping).not.toHaveBeenCalled();
-    expect(upload).not.toHaveBeenCalled();
+    expect(response.status).toBe(200);
+    const body = await response.json() as { preview: string[][] };
+    expect(body.preview[0]).toEqual(["이용일", "이용가맹점", "이용금액"]);
+    // 칸 경계가 태그라 쉼표가 든 값이 쪼개지지 않습니다.
+    expect(body.preview[1]).toEqual(["2026.08.03", "가게, 본점", "38,400"]);
+    expect(inferColumnMapping).toHaveBeenCalled();
+  });
+
+  it("카드사가 내려주는 .xls 확장자도 받습니다", async () => {
+    // 내려받은 파일 이름이 .xls입니다. 이름을 바꿔 오라고 시키면 HTML을 읽는 의미가 없습니다.
+    happyPath();
+    const html = "<table><tr><th>이용일</th><th>가맹점</th><th>금액</th></tr>"
+      + "<tr><td>2026.08.03</td><td>쿠팡</td><td>38400</td></tr></table>";
+
+    const response = await post(await multipart({
+      sourceId: SOURCE_ID, file: csvFile(html, "명세서.xls", "application/vnd.ms-excel"),
+    }));
+
+    expect(response.status).toBe(200);
   });
 });
 

@@ -3,7 +3,7 @@ import { redirect } from "next/navigation";
 import { z } from "zod";
 import { UploadFlow } from "@/components/UploadFlow";
 import { columnMappingSchema, kstMonthStart, nextKstMonthStart, requireUserId } from "@/lib/api";
-import { parseCsvRows } from "@/lib/csv";
+import { parseStatementRows } from "@/lib/statement";
 import { decodeCsv } from "@/lib/encoding";
 import { getMonthlyTrend } from "@/lib/queries";
 import { createServerSupabase } from "@/services/supabase";
@@ -59,7 +59,7 @@ async function loadResume(
 
   let preview: string[][];
   try {
-    preview = parseCsvRows(decodeCsv(new Uint8Array(await stored.data.arrayBuffer()), encoding))
+    preview = parseStatementRows(decodeCsv(new Uint8Array(await stored.data.arrayBuffer()), encoding))
       .slice(0, PREVIEW_ROWS);
   } catch {
     return null;

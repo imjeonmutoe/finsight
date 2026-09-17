@@ -8,7 +8,10 @@ import type { FinancialSource } from "@/types/upload";
 const MEGABYTE = 1_000_000;
 const rowFormat = new Intl.NumberFormat("ko-KR");
 const SIZE_ERROR = `파일이 ${MAX_FILE_BYTES / MEGABYTE}MB를 넘습니다. 기간을 나눠 다시 올려 주세요.`;
-const TYPE_ERROR = "CSV 파일만 올릴 수 있습니다. 명세서를 CSV로 내려받아 주세요.";
+// 카드사·은행의 "엑셀 내려받기"는 대개 HTML 표를 .xls로 줍니다. 서버가 그대로 읽으므로
+// 확장자를 바꿔 오라고 시키지 않습니다. 진짜 엑셀(.xlsx)은 읽지 못해 여기서 막습니다.
+const ALLOWED_EXTENSIONS = [".csv", ".xls"];
+const TYPE_ERROR = "CSV 또는 카드사에서 내려받은 엑셀 파일만 올릴 수 있습니다.";
 
 const PRIMARY = "rounded-md bg-text px-4 py-2 text-sm font-medium text-bg hover:opacity-90 disabled:bg-disabled focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent";
 const SECONDARY = "rounded-md border border-border-default px-4 py-2 text-sm text-text hover:bg-surface-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent";
@@ -54,7 +57,7 @@ export function UploadFilePicker({ sources, plan, limitReached, resetsAt, busy, 
   // 클라이언트 검증은 안내일 뿐입니다. 같은 상한을 서버가 실제 bytes로 다시 검사합니다.
   function accept(next: File | undefined) {
     if (!next) return;
-    if (!next.name.toLowerCase().endsWith(".csv")) {
+    if (!ALLOWED_EXTENSIONS.some((extension) => next.name.toLowerCase().endsWith(extension))) {
       setFile(null);
       setLocalError(TYPE_ERROR);
       return;
@@ -149,7 +152,7 @@ export function UploadFilePicker({ sources, plan, limitReached, resetsAt, busy, 
           className={`space-y-3 rounded-md border border-dashed p-8 text-center ${
             dragging ? "border-accent bg-surface-2" : "border-border-default bg-bg"}`}
         >
-          <p className="text-sm text-text">CSV 파일을 여기에 놓기</p>
+          <p className="text-sm text-text">명세서 파일을 여기에 놓기</p>
           <p data-testid="upload-limits" className="text-sm leading-relaxed text-muted">
             <span className="font-mono tabular-nums">파일당 {MAX_FILE_BYTES / MEGABYTE}MB</span>
             {" · "}
@@ -158,8 +161,8 @@ export function UploadFilePicker({ sources, plan, limitReached, resetsAt, busy, 
           <p className="text-sm leading-relaxed text-muted">EUC-KR · UTF-8 인코딩을 자동으로 감지합니다.</p>
           <label htmlFor="upload-file" className={`inline-block cursor-pointer ${SECONDARY}`}>파일 선택</label>
           <input
-            ref={inputRef} id="upload-file" type="file" accept=".csv,text/csv"
-            aria-label="CSV 파일 선택" disabled={limitReached} className="sr-only"
+            ref={inputRef} id="upload-file" type="file" accept=".csv,.xls,text/csv,application/vnd.ms-excel"
+            aria-label="명세서 파일 선택" disabled={limitReached} className="sr-only"
             onChange={(event) => accept(event.target.files?.[0])}
           />
           {file && <p className="text-sm text-text">{file.name}</p>}
@@ -197,7 +200,7 @@ export function UploadFilePicker({ sources, plan, limitReached, resetsAt, busy, 
       </section>
 
       <details className="rounded-md border border-border-default bg-surface p-5">
-        <summary className="cursor-pointer text-sm text-text">카드사·은행에서 CSV 내려받는 곳</summary>
+        <summary className="cursor-pointer text-sm text-text">카드사·은행에서 명세서 내려받는 곳</summary>
         <ul className="mt-3 space-y-3">
           {GUIDES.map((guide) => (
             <li key={guide} className="text-sm leading-relaxed text-text-body">{guide}</li>

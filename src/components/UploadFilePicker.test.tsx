@@ -42,7 +42,7 @@ describe("업로드 1단계 — 파일 선택", () => {
     setup();
     const select = screen.getByLabelText("카드 · 계좌 별칭");
     fireEvent.change(select, { target: { value: "source-2" } });
-    fireEvent.change(screen.getByLabelText("CSV 파일 선택"), { target: { files: [csv()] } });
+    fireEvent.change(screen.getByLabelText("명세서 파일 선택"), { target: { files: [csv()] } });
 
     expect(screen.getByText("8월 명세서.csv")).toBeVisible();
     fireEvent.click(screen.getByRole("button", { name: "이 파일 올리기" }));
@@ -61,12 +61,25 @@ describe("업로드 1단계 — 파일 선택", () => {
     expect(screen.getByText("9월.csv")).toBeVisible();
   });
 
-  it("CSV가 아니거나 4MB를 넘는 파일은 올리기 전에 막습니다", () => {
+  it("카드사가 내려주는 .xls 파일도 받습니다", () => {
+    // "엑셀 내려받기"가 주는 것은 대개 HTML 표이고 서버가 직접 읽습니다. 사용자에게
+    // 확장자를 바꿔 오라고 시키면 그 기능이 의미가 없어집니다.
     setup();
-    const input = screen.getByLabelText("CSV 파일 선택");
+
+    fireEvent.change(screen.getByLabelText("명세서 파일 선택"), {
+      target: { files: [new File(["<table></table>"], "명세서.xls", { type: "application/vnd.ms-excel" })] },
+    });
+
+    expect(screen.getByText("명세서.xls")).toBeVisible();
+    expect(screen.getByRole("button", { name: "이 파일 올리기" })).toBeVisible();
+  });
+
+  it("읽지 못하는 형식이거나 4MB를 넘는 파일은 올리기 전에 막습니다", () => {
+    setup();
+    const input = screen.getByLabelText("명세서 파일 선택");
 
     fireEvent.change(input, { target: { files: [new File(["x"], "명세서.xlsx", { type: "text/csv" })] } });
-    expect(screen.getByText(/CSV 파일만 올릴 수 있습니다/)).toBeVisible();
+    expect(screen.getByText(/CSV 또는 카드사에서 내려받은 엑셀 파일만 올릴 수 있습니다/)).toBeVisible();
 
     const big = new File(["x"], "명세서.csv", { type: "text/csv" });
     Object.defineProperty(big, "size", { value: MAX_FILE_BYTES + 1 });
@@ -81,7 +94,7 @@ describe("업로드 1단계 — 파일 선택", () => {
     // 안내 문단 뒤에 두면 접힘선 밖으로 밀립니다. 실제로 뷰포트 786px에서 버튼 top이
     // 881px이라 파일을 고른 사용자에게는 "아무 반응이 없는" 화면이 됐습니다.
     setup();
-    fireEvent.change(screen.getByLabelText("CSV 파일 선택"), { target: { files: [csv()] } });
+    fireEvent.change(screen.getByLabelText("명세서 파일 선택"), { target: { files: [csv()] } });
 
     const dropzone = screen.getByTestId("upload-dropzone");
     const button = screen.getByRole("button", { name: "이 파일 올리기" });
@@ -97,7 +110,7 @@ describe("업로드 1단계 — 파일 선택", () => {
     const scrollIntoView = vi.spyOn(Element.prototype, "scrollIntoView");
     setup();
 
-    fireEvent.change(screen.getByLabelText("CSV 파일 선택"), { target: { files: [csv()] } });
+    fireEvent.change(screen.getByLabelText("명세서 파일 선택"), { target: { files: [csv()] } });
 
     expect(scrollIntoView).toHaveBeenCalled();
   });
@@ -126,7 +139,7 @@ describe("업로드 1단계 — 파일 선택", () => {
     // 한도 안내는 muted입니다. 에러색(up)은 실패와 이상거래에만 씁니다.
     expect(notice.className).toContain("text-muted");
     expect(notice.className).not.toContain("text-up");
-    expect(screen.getByLabelText("CSV 파일 선택")).toBeDisabled();
+    expect(screen.getByLabelText("명세서 파일 선택")).toBeDisabled();
   });
 
   it("Pro에게는 원본 보관을 알립니다", () => {
@@ -138,7 +151,7 @@ describe("업로드 1단계 — 파일 선택", () => {
 
   it("카드사별 내려받기 안내는 접힌 상태로 둡니다", () => {
     setup();
-    const guide = screen.getByText("카드사·은행에서 CSV 내려받는 곳").closest("details");
+    const guide = screen.getByText("카드사·은행에서 명세서 내려받는 곳").closest("details");
 
     expect(guide).not.toHaveAttribute("open");
   });
@@ -173,14 +186,14 @@ describe("업로드 1단계 — 파일 선택", () => {
 
   it("업로드 중에는 버튼을 잠그고 무엇을 하는 중인지 알립니다", () => {
     setup({ busy: true });
-    fireEvent.change(screen.getByLabelText("CSV 파일 선택"), { target: { files: [csv()] } });
+    fireEvent.change(screen.getByLabelText("명세서 파일 선택"), { target: { files: [csv()] } });
 
     expect(screen.getByRole("button", { name: "올리는 중입니다" })).toBeDisabled();
   });
 
   it("가맹점명을 HTML로 실행하지 않고 텍스트로 표시합니다", () => {
     const { container } = setup();
-    fireEvent.change(screen.getByLabelText("CSV 파일 선택"), {
+    fireEvent.change(screen.getByLabelText("명세서 파일 선택"), {
       target: { files: [csv('<img src=x onerror="alert(1)">.csv')] },
     });
 
