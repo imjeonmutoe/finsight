@@ -641,3 +641,127 @@ class TestCheckBlockers:
         with pytest.raises(SystemExit) as exc_info:
             inst._check_blockers()
         assert exc_info.value.code == 2
+
+
+# ---------------------------------------------------------------------------
+# 에이전트 타임아웃 (회귀 방지)
+# ---------------------------------------------------------------------------
+
+class TestAgentTimeout:
+    """timeout=1800을 넘기면 subprocess.run이 TimeoutExpired를 던진다.
+
+    이걸 잡지 않으면 예외가 run()까지 올라가 하네스가 트레이스백으로 죽는다.
+    step 상태도 커밋도 남지 않아 사람이 매번 수동 재실행해야 한다.
+    """
+
+    def _timeout(self):
+        return subprocess.TimeoutExpired(cmd=["claude"], timeout=ex.AGENT_TIMEOUT)
+
+    def test_does_not_propagate(self, executor):
+        step = {"step": 2, "name": "ui"}
+
+        with patch("subprocess.run", side_effect=self._timeout()):
+            output = executor._invoke_agent(step, "preamble")
+
+        assert output["timedOut"] is True
+
+    def test_output_json_records_timeout(self, executor):
+        step = {"step": 2, "name": "ui"}
+
+        with patch("subprocess.run", side_effect=self._timeout()):
+            executor._invoke_agent(step, "preamble")
+
+        data = json.loads((executor._phase_dir / "step2-output.json").read_text())
+        assert data["timedOut"] is True
+        assert data["step"] == 2
+
+    def test_normal_run_is_not_marked_timed_out(self, executor):
+        mock_result = MagicMock(returncode=0, stdout="{}", stderr="")
+        step = {"step": 2, "name": "ui"}
+
+        with patch("subprocess.run", return_value=mock_result):
+            output = executor._invoke_agent(step, "preamble")
+
+        assert output["timedOut"] is False
+
+    def test_partial_bytes_output_is_not_serialized(self, executor):
+        """text=True라도 TimeoutExpired.stdout이 bytes로 올 수 있다.
+
+        그대로 json.dump하면 TypeError로 죽어 타임아웃 처리 자체가 무의미해진다.
+        """
+        exc = subprocess.TimeoutExpired(cmd=["claude"], timeout=ex.AGENT_TIMEOUT)
+        exc.stdout = b"\xff\xfe partial"
+        step = {"step": 2, "name": "ui"}
+
+        with patch("subprocess.run", side_effect=exc):
+            executor._invoke_agent(step, "preamble")
+
+        data = json.loads((executor._phase_dir / "step2-output.json").read_text())
+        assert isinstance(data["stdout"], str)
+
+    def test_retries_instead_of_crashing(self, executor, capsys):
+        """타임아웃은 '실패한 시도'로 처리돼 재시도 루프를 타야 한다."""
+        with patch("subprocess.run", side_effect=self._timeout()), \
+             patch.object(executor, "_commit_step"), \
+             pytest.raises(SystemExit) as exc_info:
+            executor._execute_single_step({"step": 2, "name": "ui"}, "GUARD")
+
+        assert exc_info.value.code == 1
+        out = capsys.readouterr().out
+        # MAX_RETRIES=3 → 재시도 안내가 2번 찍히고 마지막에 실패로 끝난다
+        assert out.count("↻ Step 2") == ex.StepExecutor.MAX_RETRIES - 1
+        assert "failed after" in out
+
+    def test_retry_message_names_the_timeout(self, executor, capsys):
+        """재시도 프롬프트에 'Step did not update status'만 가면 원인을 알 수 없다."""
+        with patch("subprocess.run", side_effect=self._timeout()), \
+             patch.object(executor, "_commit_step"), \
+             pytest.raises(SystemExit):
+            executor._execute_single_step({"step": 2, "name": "ui"}, "GUARD")
+
+        out = capsys.readouterr().out
+        assert str(ex.AGENT_TIMEOUT) in out
+
+    def test_timeout_constant_is_passed_to_subprocess(self, executor):
+        mock_result = MagicMock(returncode=0, stdout="{}", stderr="")
+
+        with patch("subprocess.run", return_value=mock_result) as mock_run:
+            executor._invoke_agent({"step": 2, "name": "ui"}, "preamble")
+
+        assert mock_run.call_args[1]["timeout"] == ex.AGENT_TIMEOUT
+
+
+# ---------------------------------------------------------------------------
+# 완료 줄의 경과 시간 (회귀 방지)
+# ---------------------------------------------------------------------------
+
+class TestElapsedReporting:
+    """progress_indicator는 finally에서 elapsed를 채운다.
+
+    with 블록 **안에서** 읽으면 초기값 0.0이라 모든 step이 [0s]로 찍힌다.
+    """
+
+    def _complete_step2(self, executor):
+        index = json.loads(executor._index_file.read_text())
+        for s in index["steps"]:
+            if s["step"] == 2:
+                s["status"] = "completed"
+        executor._index_file.write_text(json.dumps(index, ensure_ascii=False))
+
+    def test_completed_step_reports_real_elapsed(self, executor, capsys):
+        import re
+        import time
+
+        def fake_invoke(step, preamble):
+            time.sleep(1.1)
+            self._complete_step2(executor)
+            return {"step": 2, "name": "ui", "timedOut": False}
+
+        with patch.object(executor, "_invoke_agent", side_effect=fake_invoke), \
+             patch.object(executor, "_commit_step"):
+            assert executor._execute_single_step({"step": 2, "name": "ui"}, "GUARD") is True
+
+        out = capsys.readouterr().out
+        match = re.search(r"✓ Step 2: ui \[(\d+)s\]", out)
+        assert match is not None, out
+        assert int(match.group(1)) >= 1, out
