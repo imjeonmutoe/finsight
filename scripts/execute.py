@@ -23,6 +23,9 @@ ROOT = Path(__file__).resolve().parent.parent
 
 DEFAULT_AGENT = "codex"
 
+# 에이전트 한 번 호출의 제한 시간(초).
+AGENT_TIMEOUT = 1800
+
 # 가드레일 파일 우선순위. 앞에서 찾은 것 하나만 쓴다.
 # 두 파일은 같은 규칙을 담으므로 둘 다 넣으면 프롬프트가 두 배가 된다.
 RULES_FILES = ("AGENTS.md", "CLAUDE.md")
@@ -271,22 +274,38 @@ class StepExecutor:
         prompt = preamble + step_file.read_text()
         # stdin=DEVNULL: codex exec는 stdin이 TTY가 아니면 EOF까지 읽으려 대기한다.
         # 상속하면 "Reading additional input from stdin..."에서 영구히 멈춘다.
-        result = subprocess.run(
-            build_agent_command(self._agent, prompt),
-            cwd=self._root, capture_output=True, text=True, timeout=1800,
-            stdin=subprocess.DEVNULL,
-        )
-
-        if result.returncode != 0:
-            print(f"\n  WARN: {self._agent}가 비정상 종료됨 (code {result.returncode})")
-            if result.stderr:
-                print(f"  stderr: {result.stderr[:500]}")
+        timed_out = False
+        try:
+            result = subprocess.run(
+                build_agent_command(self._agent, prompt),
+                cwd=self._root, capture_output=True, text=True, timeout=AGENT_TIMEOUT,
+                stdin=subprocess.DEVNULL,
+            )
+        except subprocess.TimeoutExpired as e:
+            # 타임아웃을 그대로 올려보내면 하네스가 트레이스백으로 죽어 step 상태도
+            # 커밋도 남지 않는다. 실패한 시도로 처리해 재시도 루프에 맡긴다.
+            # 에이전트가 만든 파일은 작업트리에 그대로 있으므로 다음 시도가 이어받는다.
+            timed_out = True
+            # POSIX의 subprocess.run은 타임아웃 시 exc.stdout을 채우지 않아 보통 None이고,
+            # 플랫폼에 따라 bytes로 올 수도 있다. 그대로 두면 json.dump가 죽는다.
+            result = subprocess.CompletedProcess(
+                e.cmd, -1,
+                stdout=e.stdout if isinstance(e.stdout, str) else "",
+                stderr=e.stderr if isinstance(e.stderr, str) else "",
+            )
+            print(f"\n  WARN: {self._agent}가 {AGENT_TIMEOUT}초 안에 끝나지 않아 중단됨")
+        else:
+            if result.returncode != 0:
+                print(f"\n  WARN: {self._agent}가 비정상 종료됨 (code {result.returncode})")
+                if result.stderr:
+                    print(f"  stderr: {result.stderr[:500]}")
 
         output = {
             "step": step_num, "name": step_name,
             "agent": self._agent,
             "exitCode": result.returncode,
             "stdout": result.stdout, "stderr": result.stderr,
+            "timedOut": timed_out,
         }
         out_path = self._phase_dir / f"step{step_num}-output.json"
         with open(out_path, "w") as f:
@@ -344,8 +363,10 @@ class StepExecutor:
                 tag += f" [retry {attempt}/{self.MAX_RETRIES}]"
 
             with progress_indicator(tag) as pi:
-                self._invoke_agent(step, preamble)
-                elapsed = int(pi.elapsed)
+                agent_output = self._invoke_agent(step, preamble)
+            # elapsed는 progress_indicator의 finally에서 채워진다. with 블록 안에서
+            # 읽으면 초기값 0이라 모든 step이 [0s]로 찍힌다.
+            elapsed = int(pi.elapsed)
 
             index = self._read_json(self._index_file)
             status = next((s.get("status", "pending") for s in index["steps"] if s["step"] == step_num), "pending")
@@ -375,6 +396,11 @@ class StepExecutor:
                 (s.get("error_message", "Step did not update status") for s in index["steps"] if s["step"] == step_num),
                 "Step did not update status",
             )
+            if agent_output.get("timedOut"):
+                err_msg = (
+                    f"이전 시도가 {AGENT_TIMEOUT}초 제한에 걸려 중단됐다. "
+                    "작업트리에 남은 산출물을 먼저 확인하고 남은 부분부터 이어서 진행하라."
+                )
 
             if attempt < self.MAX_RETRIES:
                 for s in index["steps"]:
@@ -449,6 +475,14 @@ def main():
     parser.add_argument("--agent", choices=("codex", "claude"), default=DEFAULT_AGENT,
                         help=f"Coding agent CLI to drive each step (default: {DEFAULT_AGENT})")
     args = parser.parse_args()
+
+    # 진행 로그는 stdout, 스피너는 stderr다. stdout이 TTY가 아니면(파일·파이프로
+    # 받는 경우) 블록 버퍼링돼 실행 중에는 아무것도 보이지 않고, 하드 킬되면
+    # 버퍼째 사라진다.
+    try:
+        sys.stdout.reconfigure(line_buffering=True)
+    except AttributeError:
+        pass
 
     StepExecutor(args.phase_dir, auto_push=args.push, agent=args.agent).run()
 
