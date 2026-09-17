@@ -476,6 +476,14 @@ def main():
                         help=f"Coding agent CLI to drive each step (default: {DEFAULT_AGENT})")
     args = parser.parse_args()
 
+    # 진행 로그는 stdout, 스피너는 stderr다. stdout이 TTY가 아니면(파일·파이프로
+    # 받는 경우) 블록 버퍼링돼 실행 중에는 아무것도 보이지 않고, 하드 킬되면
+    # 버퍼째 사라진다.
+    try:
+        sys.stdout.reconfigure(line_buffering=True)
+    except AttributeError:
+        pass
+
     StepExecutor(args.phase_dir, auto_push=args.push, agent=args.agent).run()
 
 

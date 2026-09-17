@@ -765,3 +765,32 @@ class TestElapsedReporting:
         match = re.search(r"✓ Step 2: ui \[(\d+)s\]", out)
         assert match is not None, out
         assert int(match.group(1)) >= 1, out
+
+
+# ---------------------------------------------------------------------------
+# 진행 로그 버퍼링 (회귀 방지)
+# ---------------------------------------------------------------------------
+
+class TestStdoutLineBuffering:
+    """stdout이 TTY가 아니면 파이썬은 블록 버퍼링한다.
+
+    스피너는 stderr로 나가지만 진행 로그(`✓ Step N`, `Commit:`)는 stdout이라,
+    버퍼링되면 실행 중에는 아무것도 안 보이고 SIGKILL 시 통째로 사라진다.
+    """
+
+    def test_main_enables_line_buffering(self):
+        stdout = MagicMock()
+        with patch("sys.argv", ["execute.py", "0-mvp"]), \
+             patch.object(ex, "StepExecutor"), \
+             patch("sys.stdout", stdout):
+            ex.main()
+
+        stdout.reconfigure.assert_called_once_with(line_buffering=True)
+
+    def test_main_tolerates_stdout_without_reconfigure(self):
+        """pytest capture 등 reconfigure가 없는 stdout으로 바꿔치기돼도 죽지 않는다."""
+        stdout = MagicMock(spec=[])
+        with patch("sys.argv", ["execute.py", "0-mvp"]), \
+             patch.object(ex, "StepExecutor"), \
+             patch("sys.stdout", stdout):
+            ex.main()  # AttributeError로 죽으면 실패
