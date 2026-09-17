@@ -6,6 +6,18 @@ import { isSensitiveHeader } from "./mapping-labels";
 import { normalizeMerchant } from "./merchant";
 import { buildSanitizedMappingInput, sanitizeMerchantForLlm } from "./sanitize";
 
+// 카드사·은행의 "엑셀 내려받기"는 대부분 HTML 표를 `.xls` 확장자로 내려줍니다. 사용자가
+// 확장자만 `.csv`로 바꿔 올리는 경로가 흔합니다. 문서 앞에 빈 행(`,,`)이 먼저 나오는 경우가
+// 있어 "`<`로 시작하는가"만으로는 못 잡고, 줄마다 쉼표가 있으면 표처럼 보이는 쓰레기로
+// 파싱까지 성공합니다. 그래서 문서 전체에서 태그 이름을 찾습니다.
+// 여는 꺾쇠만으로 판정하지 않는 이유: 가맹점명에 `㈜가게 <본점>` 같은 값이 들어올 수 있습니다.
+const HTML_MARKER = /<\s*\/?\s*(!doctype|html|head|body|table|thead|tbody|tr|td|th)\b/i;
+
+/** 내용이 CSV가 아니라 HTML 문서·표인지 봅니다. 업로드 라우트가 안내 문구를 고르는 데 씁니다. */
+export function looksLikeHtml(text: string): boolean {
+  return HTML_MARKER.test(text);
+}
+
 export function parseCsvRows(text: string): string[][] {
   const input = text.replace(/^\ufeff/, "");
   if (!input.trim()) return [];
@@ -19,7 +31,8 @@ export function parseCsvRows(text: string): string[][] {
       // 대괄호로 시작하는 요약문도 CSV에 포함될 수 있습니다.
     }
   }
-  if (json || input.trimStart().startsWith("<") || /[\u0000-\u0008\u000b\u000c\u000e-\u001f]/.test(input)) {
+  if (json || input.trimStart().startsWith("<") || looksLikeHtml(input)
+    || /[\u0000-\u0008\u000b\u000c\u000e-\u001f]/.test(input)) {
     throw invalid();
   }
 

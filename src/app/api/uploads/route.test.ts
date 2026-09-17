@@ -203,6 +203,22 @@ describe("POST /api/uploads 입력 검증", () => {
     expect(response.status).toBe(400);
     expect(inferColumnMapping).not.toHaveBeenCalled();
   });
+
+  it("HTML을 .csv로 올리면 다시 저장하라고 안내하고 보관·모델 호출을 하지 않습니다", async () => {
+    // 카드사 '엑셀 내려받기'는 HTML 표를 .xls로 내려줍니다. 앞에 빈 행이 붙어 `<`로 시작하지
+    // 않으므로 기존 검사를 그냥 통과했습니다. 파서 오류로 뭉뚱그리면 다음 행동을 못 줍니다.
+    enqueue("financial_sources:select", { data: { id: SOURCE_ID, kind: "card" } });
+    const html = ",,\n,,\n,,\n<html><body><table><tr><td>1</td></tr></table></body></html>";
+
+    const response = await post(await multipart({ sourceId: SOURCE_ID, file: csvFile(html) }));
+
+    expect(response.status).toBe(400);
+    const body = await response.json() as { code: string; message: string };
+    expect(body.code).toBe("HTML_NOT_CSV");
+    expect(body.message).toMatch(/CSV로 다시 저장/);
+    expect(inferColumnMapping).not.toHaveBeenCalled();
+    expect(upload).not.toHaveBeenCalled();
+  });
 });
 
 describe("POST /api/uploads 저장과 매핑", () => {

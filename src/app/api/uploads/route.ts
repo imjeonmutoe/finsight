@@ -3,7 +3,7 @@ import { z } from "zod";
 import {
   columnMappingSchema, errorResponse, jsonResponse, kstMonthStart, nextKstMonthStart, readLimitedBody, requireUserId,
 } from "@/lib/api";
-import { detectHeaderRow, parseCsvRows } from "@/lib/csv";
+import { detectHeaderRow, looksLikeHtml, parseCsvRows } from "@/lib/csv";
 import { computeFileHash } from "@/lib/dedupe";
 import { decodeCsv, detectEncoding } from "@/lib/encoding";
 import { MAX_CSV_ROWS, MAX_FILE_BYTES, MAX_MULTIPART_BODY_BYTES } from "@/lib/limits";
@@ -100,7 +100,14 @@ export async function POST(request: Request) {
   let rows: string[][];
   let headerRowIndex: number;
   try {
-    rows = parseCsvRows(decodeCsv(fileBytes, encoding));
+    const text = decodeCsv(fileBytes, encoding);
+    // 카드사·은행의 "엑셀 내려받기"는 HTML 표를 .xls로 내려줍니다. 확장자만 .csv로 바꿔
+    // 올리는 경로가 흔해서, 파서 오류로 뭉뚱그리지 않고 다음 행동을 알려 줍니다.
+    if (looksLikeHtml(text)) {
+      return errorResponse(400, "HTML_NOT_CSV",
+        "엑셀 파일(HTML)로 보입니다. 엑셀이나 Numbers에서 열어 CSV로 다시 저장한 뒤 올려 주세요.");
+    }
+    rows = parseCsvRows(text);
     headerRowIndex = detectHeaderRow(rows);
   } catch {
     // 파서 오류 메시지에는 셀 값이 없지만 사용자에게는 고정 문구로 안내합니다.
