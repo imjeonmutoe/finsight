@@ -13,7 +13,10 @@
     {
       "step": 11,
       "name": "billing",
-      "status": "pending"
+      "status": "completed",
+      "started_at": "2026-09-17T11:04:00+0900",
+      "summary": "Polar 샌드박스 결제를 붙였다. `src/services/polar.ts`가 SDK 없이 fetch로 `sandbox-api.polar.sh`를 호출한다 — 체크아웃 생성 시 `x-forwarded-for` 첫 항목을 `customer_ip_address`로 넘겨(없으면 USD 가격이 뜬다) `external_customer_id`·`metadata.user_id`에 사용자 ID를 심고, 고객 포털은 `/v1/customer-sessions/`로 누를 때마다 새로 만든다. 서명 검증은 Standard Webhooks 규격(`webhook-id`·`webhook-timestamp`·`webhook-signature`)을 직접 구현했고 `crypto.timingSafeEqual`로 비교하며 길이 불일치·v1 아닌 버전·±300초 밖 타임스탬프를 모두 거절한다. `POST /api/billing/webhook`은 service role로 `UPDATE profiles` 하나만 하고 이벤트 테이블을 두지 않는다 — 멱등과 순서 역전을 `.eq('id', userId).lt('plan_updated_at', eventAt)` 한 조건으로 함께 막는다(이벤트 시각은 재시도마다 바뀌는 전달 시각이 아니라 `modified_at ?? created_at`). 실제 종료인 `subscription.revoked`에서만 Free로 내리고, 해지 '예약'인 `subscription.canceled`는 상태가 active이므로 Pro를 유지한 채 `ends_at`만 `plan_expires_at`에 기록한다. 강등은 `profiles`만 건드리고 거래를 지우지 않는다. `POST /api/billing/checkout`(이미 Pro면 409)과 `GET /api/billing/portal`(302, no-store)을 추가하고, step 9의 `/dashboard/settings`에 `UpgradeButton`(Free)·고객 포털 링크(Pro)와 복귀 폴링 `CheckoutReturn`(1.5초 간격, 10초 상한, `router.refresh()`만 돌리고 플랜은 서버가 읽음)을 덧붙였다. 대시보드 잠금 카드는 설정으로 가는 텍스트 링크를 얻었다. 미들웨어 matcher의 웹훅 제외는 step 3에 이미 있고 테스트로 고정돼 있다. 다음 결제일은 저장하지 않고 고객 포털로 안내한다 — `plan_expires_at`은 만료 의미로만 쓴다.",
+      "completed_at": "2026-09-17T11:25:00+0900"
     },
     {
       "step": 12,

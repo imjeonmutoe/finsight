@@ -62,9 +62,16 @@ function LockedSection({ title, body, note }: { title: string; body: string; not
       <p className="text-sm leading-relaxed text-muted">
         여러 달치 데이터가 쌓여야 의미가 생기는 기능입니다. Free에서도 업로드는 계속 쌓입니다.
       </p>
-      {/* 결제 경로(Polar 체크아웃)는 step 11이 연결한다. 없는 경로로 버튼을 걸지 않는다. */}
+      {/* 결제 버튼은 설정 화면에 하나만 둔다. 화면당 primary 버튼은 하나이고, 이 카드는
+          대시보드에 두 번 나온다 — 여기서는 텍스트 링크로 보낸다. */}
       <p className="text-sm leading-relaxed text-muted">
-        월 <span className="font-mono whitespace-nowrap tabular-nums">₩9,900</span> · 언제든 해지
+        월 <span className="font-mono whitespace-nowrap tabular-nums">₩9,900</span> · 언제든 해지 ·{" "}
+        <Link
+          href="/dashboard/settings"
+          className="text-accent underline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+        >
+          설정에서 Pro 시작하기
+        </Link>
       </p>
     </div>
   );

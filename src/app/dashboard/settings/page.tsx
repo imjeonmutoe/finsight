@@ -3,7 +3,9 @@ import Link from "next/link";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { z } from "zod";
+import { CheckoutReturn } from "@/components/CheckoutReturn";
 import { DeleteDataForm } from "@/components/DeleteDataForm";
+import { UpgradeButton } from "@/components/UpgradeButton";
 import { requireUserId } from "@/lib/api";
 import { createServerSupabase } from "@/services/supabase";
 import type { Plan } from "@/types/billing";
@@ -20,7 +22,12 @@ const profileSchema = z.object({
   plan_expires_at: z.string().nullable().default(null),
 });
 
-export default async function SettingsPage() {
+export default async function SettingsPage(
+  { searchParams }: { searchParams: Promise<{ checkout?: string | string[] }> },
+) {
+  // 체크아웃 success_url이 `?checkout=success`로 돌려보냅니다. 웹훅이 늦을 수 있어
+  // 그동안 CheckoutReturn이 플랜을 잠시 폴링합니다.
+  const returned = (await searchParams).checkout === "success";
   const supabase = createServerSupabase(await cookies());
   // 미들웨어가 이미 막지만, 세션이 끊긴 채 렌더되면 빈 화면이 되므로 한 겹 더 둡니다.
   const userId = await requireUserId(supabase);
@@ -41,7 +48,8 @@ export default async function SettingsPage() {
         <h1 className="text-2xl font-semibold leading-snug text-text">설정</h1>
       </header>
 
-      {/* 업그레이드·해지 버튼은 step 11이 이 자리에 붙입니다. 여기서는 상태만 보여줍니다. */}
+      {returned && <CheckoutReturn plan={plan} />}
+
       <section
         aria-labelledby="plan-heading"
         className="max-w-2xl space-y-3 rounded-md border border-border-default bg-surface p-5"
@@ -53,10 +61,34 @@ export default async function SettingsPage() {
             ? "기간별 추이 · 구독 누수 · 이상거래 · AI 월간 요약을 모두 쓰고 있습니다."
             : "업로드는 KST 캘린더 월 기준 1회입니다. 자동 분류와 해당 월 요약, AI 월간 요약은 Free에서도 제공합니다."}
         </p>
-        {plan === "pro" && expiresAt !== null && (
-          <p className="font-mono text-sm tabular-nums text-muted">
-            {expiresAt.slice(0, 10).replaceAll("-", ".")}까지 이용할 수 있습니다.
-          </p>
+
+        {plan === "pro" ? (
+          <>
+            <p className="text-sm leading-relaxed text-muted">
+              {expiresAt === null ? (
+                // 다음 결제일은 저장하지 않습니다. 갱신·해지가 일어나는 곳에서 읽는 값이
+                // 우리 DB의 사본보다 항상 정확합니다.
+                "매월 자동으로 갱신됩니다. 다음 결제일과 영수증은 고객 포털에서 확인합니다."
+              ) : (
+                <>
+                  해지가 예약돼 있습니다.{" "}
+                  <span className="font-mono whitespace-nowrap tabular-nums">
+                    {expiresAt.slice(0, 10).replaceAll("-", ".")}
+                  </span>
+                  까지 이용할 수 있습니다.
+                </>
+              )}
+            </p>
+            {/* 결제 수단 변경·영수증·해지는 Polar이 담당합니다. 같은 화면을 두 벌 만들지 않습니다. */}
+            <a href="/api/billing/portal" className={`inline-block ${SECONDARY}`}>Polar 고객 포털 열기</a>
+          </>
+        ) : (
+          <>
+            <p className="text-sm leading-relaxed text-muted">
+              여러 달치 데이터가 쌓여야 의미가 생기는 기능입니다. Free에서도 업로드는 계속 쌓입니다.
+            </p>
+            <UpgradeButton />
+          </>
         )}
       </section>
 
