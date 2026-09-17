@@ -2,7 +2,7 @@ import type { ColumnMapping, UploadStatus } from './upload'
 
 export type MappingResponse  = {
   uploadId: string; sourceId: string; status: UploadStatus; reused: boolean
-  mapping: ColumnMapping | null; confidence: number; preview: string[][]
+  mapping: ColumnMapping | null; confidence: number; preview: string[][]; totalRows: number
 }
 export type DuplicateDecision = {
   dataRowIndex: number; action: 'keep' | 'duplicate'; transactionId?: string

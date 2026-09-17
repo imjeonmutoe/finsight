@@ -17,7 +17,7 @@ function setup(overrides: Partial<Parameters<typeof MappingReview>[0]> = {}) {
   return render(
     <MappingReview
       mapping={MAPPING} confidence={0.94} preview={PREVIEW} encoding="euc-kr" filename="8월 명세서.csv"
-      sourceKind="card" reused={false} accountingMonth="2026-08" duplicateCandidates={[]}
+      sourceKind="card" reused={false} accountingMonth="2026-08" duplicateCandidates={[]} totalRows={3}
       busy={false} error={null} onConfirm={onConfirm} onBack={onBack}
       {...overrides}
     />,
@@ -48,6 +48,13 @@ describe("업로드 2단계 — 매핑 확인", () => {
 
     expect(screen.getByText("컬럼 매핑 직접 고치기").closest("details")).toHaveAttribute("open");
     expect(screen.getByText(/컬럼 의미를 확신하지 못했습니다. 아래 매핑을 확인해 주세요./)).toBeVisible();
+  });
+
+  it("미리보기가 잘린 것임을 총 행 수로 알립니다", () => {
+    // 미리보기 5행 중 셋이 제목·헤더면 데이터가 두 줄만 보입니다. 나머지가 안 들어간 걸로 읽힙니다.
+    setup({ totalRows: 155 });
+
+    expect(screen.getByText("총 155행 중 처음 3행")).toBeVisible();
   });
 
   it("감지한 인코딩·파일명·청구월을 먼저 보여줍니다", () => {

@@ -54,12 +54,13 @@ function toMapping(labels: MappingLabel[], skipRows: number): ColumnMapping | nu
 }
 
 export function MappingReview({
-  mapping, confidence, preview, encoding, filename, sourceKind, reused,
+  mapping, confidence, preview, totalRows, encoding, filename, sourceKind, reused,
   accountingMonth, duplicateCandidates, busy, error, onConfirm, onBack,
 }: {
   mapping: ColumnMapping | null;
   confidence: number;
   preview: string[][];
+  totalRows: number;
   encoding: "utf-8" | "euc-kr";
   filename: string;
   sourceKind: "card" | "bank";
@@ -139,7 +140,11 @@ export function MappingReview({
       </section>
 
       <section className="space-y-3 rounded-md border border-border-default bg-surface p-5">
-        <h2 className="text-sm font-medium text-muted">원본 미리보기</h2>
+        <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+          <h2 className="text-sm font-medium text-muted">원본 미리보기</h2>
+          {/* 제목·헤더 행이 미리보기를 거의 채우면 나머지가 안 들어간 것으로 읽힙니다. */}
+          <p className="text-sm text-muted">총 {totalRows}행 중 처음 {preview.length}행</p>
+        </div>
         <div className="overflow-x-auto rounded-md border border-border-default">
           <table className="w-full border-collapse text-left text-sm">
             <caption className="sr-only">원본 미리보기</caption>

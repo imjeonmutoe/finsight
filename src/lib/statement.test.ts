@@ -68,6 +68,44 @@ describe("명세서 파일 읽기", () => {
       .toEqual([["거래일자", "가맹점명", "금액"], ["2026-01-02", "카페", "5000"]]);
   });
 
+  it("엑셀로 열었다가 CSV로 저장한 명세서도 원본과 같게 읽습니다", () => {
+    // 사용자가 .xls를 스프레드시트로 열어 "CSV로 저장"하면 HTML 소스의 한 줄이 CSV 한 행이 됩니다.
+    // 따옴표는 중복되고, 줄 안의 쉼표(`5,000`)에서 칸이 쪼개지며, 줄 끝에 빈 칸이 붙습니다.
+    const escaped = [
+      `,,`,
+      `"<table cellspacing=""0"">",,`,
+      `            <tr>,,`,
+      `"<th bgcolor=""#f2f2f2"">이용일</th>",,`,
+      `"<th bgcolor=""#f2f2f2"">이용가맹점</th>",,`,
+      `"<th bgcolor=""#f2f2f2"">이용금액</th>",,`,
+      `"<th bgcolor=""#f2f2f2"">할부/회차</th>",,`,
+      `            </tr>,,`,
+      `            <tr>,,`,
+      `"<td align=""center"">2026.09.01</td>",,`,
+      `<td>카페</td>,,`,
+      `"<td align=""right"">5",000</td>,`,
+      `"<td align=""center"" style='mso-number-format:""\\@"";'>",,`,
+      `                ,,`,
+      `            </td>,,`,
+      `            </tr>,,`,
+      `</table>,,`,
+    ].join("\r\n");
+
+    expect(parseStatementRows(escaped)).toEqual([
+      ["이용일", "이용가맹점", "이용금액", "할부/회차"],
+      ["2026.09.01", "카페", "5,000", ""],
+    ]);
+  });
+
+  it("따옴표가 든 진짜 HTML은 손대지 않습니다", () => {
+    // 되돌리기가 멀쩡한 명세서까지 건드리면 안 됩니다. 속성 따옴표가 값으로 새면 실패합니다.
+    const rows = parseStatementRows(
+      `<table><tr><td align="right">5,000</td><td class="x">가게, 본점</td></tr></table>`,
+    );
+
+    expect(rows).toEqual([["5,000", "가게, 본점"]]);
+  });
+
   it("빈 행이 앞에 붙은 카드사 파일도 표로 읽습니다", () => {
     // 실제 현대카드 파일은 `,,` 빈 행 100여 개 뒤에 <html>이 나옵니다.
     const rows = parseStatementRows(",,\n,,\n,,\n" + TABLE);

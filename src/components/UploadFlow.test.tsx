@@ -48,7 +48,7 @@ async function pickFile() {
 
 const MAPPED = {
   uploadId: "22222222-2222-4222-8222-222222222222", sourceId: "source-1", status: "mapped",
-  reused: false, mapping: MAPPING, confidence: 0.94, preview: PREVIEW,
+  reused: false, mapping: MAPPING, confidence: 0.94, preview: PREVIEW, totalRows: PREVIEW.length,
 };
 
 beforeEach(() => {

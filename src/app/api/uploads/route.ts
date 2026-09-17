@@ -119,11 +119,12 @@ export async function POST(request: Request) {
 
   const fileHash = computeFileHash(fileBytes);
   const preview = rows.slice(0, PREVIEW_ROWS);
+  const totalRows = rows.length;
 
   function reuseResponse(row: { id: string; status: UploadStatus; column_mapping: unknown; mapping_confidence: number | null }): Response {
     return jsonResponse({
       uploadId: row.id, sourceId, status: row.status, reused: true,
-      mapping: storedMapping(row.column_mapping), confidence: row.mapping_confidence ?? 0, preview,
+      mapping: storedMapping(row.column_mapping), confidence: row.mapping_confidence ?? 0, preview, totalRows,
     } satisfies MappingResponse);
   }
 
@@ -233,7 +234,7 @@ export async function POST(request: Request) {
     // 추론만 실패했습니다. 원본은 Storage에 있으므로 사용자가 직접 컬럼을 고르면 그대로 진행됩니다.
     // 안내 문구가 "매핑 확인 화면에서 직접 선택하라"고 하므로 그 화면을 열 재료를 함께 줍니다.
     return errorResponse(502, "MAPPING_FAILED", MAPPING_ERROR, {
-      uploadId, sourceId, status: "failed", reused: false, mapping: null, confidence: 0, preview,
+      uploadId, sourceId, status: "failed", reused: false, mapping: null, confidence: 0, preview, totalRows,
     });
   }
 
@@ -243,6 +244,6 @@ export async function POST(request: Request) {
   if (error) return errorResponse(500, "UPLOAD_FAILED", "매핑을 저장하지 못했습니다. 잠시 후 다시 시도해 주세요.");
 
   return jsonResponse({
-    uploadId, sourceId, status: "mapped", reused: false, mapping, confidence, preview,
+    uploadId, sourceId, status: "mapped", reused: false, mapping, confidence, preview, totalRows,
   } satisfies MappingResponse);
 }

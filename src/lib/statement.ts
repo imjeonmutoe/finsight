@@ -1,4 +1,4 @@
-import { looksLikeHtml, parseCsvRows } from "./csv";
+import { looksLikeHtml, parseCsvRows, scanCsvRows } from "./csv";
 
 // 카드사·은행의 "엑셀 내려받기"는 대부분 HTML 표를 `.xls`로 내려줍니다. 사용자에게 스프레드시트로
 // 열어 CSV로 내보내라고 시키는 대신 여기서 직접 읽습니다. 표 구조가 곧 칸 경계라
@@ -43,7 +43,27 @@ export function parseHtmlTable(text: string): string[][] {
   return rows.map((row) => [...row, ...Array<string>(width - row.length).fill("")]);
 }
 
+// 사용자가 카드사 `.xls`를 스프레드시트로 열어 "CSV로 저장"하면 HTML 소스의 한 줄이 CSV 한 행이
+// 됩니다. 따옴표는 중복되고, 줄 안의 쉼표(`5,000`)에서 칸이 쪼개지며, 줄 끝에 빈 칸이 붙습니다.
+// 그대로 표로 읽으면 `5",000`처럼 CSV 부스러기가 값에 섞입니다. 칸을 다시 쉼표로 이어 붙이면
+// 원래 줄이 돌아옵니다. 따옴표가 없던 문서라면 이어 붙인 결과가 원문과 같아 아무것도 바뀌지 않고,
+// 속성 따옴표가 살아 있는 진짜 HTML은 CSV로 읽히지 않아 여기서 걸러집니다.
+function unescapeSpreadsheetCsv(text: string): string {
+  let rows: string[][];
+  try {
+    rows = scanCsvRows(text);
+  } catch {
+    return text;
+  }
+  return rows.map((row) => {
+    // 스프레드시트가 모든 줄을 같은 칸 수로 맞추며 붙인 꼬리 빈 칸입니다. 원래 줄에는 없습니다.
+    const cells = [...row];
+    while (cells.length > 1 && cells[cells.length - 1] === "") cells.pop();
+    return cells.join(",");
+  }).join("\n");
+}
+
 /** 명세서 파일 한 개를 행 목록으로 읽습니다. CSV와 HTML 표 둘 다 받습니다. */
 export function parseStatementRows(text: string): string[][] {
-  return looksLikeHtml(text) ? parseHtmlTable(text) : parseCsvRows(text);
+  return looksLikeHtml(text) ? parseHtmlTable(unescapeSpreadsheetCsv(text)) : parseCsvRows(text);
 }

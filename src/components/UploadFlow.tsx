@@ -249,7 +249,7 @@ export function UploadFlow({ sources, plan, limitReached, resetsAt, monthsHeld, 
 
       {step === 2 && mapped && (
         <MappingReview
-          mapping={mapped.mapping} confidence={mapped.confidence} preview={mapped.preview}
+          mapping={mapped.mapping} confidence={mapped.confidence} preview={mapped.preview} totalRows={mapped.totalRows}
           encoding={resume?.encoding ?? "utf-8"} filename={filename}
           sourceKind={sourceKind} reused={mapped.reused}
           accountingMonth={sourceKind === "card" && mapped.mapping?.billingMonth === undefined ? currentKstMonth() : ""}

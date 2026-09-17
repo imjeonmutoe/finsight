@@ -223,6 +223,20 @@ describe("POST /api/uploads 입력 검증", () => {
     expect(inferColumnMapping).toHaveBeenCalled();
   });
 
+  it("미리보기와 함께 파일 전체 행 수를 알려줍니다", async () => {
+    // 미리보기는 5행까지만 보여줍니다. 나머지가 버려진 게 아님을 화면이 말할 수 있어야 합니다.
+    happyPath();
+    const csv = ["거래일자,가맹점명,금액",
+      ...Array.from({ length: 8 }, (_, index) => `2026-08-0${index + 1},카페,5000`)].join("\n");
+
+    const response = await post(await multipart({ sourceId: SOURCE_ID, file: csvFile(csv) }));
+
+    expect(response.status).toBe(200);
+    const body = await response.json() as { preview: string[][]; totalRows: number };
+    expect(body.preview).toHaveLength(5);
+    expect(body.totalRows).toBe(9);
+  });
+
   it("카드사가 내려주는 .xls 확장자도 받습니다", async () => {
     // 내려받은 파일 이름이 .xls입니다. 이름을 바꿔 오라고 시키면 HTML을 읽는 의미가 없습니다.
     happyPath();
@@ -287,6 +301,7 @@ describe("POST /api/uploads 저장과 매핑", () => {
       uploadId: UPLOAD_ID, sourceId: SOURCE_ID, status: "mapped", reused: false,
       mapping: MAPPING, confidence: 0.94,
       preview: [["거래일자", "가맹점명", "이용금액"], ["2026-08-03", "쿠팡", "38400"], ["2026-08-04", "스타벅스", "4500"]],
+      totalRows: 3,
     });
     const updated = argsOf("uploads:update", "update")[0]?.[0] as Record<string, unknown>;
     expect(updated).toMatchObject({ status: "mapped", column_mapping: MAPPING, mapping_confidence: 0.94 });

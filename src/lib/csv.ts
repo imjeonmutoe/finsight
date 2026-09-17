@@ -18,10 +18,11 @@ export function looksLikeHtml(text: string): boolean {
   return HTML_MARKER.test(text);
 }
 
+const invalid = () => new Error("CSV 형식이 올바르지 않습니다. 파일의 구분자와 따옴표를 확인해 주세요.");
+
 export function parseCsvRows(text: string): string[][] {
   const input = text.replace(/^\ufeff/, "");
   if (!input.trim()) return [];
-  const invalid = () => new Error("CSV 형식이 올바르지 않습니다. 파일의 구분자와 따옴표를 확인해 주세요.");
   let json = false;
   if (/^[{[]/.test(input.trimStart())) {
     try {
@@ -36,6 +37,13 @@ export function parseCsvRows(text: string): string[][] {
     throw invalid();
   }
 
+  const rows = scanCsvRows(input);
+  if (rows.length > 0 && !rows.some((values) => values.length > 1)) throw invalid();
+  return rows;
+}
+
+/** 따옴표 규칙만 적용해 CSV를 행으로 자릅니다. 내용이 CSV인지는 호출자가 판단합니다. */
+export function scanCsvRows(input: string): string[][] {
   const rows: string[][] = [];
   let row: string[] = [];
   let cell = "";
@@ -84,7 +92,6 @@ export function parseCsvRows(text: string): string[][] {
   }
   if (quoted) throw invalid();
   finishRow();
-  if (rows.length > 0 && !rows.some((values) => values.length > 1)) throw invalid();
   return rows;
 }
 
