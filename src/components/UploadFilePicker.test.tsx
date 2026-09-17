@@ -77,6 +77,20 @@ describe("업로드 1단계 — 파일 선택", () => {
     expect(onUpload).not.toHaveBeenCalled();
   });
 
+  it("올리기 버튼을 드롭존 바로 아래, 안내 문단보다 앞에 둡니다", () => {
+    // 안내 문단 뒤에 두면 접힘선 밖으로 밀립니다. 실제로 뷰포트 786px에서 버튼 top이
+    // 881px이라 파일을 고른 사용자에게는 "아무 반응이 없는" 화면이 됐습니다.
+    setup();
+    fireEvent.change(screen.getByLabelText("CSV 파일 선택"), { target: { files: [csv()] } });
+
+    const dropzone = screen.getByTestId("upload-dropzone");
+    const button = screen.getByRole("button", { name: "이 파일 올리기" });
+    const notice = screen.getByText(/Free는 KST 캘린더 월 기준 1회입니다./);
+
+    expect(dropzone.compareDocumentPosition(button) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(button.compareDocumentPosition(notice) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
   it("파일을 고르기 전에는 올리기 버튼을 보이지 않습니다", () => {
     setup();
 

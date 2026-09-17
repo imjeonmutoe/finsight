@@ -162,6 +162,16 @@ export function UploadFilePicker({ sources, plan, limitReached, resetsAt, busy, 
           <p role="alert" className="text-sm leading-relaxed text-up">{message}</p>
         )}
 
+        {/* 드롭존 바로 아래에 둡니다. 안내 문단 뒤로 밀면 접힘선 밖으로 나가 보이지 않습니다. */}
+        {ready && (
+          <button
+            type="button" disabled={busy} className={PRIMARY}
+            onClick={() => { if (file) onUpload(sourceId, file); }}
+          >
+            {busy ? "올리는 중입니다" : "이 파일 올리기"}
+          </button>
+        )}
+
         {limitReached ? (
           <p data-testid="upload-limit-notice" className="text-sm leading-relaxed text-muted">
             이번 달 무료 업로드를 이미 사용했습니다.
@@ -176,15 +186,6 @@ export function UploadFilePicker({ sources, plan, limitReached, resetsAt, busy, 
           </p>
         ) : (
           <p className="text-sm leading-relaxed text-muted">원본은 Storage에 보관되며 언제든 다시 파싱할 수 있습니다.</p>
-        )}
-
-        {ready && (
-          <button
-            type="button" disabled={busy} className={PRIMARY}
-            onClick={() => { if (file) onUpload(sourceId, file); }}
-          >
-            {busy ? "올리는 중입니다" : "이 파일 올리기"}
-          </button>
         )}
       </section>
 
