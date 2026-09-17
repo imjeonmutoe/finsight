@@ -91,6 +91,17 @@ describe("업로드 1단계 — 파일 선택", () => {
     expect(button.compareDocumentPosition(notice) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
+  it("파일을 고르면 올리기 버튼을 화면 안으로 끌어옵니다", () => {
+    // 순서를 바꾸는 것만으로는 부족합니다. 화면이 낮으면 버튼이 접힘선 아래에 남아
+    // 파일을 고른 사용자에게는 아무 일도 없었던 것처럼 보입니다(실측 뷰포트 723px에서 30px 아래).
+    const scrollIntoView = vi.spyOn(Element.prototype, "scrollIntoView");
+    setup();
+
+    fireEvent.change(screen.getByLabelText("CSV 파일 선택"), { target: { files: [csv()] } });
+
+    expect(scrollIntoView).toHaveBeenCalled();
+  });
+
   it("파일을 고르기 전에는 올리기 버튼을 보이지 않습니다", () => {
     setup();
 

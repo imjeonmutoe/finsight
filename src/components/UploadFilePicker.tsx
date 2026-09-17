@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { MAX_CSV_ROWS, MAX_FILE_BYTES } from "@/lib/limits";
 import type { Plan } from "@/types/billing";
 import type { FinancialSource } from "@/types/upload";
@@ -49,6 +49,7 @@ export function UploadFilePicker({ sources, plan, limitReached, resetsAt, busy, 
   const [kind, setKind] = useState<"card" | "bank">("card");
   const [dragging, setDragging] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
+  const submitRef = useRef<HTMLButtonElement>(null);
 
   // 클라이언트 검증은 안내일 뿐입니다. 같은 상한을 서버가 실제 bytes로 다시 검사합니다.
   function accept(next: File | undefined) {
@@ -69,6 +70,12 @@ export function UploadFilePicker({ sources, plan, limitReached, resetsAt, busy, 
 
   const message = error ?? localError;
   const ready = file !== null && sourceId !== "" && !limitReached;
+
+  // 순서를 바꿔도 화면이 낮으면 버튼이 접힘선 아래에 남습니다. 파일을 고른 사용자가
+  // 다음 행동을 못 보면 "아무 반응이 없다"가 됩니다(docs/UX_GUIDE.md 5).
+  useEffect(() => {
+    if (ready) submitRef.current?.scrollIntoView({ block: "nearest" });
+  }, [ready]);
 
   return (
     <div className="space-y-4">
@@ -165,7 +172,7 @@ export function UploadFilePicker({ sources, plan, limitReached, resetsAt, busy, 
         {/* 드롭존 바로 아래에 둡니다. 안내 문단 뒤로 밀면 접힘선 밖으로 나가 보이지 않습니다. */}
         {ready && (
           <button
-            type="button" disabled={busy} className={PRIMARY}
+            ref={submitRef} type="button" disabled={busy} className={PRIMARY}
             onClick={() => { if (file) onUpload(sourceId, file); }}
           >
             {busy ? "올리는 중입니다" : "이 파일 올리기"}
