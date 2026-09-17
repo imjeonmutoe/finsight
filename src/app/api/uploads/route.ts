@@ -230,7 +230,11 @@ export async function POST(request: Request) {
     ({ mapping, confidence } = await inferColumnMapping(sanitized));
   } catch {
     await markFailed(MAPPING_ERROR);
-    return errorResponse(502, "MAPPING_FAILED", MAPPING_ERROR);
+    // 추론만 실패했습니다. 원본은 Storage에 있으므로 사용자가 직접 컬럼을 고르면 그대로 진행됩니다.
+    // 안내 문구가 "매핑 확인 화면에서 직접 선택하라"고 하므로 그 화면을 열 재료를 함께 줍니다.
+    return errorResponse(502, "MAPPING_FAILED", MAPPING_ERROR, {
+      uploadId, sourceId, status: "failed", reused: false, mapping: null, confidence: 0, preview,
+    });
   }
 
   const { error } = await supabase.from("uploads")

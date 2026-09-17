@@ -397,6 +397,25 @@ describe("POST /api/uploads 저장과 매핑", () => {
     expect(remove).not.toHaveBeenCalled();
   });
 
+  it("매핑 추론이 실패해도 수동 매핑에 필요한 것을 함께 돌려줍니다", async () => {
+    // 화면이 "매핑 확인에서 직접 고르라"고 안내하므로 그 화면을 열 재료를 줘야 한다.
+    // uploadId·preview가 없으면 사용자는 안내받은 일을 할 수 없다.
+    happyPath();
+    inferColumnMapping.mockRejectedValue(new Error("분석 요청을 처리하지 못했습니다."));
+
+    const response = await post(await multipart({ sourceId: SOURCE_ID, file: csvFile(CSV) }));
+
+    expect(response.status).toBe(502);
+    const body = await response.json() as Record<string, unknown>;
+    expect(body.code).toBe("MAPPING_FAILED");
+    expect(body.uploadId).toBe(UPLOAD_ID);
+    expect(body.sourceId).toBe(SOURCE_ID);
+    expect(body.mapping).toBeNull();
+    expect(body.preview).toEqual([
+      ["거래일자", "가맹점명", "이용금액"], ["2026-08-03", "쿠팡", "38400"], ["2026-08-04", "스타벅스", "4500"],
+    ]);
+  });
+
   it("Storage 저장이 실패하면 failed로 기록하고 모델을 호출하지 않습니다", async () => {
     happyPath();
     upload.mockResolvedValue({ error: { message: "storage down" } });

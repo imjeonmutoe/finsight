@@ -123,7 +123,9 @@ export function UploadFlow({ sources, plan, limitReached, resetsAt, monthsHeld, 
       setResets(typeof body.resetsAt === "string" ? body.resetsAt : null);
       return;
     }
-    if (!response.ok) {
+    // 추론만 실패한 것입니다. 원본은 보관돼 있으니 1단계에 가두지 않고 직접 고르게 합니다.
+    const manual = response.status === 502 && body.code === "MAPPING_FAILED";
+    if (!response.ok && !manual) {
       setError(messageOf(body, "파일을 올리지 못했습니다. 잠시 후 다시 시도해 주세요."));
       return;
     }
@@ -131,6 +133,7 @@ export function UploadFlow({ sources, plan, limitReached, resetsAt, monthsHeld, 
     setFilename(file.name);
     setSourceKind(list.find((source) => source.id === sourceId)?.kind ?? "card");
     setCandidates([]);
+    setError(manual ? messageOf(body, "") : null);
     setStep(2);
   }
 

@@ -207,6 +207,27 @@ describe("승인과 중복 확인", () => {
     expect(fetchMock.mock.calls.filter(([url]) => url === "/api/transactions/classify")).toHaveLength(1);
   });
 
+  it("매핑 추론이 실패하면 1단계에 가두지 않고 수동 매핑으로 넘깁니다", async () => {
+    // 응답 문구가 "매핑 확인 화면에서 직접 선택하라"고 안내한다. 1단계에 머물면
+    // 안내받은 일을 할 수 없는 막다른 화면이 된다.
+    respond({
+      "/api/uploads": [{
+        status: 502,
+        body: {
+          code: "MAPPING_FAILED", uploadId: MAPPED.uploadId, sourceId: "source-1",
+          mapping: null, confidence: 0, preview: PREVIEW,
+          message: "컬럼 매핑을 추론하지 못했습니다. 매핑 확인 화면에서 컬럼을 직접 선택해 주세요.",
+        },
+      }],
+    });
+    setup();
+    await pickFile();
+
+    const steps = within(screen.getByTestId("upload-steps")).getAllByRole("listitem");
+    expect(steps[1]).toHaveAttribute("aria-current", "step");
+    expect(screen.getByRole("alert")).toHaveTextContent("컬럼을 직접 선택해 주세요");
+  });
+
   it("분류 실패 응답에서 자동 반복을 멈추고 재시도 경로를 줍니다", async () => {
     respond({
       "/api/uploads": [{ body: MAPPED }],

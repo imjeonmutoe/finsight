@@ -88,7 +88,9 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       unclassified: upload.unclassified_count,
     } satisfies ConfirmResponse);
   }
-  if (upload.status !== "mapped") {
+  // failed는 매핑 추론이 실패한 업로드입니다. 사용자가 직접 고른 매핑으로 승인할 수 있어야
+  // 합니다. 원본 보관에 실패한 경우라면 아래 Storage 다운로드가 걸러냅니다.
+  if (upload.status !== "mapped" && upload.status !== "failed") {
     return errorResponse(409, "UPLOAD_NOT_MAPPED", "아직 매핑을 확인하지 않은 업로드입니다. 매핑 확인부터 진행해 주세요.");
   }
 

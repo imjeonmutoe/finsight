@@ -167,6 +167,17 @@ describe("POST /api/uploads/[id]/confirm 검증", () => {
     expect(download).not.toHaveBeenCalled();
   });
 
+  it("추론이 실패한 업로드도 수동 매핑으로 승인할 수 있습니다", async () => {
+    // 매핑 추론 실패는 failed로 기록된다. 사용자가 직접 컬럼을 고른 뒤 승인하는 경로가
+    // 막히면, 화면이 안내하는 "직접 선택"을 실제로는 할 수 없다.
+    stage({ upload: uploadRow({ status: "failed" }) });
+
+    const response = await confirm();
+
+    expect(response.status).toBe(200);
+    expect(rpc).toHaveBeenCalled();
+  });
+
   it("아직 매핑되지 않은 업로드는 409입니다", async () => {
     enqueue("uploads:select", uploadRow({ status: "pending" }));
 
