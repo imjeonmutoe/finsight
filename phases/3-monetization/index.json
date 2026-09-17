@@ -7,7 +7,8 @@
       "name": "landing",
       "status": "completed",
       "started_at": "2026-09-17T10:49:46+0900",
-      "summary": "S1·S1b 랜딩(`src/app/page.tsx`)을 KpiCard·CategoryBars 재사용 목업·기능 3개·Free ₩0/Pro ₩9,900 요금제·데이터 처리 섹션으로 구성하고, 세션 유무로 CTA를 `Google로 시작하기`↔`대시보드로` 전환. `ThemeToggle`(html data-theme 구독 + localStorage 저장)과 `LandingCta` 컴포넌트 추가, `/privacy` 개인정보처리방침(국외 이전 4곳 표) 신설, layout에 `@vercel/analytics` 2.0.1 `<Analytics />` 삽입."
+      "summary": "S1·S1b 랜딩(`src/app/page.tsx`)을 KpiCard·CategoryBars 재사용 목업·기능 3개·Free ₩0/Pro ₩9,900 요금제·데이터 처리 섹션으로 구성하고, 세션 유무로 CTA를 `Google로 시작하기`↔`대시보드로` 전환. `ThemeToggle`(html data-theme 구독 + localStorage 저장)과 `LandingCta` 컴포넌트 추가, `/privacy` 개인정보처리방침(국외 이전 4곳 표) 신설, layout에 `@vercel/analytics` 2.0.1 `<Analytics />` 삽입.",
+      "completed_at": "2026-09-17T11:04:00+0900"
     },
     {
       "step": 11,
