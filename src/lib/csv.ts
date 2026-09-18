@@ -177,10 +177,14 @@ function readCell(row: string[], index: number | undefined): string {
 const summaryLabels = ["합계", "총합계", "소계", "총계", "누계", "이월", "전월이월", "중간합계"];
 const placeholder = /^[-‐-―−]+$/;
 
+function isBlank(raw: string): boolean {
+  const value = raw.normalize("NFKC").replace(/\s/g, "");
+  return !value || placeholder.test(value);
+}
+
 // 빈칸과 '-' 같은 자리표시자는 값이 없는 것으로 봅니다.
 function toAmount(raw: string): number | null {
-  const value = raw.normalize("NFKC").replace(/\s/g, "");
-  return !value || placeholder.test(value) ? null : parseAmount(raw);
+  return isBlank(raw) ? null : parseAmount(raw);
 }
 
 // 해외결제 행의 금액 컬럼은 외화 표기일 수 있어 금액 자체는 원화환산 컬럼이 담당합니다.
@@ -237,6 +241,11 @@ export function buildTransactions(
       const rawDate = readCell(row, mapping.date);
       // 합계 표시는 날짜 위치에서만 인정합니다. 잘못된 거래 날짜를 요약행으로 숨기지 않습니다.
       if (summaryLabels.includes(rawDate.replace(/\s/g, ""))) continue;
+      // 합계 문구를 가맹점 칸에 쓰고 날짜 칸은 '-'로 두는 명세서가 있습니다. 날짜도 금액도
+      // 없으면 거래가 될 수 없으므로, 이 조합만은 잘못된 날짜를 숨기는 경우가 아닙니다.
+      if (placeholder.test(rawDate.normalize("NFKC").replace(/\s/g, ""))
+        && [mapping.amount, mapping.withdrawal, mapping.deposit, mapping.krwEquivalent]
+          .every((index) => isBlank(readCell(row, index)))) continue;
       const occurredOn = parseDate(rawDate);
       const merchantRaw = readCell(row, mapping.merchant);
       if (!merchantRaw.trim()) throw new Error("가맹점이 비어 있습니다. 가맹점 컬럼을 확인해 주세요.");

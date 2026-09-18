@@ -227,6 +227,18 @@ describe("거래 생성", () => {
     },
   );
 
+  it("날짜와 금액이 둘 다 없는 푸터 행을 건너뜁니다", () => {
+    // 현대카드 명세서 마지막 줄은 날짜 칸이 '-'이고 합계 문구는 가맹점 칸에 있다.
+    // 날짜도 금액도 없으면 거래가 될 수 없으므로 잘못된 거래 날짜를 숨기는 경우가 아니다.
+    const footer = ["-", "총 합계 151건", ""];
+
+    expect(buildTransactions([header, ["2026-01-02", "카페", "5000"], footer], mapping, card)).toHaveLength(1);
+  });
+
+  it("자리표시자 날짜라도 금액이 있으면 숨기지 않습니다", () => {
+    expect(() => buildTransactions([header, ["-", "카페", "5000"]], mapping, card)).toThrow(/날짜/);
+  });
+
   it("요약 표시는 날짜 위치에서만 인정합니다", () => {
     expect(() => buildTransactions([header, ["2026-01-02", "합계", "5000"], ["알수없음", "카페", "5000"]], mapping, card)).toThrow(/3행/);
   });

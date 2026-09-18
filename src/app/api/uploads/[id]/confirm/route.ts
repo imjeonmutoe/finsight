@@ -198,6 +198,16 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     return { ...transaction, category, categorySource };
   });
 
+  // confirm_upload는 status가 'mapped'일 때만 저장합니다. 추론이 실패해 failed로 기록된
+  // 업로드는 사용자가 직접 고른 매핑이 곧 확인된 매핑이므로 여기서 되돌립니다.
+  if (upload.status === "failed") {
+    const promoted = await supabase.from("uploads").update({ status: "mapped", error_message: null })
+      .eq("id", uploadId).eq("user_id", userId);
+    if (promoted.error) {
+      return errorResponse(500, "CONFIRM_FAILED", "거래를 저장하지 못했습니다. 잠시 후 다시 시도해 주세요.");
+    }
+  }
+
   const result = await supabase.rpc("confirm_upload", {
     p_upload_id: uploadId,
     p_rows: classified,
