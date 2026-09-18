@@ -13,7 +13,8 @@ import type { FinancialSource } from "@/types/upload";
 const STEPS = ["파일 선택", "매핑 확인", "분류 진행률", "결과 요약"];
 const NETWORK_ERROR = "요청을 보내지 못했습니다. 연결을 확인하고 다시 시도해 주세요.";
 const NO_PROGRESS = "더 이상 자동으로 분류되지 않습니다. 대시보드에서 직접 카테고리를 고를 수 있습니다.";
-const REVIEW_NOTICE = "비슷한 거래를 찾았습니다. 아래에서 추가·중복을 정한 뒤 다시 진행해 주세요.";
+// 확인 목록은 이 안내보다 위에 그려집니다. 방향 대신 섹션 이름으로 가리켜야 어긋나지 않습니다.
+const REVIEW_NOTICE = "비슷한 거래를 찾았습니다. '확인이 필요한 항목'에서 추가·중복을 정한 뒤 다시 진행해 주세요.";
 
 const PRIMARY = "rounded-md bg-text px-4 py-2 text-sm font-medium text-bg hover:opacity-90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent";
 

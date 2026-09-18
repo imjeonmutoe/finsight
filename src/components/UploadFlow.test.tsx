@@ -284,6 +284,10 @@ describe("승인과 중복 확인", () => {
 
     expect(screen.getByTestId("duplicate-4")).toHaveTextContent("5번째 거래 행");
     expect(screen.getByRole("button", { name: "이대로 진행" })).toBeDisabled();
+    // 확인 목록은 이 안내보다 위에 그려집니다. "아래에서"라고 하면 반대쪽을 보게 됩니다.
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "비슷한 거래를 찾았습니다. \u0027확인이 필요한 항목\u0027에서 추가·중복을 정한 뒤 다시 진행해 주세요.",
+    );
 
     fireEvent.click(within(screen.getByTestId("duplicate-4")).getByRole("button", { name: "기존 거래와 중복" }));
     await act(async () => {
