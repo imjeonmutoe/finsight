@@ -17,7 +17,7 @@ function setup(overrides: Partial<Parameters<typeof MappingReview>[0]> = {}) {
   return render(
     <MappingReview
       mapping={MAPPING} confidence={0.94} preview={PREVIEW} encoding="euc-kr" filename="8월 명세서.csv"
-      sourceKind="card" reused={false} accountingMonth="2026-08" duplicateCandidates={[]} totalRows={3}
+      sourceKind="card" reused={false} accountingMonth="2026-08" duplicateCandidates={[]} totalRows={3} headerRowIndex={0}
       busy={false} error={null} onConfirm={onConfirm} onBack={onBack}
       {...overrides}
     />,
@@ -235,5 +235,28 @@ describe("업로드 2단계 — 상태 안내", () => {
 
     expect(screen.getByText("컬럼 매핑 직접 고치기").closest("details")).toHaveAttribute("open");
     expect(screen.getByRole("button", { name: "이대로 진행" })).toBeDisabled();
+  });
+
+  it("추론이 실패해도 서버가 찾은 헤더 행을 컬럼 이름으로 씁니다", () => {
+    // 상단 요약행이 있는 명세서에서 0행으로 되돌아가면 제목이 컬럼 이름이 되고,
+    // 그대로 진행하면 요약행을 거래로 읽다가 실패한다. 수동 매핑 경로가 통째로 끊긴다.
+    const preview = [
+      ["2026년 10월 이용대금명세서(예정)", "", ""],
+      ["결제예정 상세내역", "", ""],
+      ["거래일자", "가맹점명", "이용금액"],
+      ["2026-08-03", "쿠팡", "38,400"],
+    ];
+    setup({ mapping: null, confidence: 0, preview, headerRowIndex: 2 });
+
+    const rows = within(screen.getByRole("table", { name: "컬럼 매핑" })).getAllByRole("row");
+    expect(rows).toHaveLength(4); // 헤더 1 + 컬럼 3
+    expect(within(rows[1] as HTMLElement).getByRole("cell", { name: "거래일자" })).toBeVisible();
+
+    fireEvent.change(screen.getByLabelText("거래일자 매핑 대상"), { target: { value: "date" } });
+    fireEvent.change(screen.getByLabelText("가맹점명 매핑 대상"), { target: { value: "merchant" } });
+    fireEvent.change(screen.getByLabelText("이용금액 매핑 대상"), { target: { value: "amount" } });
+    fireEvent.click(screen.getByRole("button", { name: "이대로 진행" }));
+
+    expect(confirmed().mapping).toEqual({ date: 0, merchant: 1, amount: 2, skipRows: 2 });
   });
 });

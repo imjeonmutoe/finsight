@@ -301,7 +301,7 @@ describe("POST /api/uploads 저장과 매핑", () => {
       uploadId: UPLOAD_ID, sourceId: SOURCE_ID, status: "mapped", reused: false,
       mapping: MAPPING, confidence: 0.94,
       preview: [["거래일자", "가맹점명", "이용금액"], ["2026-08-03", "쿠팡", "38400"], ["2026-08-04", "스타벅스", "4500"]],
-      totalRows: 3,
+      totalRows: 3, headerRowIndex: 0,
     });
     const updated = argsOf("uploads:update", "update")[0]?.[0] as Record<string, unknown>;
     expect(updated).toMatchObject({ status: "mapped", column_mapping: MAPPING, mapping_confidence: 0.94 });
@@ -445,6 +445,22 @@ describe("POST /api/uploads 저장과 매핑", () => {
     expect(body.preview).toEqual([
       ["거래일자", "가맹점명", "이용금액"], ["2026-08-03", "쿠팡", "38400"], ["2026-08-04", "스타벅스", "4500"],
     ]);
+  });
+
+  it("추론이 실패하면 찾아둔 헤더 행 위치도 함께 돌려줍니다", async () => {
+    // 상단 요약행이 있는 명세서에서, 수동 매핑 화면이 제목 행을 컬럼 이름으로 쓰면 안 된다.
+    // 서버는 이미 헤더 행을 찾아놨다. 그 값을 안 주면 화면이 0행으로 되돌아간다.
+    happyPath();
+    inferColumnMapping.mockRejectedValue(new Error("분석 요청을 처리하지 못했습니다."));
+    const csv = ["2026년 10월 이용대금명세서(예정),,", "결제예정 상세내역,,",
+      "거래일자,가맹점명,이용금액", "2026-08-03,쿠팡,38400"].join("\n");
+
+    const response = await post(await multipart({ sourceId: SOURCE_ID, file: csvFile(csv) }));
+
+    expect(response.status).toBe(502);
+    const body = await response.json() as Record<string, unknown>;
+    expect(body.code).toBe("MAPPING_FAILED");
+    expect(body.headerRowIndex).toBe(2);
   });
 
   it("Storage 저장이 실패하면 failed로 기록하고 모델을 호출하지 않습니다", async () => {

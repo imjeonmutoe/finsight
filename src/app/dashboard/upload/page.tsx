@@ -69,6 +69,8 @@ async function loadResume(
       uploadId: found.data.id, sourceId: found.data.source_id, status: "mapped", reused: true,
       mapping: mapping.data, confidence: found.data.mapping_confidence ?? 0,
       preview: rows.slice(0, PREVIEW_ROWS), totalRows: rows.length,
+      // 이어서 진행은 저장된 매핑이 있으므로 그 헤더 행이 곧 폴백 값이다.
+      headerRowIndex: mapping.data.skipRows,
     } satisfies MappingResponse,
     filename: found.data.filename,
     sourceKind: sources.find((source) => source.id === found.data.source_id)?.kind ?? "card",

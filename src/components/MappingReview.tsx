@@ -54,13 +54,14 @@ function toMapping(labels: MappingLabel[], skipRows: number): ColumnMapping | nu
 }
 
 export function MappingReview({
-  mapping, confidence, preview, totalRows, encoding, filename, sourceKind, reused,
+  mapping, confidence, preview, totalRows, headerRowIndex, encoding, filename, sourceKind, reused,
   accountingMonth, duplicateCandidates, busy, error, onConfirm, onBack,
 }: {
   mapping: ColumnMapping | null;
   confidence: number;
   preview: string[][];
   totalRows: number;
+  headerRowIndex: number;
   encoding: "utf-8" | "euc-kr";
   filename: string;
   sourceKind: "card" | "bank";
@@ -72,7 +73,8 @@ export function MappingReview({
   onConfirm: (request: ConfirmRequest) => void;
   onBack: () => void;
 }) {
-  const skipRows = mapping?.skipRows ?? 0;
+  // 추론이 실패하면 서버가 찾아둔 헤더 행을 쓴다. 0으로 되돌리면 제목 행이 컬럼 이름이 된다.
+  const skipRows = mapping?.skipRows ?? headerRowIndex;
   const headers = preview[skipRows] ?? [];
   const [labels, setLabels] = useState(() => initialLabels(mapping, headers.length));
   const [chosenEncoding, setChosenEncoding] = useState(encoding);
