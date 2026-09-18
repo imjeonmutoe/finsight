@@ -64,6 +64,18 @@ npm run build && npm run start -- --port 3211 &
 # Page.captureScreenshot              → captureBeyondViewport로 전체 페이지
 ```
 
+**끝나면 반드시 내려라.** 위 두 줄은 `&`로 띄운 채 끝나고 아무도 정리하지 않는다. headless
+Chrome은 스크린샷을 찍은 뒤에도 살아남는 일이 잦다. 실측(2026-09-18): 이틀 방치한 유령 Chrome
+29개가 2.8GB를 잡고 있었고, 그 압박으로 개발 서버가 OS에 죽었다. 죽은 이유가 코드에 없어서
+찾는 데 오래 걸린다.
+
+```bash
+kill $(lsof -ti tcp:3211) 2>/dev/null   # 서버
+kill $(lsof -ti tcp:9222) 2>/dev/null   # Chrome — 자식 프로세스까지 함께 내려간다
+# 스크린샷만 찍는 Chrome은 포트를 안 잡는다. 남아 있으면 PID를 보고 직접 죽인다
+pgrep -fl -- --screenshot=
+```
+
 ### 3. `bash scripts/preview-shot.sh <경로> [폭] [높이]`
 
 가장 간단하지만 **두 가지를 못 한다. 이걸 모르면 없는 버그를 찾게 된다.**
