@@ -271,6 +271,68 @@ describe("업로드 2단계 — 중복 확인", () => {
     ]);
   });
 
+  it("전부 한 번에 중복으로 정할 수 있습니다", () => {
+    // 같은 파일을 다시 올리면 수백 행이 전부 후보가 됩니다. 하나씩 누르게 두지 않습니다.
+    setup({ duplicateCandidates: shared });
+
+    fireEvent.click(screen.getByRole("button", { name: "전부 기존 거래와 중복" }));
+
+    expect(screen.getByRole("button", { name: "이대로 진행" })).toBeEnabled();
+    fireEvent.click(screen.getByRole("button", { name: "이대로 진행" }));
+
+    expect(confirmed().duplicateDecisions).toEqual([
+      { dataRowIndex: 0, action: "duplicate", transactionId: FIRST },
+      { dataRowIndex: 1, action: "duplicate", transactionId: SECOND },
+    ]);
+  });
+
+  it("일괄로 정한 뒤에도 개별 행을 바꿀 수 있습니다", () => {
+    setup({ duplicateCandidates: shared });
+
+    fireEvent.click(screen.getByRole("button", { name: "전부 별도 거래로 추가" }));
+    fireEvent.click(within(screen.getByTestId("duplicate-1")).getByRole("button", { name: "기존 거래와 중복" }));
+    fireEvent.click(screen.getByRole("button", { name: "이대로 진행" }));
+
+    expect(confirmed().duplicateDecisions).toEqual([
+      { dataRowIndex: 0, action: "keep" },
+      { dataRowIndex: 1, action: "duplicate", transactionId: FIRST },
+    ]);
+  });
+
+  it("일괄 선택이 이미 고른 기존 거래를 지우지 않습니다", () => {
+    setup({ duplicateCandidates: shared });
+
+    fireEvent.click(within(screen.getByTestId("duplicate-0")).getByRole("button", { name: "기존 거래와 중복" }));
+    fireEvent.change(within(screen.getByTestId("duplicate-0")).getByLabelText("중복으로 볼 기존 거래"), {
+      target: { value: SECOND },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "전부 기존 거래와 중복" }));
+    fireEvent.click(screen.getByRole("button", { name: "이대로 진행" }));
+
+    // 0번 행이 직접 고른 SECOND를 지키고, 나머지가 비켜서야 합니다.
+    expect(confirmed().duplicateDecisions).toEqual([
+      { dataRowIndex: 0, action: "duplicate", transactionId: SECOND },
+      { dataRowIndex: 1, action: "duplicate", transactionId: FIRST },
+    ]);
+  });
+
+  it("정하지 못한 행으로 바로 갈 수 있습니다", () => {
+    // 일괄로 정해도 물릴 거래가 모자란 행은 남습니다. 수백 행 중에서 찾아갈 수 있어야 합니다.
+    setup({ duplicateCandidates: [...shared, { dataRowIndex: 2, transactionIds: [FIRST, SECOND] }] });
+
+    fireEvent.click(screen.getByRole("button", { name: "전부 기존 거래와 중복" }));
+
+    expect(screen.getByRole("link", { name: "첫 행으로 가기" })).toHaveAttribute("href", "#duplicate-row-2");
+    expect(screen.getByTestId("duplicate-2")).toHaveAttribute("id", "duplicate-row-2");
+  });
+
+  it("확인할 항목이 하나뿐이면 일괄 버튼을 두지 않습니다", () => {
+    setup({ duplicateCandidates: [{ dataRowIndex: 4, transactionIds: [FIRST] }] });
+
+    expect(screen.queryByRole("button", { name: "전부 기존 거래와 중복" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "전부 별도 거래로 추가" })).toBeNull();
+  });
+
   it("내부 해시를 화면에 노출하지 않습니다", () => {
     const { container } = setup({ duplicateCandidates: candidates });
 

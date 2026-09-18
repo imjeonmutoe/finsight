@@ -213,10 +213,28 @@ export function MappingReview({
           <p className="text-sm leading-relaxed text-text-body">
             확인이 필요한 거래가 {duplicateCandidates.length}건 있습니다. 전부 정한 뒤 진행할 수 있습니다.
           </p>
-          {/* 행이 수백 개일 수 있습니다. 막힌 행이 몇 건인지 알려야 찾아갈 수 있습니다. */}
-          {unassigned.length > 0 && (
+          {/* 같은 파일을 다시 올리면 수백 행이 전부 후보가 됩니다. 하나씩 누르게 두지 않습니다. */}
+          {duplicateCandidates.length > 1 && (
+            <div className="flex flex-wrap gap-3">
+              {([["duplicate", "전부 기존 거래와 중복"], ["keep", "전부 별도 거래로 추가"]] as const).map(([action, text]) => (
+                <button
+                  key={action} type="button" className={SECONDARY}
+                  onClick={() => setDecisions((current) => Object.fromEntries(duplicateCandidates.map((candidate) => {
+                    const existing = current[candidate.dataRowIndex];
+                    // 같은 쪽으로 일괄 지정할 때는 직접 고른 기존 거래를 지우지 않습니다.
+                    return [candidate.dataRowIndex, existing?.action === action ? existing : { action }];
+                  })))}
+                >
+                  {text}
+                </button>
+              ))}
+            </div>
+          )}
+          {/* 행이 수백 개일 수 있습니다. 막힌 행이 몇 건인지와 그리로 가는 길이 함께 있어야 합니다. */}
+          {unassigned[0] !== undefined && (
             <p className="text-sm leading-relaxed text-up">
-              기존 거래가 모자라 정하지 못한 행이 {unassigned.length}건 있습니다.
+              기존 거래가 모자라 정하지 못한 행이 {unassigned.length}건 있습니다.{" "}
+              <a href={`#duplicate-row-${unassigned[0].dataRowIndex}`} className="underline">첫 행으로 가기</a>
             </p>
           )}
           <ul className="space-y-3">
@@ -225,6 +243,7 @@ export function MappingReview({
               return (
                 <li
                   key={candidate.dataRowIndex}
+                  id={`duplicate-row-${candidate.dataRowIndex}`}
                   data-testid={`duplicate-${candidate.dataRowIndex}`}
                   className="space-y-3 rounded-md border border-border-default bg-bg p-4"
                 >
