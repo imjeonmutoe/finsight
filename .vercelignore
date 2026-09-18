@@ -22,5 +22,8 @@ CLAUDE.md
 .pytest_cache/
 .mcp.json
 
-# 로컬 빌드 산출물
+# 로컬 빌드 산출물. Vercel은 어차피 서버에서 다시 빌드한다.
+# `.next`는 개발 서버를 오래 켜 두면 `dev`·`cache`만으로 수백 MB가 된다. 실측(2026-09-18):
+# 667MB가 쌓여 있었고, 28초면 끝나던 배포가 10분 넘게 업로드에서 멈췄다.
+.next/
 tsconfig.tsbuildinfo
