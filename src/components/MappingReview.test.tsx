@@ -152,6 +152,9 @@ describe("업로드 2단계 — 매핑 확인", () => {
   });
 });
 
+const FIRST = "44444444-4444-4444-8444-444444444444";
+const SECOND = "55555555-5555-4555-8555-555555555555";
+
 describe("업로드 2단계 — 중복 확인", () => {
   const candidates = [
     { dataRowIndex: 4, transactionIds: ["11111111-1111-4111-8111-111111111111"] },
@@ -196,6 +199,76 @@ describe("업로드 2단계 — 중복 확인", () => {
     expect(confirmed().duplicateDecisions[1]).toEqual({
       dataRowIndex: 9, action: "duplicate", transactionId: "33333333-3333-4333-8333-333333333333",
     });
+  });
+
+  // 날짜·금액이 같은 거래가 여러 건이면 여러 행이 같은 후보 목록을 받습니다. 기본값이 모두
+  // 첫 거래를 가리키면 서버가 INVALID_DECISION으로 되돌립니다(confirm 라우트의 targets 가드).
+  const shared = [
+    { dataRowIndex: 0, transactionIds: [FIRST, SECOND] },
+    { dataRowIndex: 1, transactionIds: [FIRST, SECOND] },
+  ];
+
+  it("후보가 같은 행들에 서로 다른 기존 거래를 기본값으로 물립니다", () => {
+    setup({ duplicateCandidates: shared });
+
+    for (const index of [0, 1]) {
+      fireEvent.click(within(screen.getByTestId(`duplicate-${index}`)).getByRole("button", { name: "기존 거래와 중복" }));
+    }
+
+    // 화면에 보이는 값과 보내는 값이 같아야 합니다. 다르면 사용자가 고른 적 없는 거래가 지워집니다.
+    expect(within(screen.getByTestId("duplicate-0")).getByLabelText("중복으로 볼 기존 거래")).toHaveValue(FIRST);
+    expect(within(screen.getByTestId("duplicate-1")).getByLabelText("중복으로 볼 기존 거래")).toHaveValue(SECOND);
+
+    fireEvent.click(screen.getByRole("button", { name: "이대로 진행" }));
+
+    expect(confirmed().duplicateDecisions).toEqual([
+      { dataRowIndex: 0, action: "duplicate", transactionId: FIRST },
+      { dataRowIndex: 1, action: "duplicate", transactionId: SECOND },
+    ]);
+  });
+
+  it("직접 고른 거래가 우선이고 나머지 행이 비켜섭니다", () => {
+    setup({ duplicateCandidates: shared });
+
+    for (const index of [0, 1]) {
+      fireEvent.click(within(screen.getByTestId(`duplicate-${index}`)).getByRole("button", { name: "기존 거래와 중복" }));
+    }
+    // 0번 행이 기본값(FIRST)을 버리고 SECOND를 고르면, 1번 행은 FIRST로 물러나야 합니다.
+    fireEvent.change(within(screen.getByTestId("duplicate-0")).getByLabelText("중복으로 볼 기존 거래"), {
+      target: { value: SECOND },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "이대로 진행" }));
+
+    expect(confirmed().duplicateDecisions).toEqual([
+      { dataRowIndex: 0, action: "duplicate", transactionId: SECOND },
+      { dataRowIndex: 1, action: "duplicate", transactionId: FIRST },
+    ]);
+  });
+
+  it("물릴 기존 거래가 모자라면 진행을 막고 어느 행인지 알립니다", () => {
+    // 새 행 3개가 기존 거래 2건을 두고 겹칩니다. 셋 다 중복일 수는 없습니다.
+    setup({ duplicateCandidates: [...shared, { dataRowIndex: 2, transactionIds: [FIRST, SECOND] }] });
+
+    for (const index of [0, 1, 2]) {
+      fireEvent.click(within(screen.getByTestId(`duplicate-${index}`)).getByRole("button", { name: "기존 거래와 중복" }));
+    }
+
+    expect(screen.getByRole("button", { name: "이대로 진행" })).toBeDisabled();
+    expect(screen.getByText(/기존 거래가 모자라 정하지 못한 행이 1건 있습니다./)).toBeVisible();
+    expect(screen.getByTestId("duplicate-2")).toHaveTextContent(
+      "물릴 기존 거래가 남지 않았습니다. 다른 거래를 고르거나 별도 거래로 추가해 주세요.",
+    );
+
+    // 한 행을 별도 거래로 돌리면 남은 둘이 서로 다른 거래를 물고 진행할 수 있습니다.
+    fireEvent.click(within(screen.getByTestId("duplicate-2")).getByRole("button", { name: "별도 거래로 추가" }));
+    expect(screen.getByRole("button", { name: "이대로 진행" })).toBeEnabled();
+    fireEvent.click(screen.getByRole("button", { name: "이대로 진행" }));
+
+    expect(confirmed().duplicateDecisions).toEqual([
+      { dataRowIndex: 0, action: "duplicate", transactionId: FIRST },
+      { dataRowIndex: 1, action: "duplicate", transactionId: SECOND },
+      { dataRowIndex: 2, action: "keep" },
+    ]);
   });
 
   it("내부 해시를 화면에 노출하지 않습니다", () => {
