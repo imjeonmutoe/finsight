@@ -53,13 +53,51 @@ function toMapping(labels: MappingLabel[], skipRows: number): ColumnMapping | nu
   };
 }
 
+type Decision = { action: "keep" | "duplicate"; transactionId?: string };
+
+/**
+ * 중복으로 정한 행마다 서로 다른 기존 거래를 물립니다. 후보 목록은 날짜·금액이 같은 거래를 모은
+ * 것이라 여러 행이 똑같은 목록을 받습니다. 모두 첫 거래를 기본값으로 쓰면 서버가
+ * INVALID_DECISION으로 되돌립니다 — 한 거래를 여러 행에 물리면 정상 거래가 사라지기 때문입니다.
+ * 직접 고른 값을 먼저 확정한 뒤 나머지를 남은 거래로 채웁니다. 새 행이 기존 거래보다 많으면
+ * 남는 행은 물릴 곳이 없어 undefined가 되고, 화면이 진행을 막습니다.
+ */
+function assignTargets(
+  candidates: { dataRowIndex: number; transactionIds: string[] }[],
+  decisions: Record<number, Decision>,
+): Map<number, string | undefined> {
+  const chosen = [...candidates]
+    .sort((left, right) => left.dataRowIndex - right.dataRowIndex)
+    .filter((candidate) => decisions[candidate.dataRowIndex]?.action === "duplicate");
+  const taken = new Set<string>();
+  const targets = new Map<number, string | undefined>();
+
+  for (const candidate of chosen) {
+    const picked = decisions[candidate.dataRowIndex]?.transactionId;
+    if (picked === undefined) continue;
+    // 같은 거래를 두 행에 직접 고르면 뒤엣것은 물릴 곳이 없습니다. 말없이 옮기지 않습니다.
+    const free = !taken.has(picked);
+    targets.set(candidate.dataRowIndex, free ? picked : undefined);
+    if (free) taken.add(picked);
+  }
+  for (const candidate of chosen) {
+    if (targets.has(candidate.dataRowIndex)) continue;
+    const free = candidate.transactionIds.find((id) => !taken.has(id));
+    targets.set(candidate.dataRowIndex, free);
+    if (free !== undefined) taken.add(free);
+  }
+  return targets;
+}
+
 export function MappingReview({
-  mapping, confidence, preview, encoding, filename, sourceKind, reused,
+  mapping, confidence, preview, totalRows, headerRowIndex, encoding, filename, sourceKind, reused,
   accountingMonth, duplicateCandidates, busy, error, onConfirm, onBack,
 }: {
   mapping: ColumnMapping | null;
   confidence: number;
   preview: string[][];
+  totalRows: number;
+  headerRowIndex: number;
   encoding: "utf-8" | "euc-kr";
   filename: string;
   sourceKind: "card" | "bank";
@@ -71,12 +109,13 @@ export function MappingReview({
   onConfirm: (request: ConfirmRequest) => void;
   onBack: () => void;
 }) {
-  const skipRows = mapping?.skipRows ?? 0;
+  // 추론이 실패하면 서버가 찾아둔 헤더 행을 쓴다. 0으로 되돌리면 제목 행이 컬럼 이름이 된다.
+  const skipRows = mapping?.skipRows ?? headerRowIndex;
   const headers = preview[skipRows] ?? [];
   const [labels, setLabels] = useState(() => initialLabels(mapping, headers.length));
   const [chosenEncoding, setChosenEncoding] = useState(encoding);
   const [month, setMonth] = useState(accountingMonth);
-  const [decisions, setDecisions] = useState<Record<number, { action: "keep" | "duplicate"; transactionId?: string }>>({});
+  const [decisions, setDecisions] = useState<Record<number, Decision>>({});
   const [open, setOpen] = useState(mapping === null || confidence < CONFIDENT);
 
   function assign(index: number, label: MappingLabel) {
@@ -90,7 +129,10 @@ export function MappingReview({
   const nextMapping = toMapping(labels, skipRows);
   const needsMonth = sourceKind === "card" && nextMapping?.billingMonth === undefined && month === "";
   const undecided = duplicateCandidates.filter((candidate) => decisions[candidate.dataRowIndex] === undefined);
-  const ready = nextMapping !== null && !needsMonth && undecided.length === 0;
+  const targets = assignTargets(duplicateCandidates, decisions);
+  const unassigned = duplicateCandidates.filter((candidate) =>
+    decisions[candidate.dataRowIndex]?.action === "duplicate" && targets.get(candidate.dataRowIndex) === undefined);
+  const ready = nextMapping !== null && !needsMonth && undecided.length === 0 && unassigned.length === 0;
 
   function confirm() {
     if (!nextMapping) return;
@@ -102,7 +144,7 @@ export function MappingReview({
         if (decision.action === "keep") return [{ dataRowIndex: candidate.dataRowIndex, action: "keep" as const }];
         return [{
           dataRowIndex: candidate.dataRowIndex, action: "duplicate" as const,
-          transactionId: decision.transactionId ?? candidate.transactionIds[0] ?? "",
+          transactionId: targets.get(candidate.dataRowIndex) ?? "",
         }];
       });
     onConfirm({
@@ -139,7 +181,11 @@ export function MappingReview({
       </section>
 
       <section className="space-y-3 rounded-md border border-border-default bg-surface p-5">
-        <h2 className="text-sm font-medium text-muted">원본 미리보기</h2>
+        <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+          <h2 className="text-sm font-medium text-muted">원본 미리보기</h2>
+          {/* 제목·헤더 행이 미리보기를 거의 채우면 나머지가 안 들어간 것으로 읽힙니다. */}
+          <p className="text-sm text-muted">총 {totalRows}행 중 처음 {preview.length}행</p>
+        </div>
         <div className="overflow-x-auto rounded-md border border-border-default">
           <table className="w-full border-collapse text-left text-sm">
             <caption className="sr-only">원본 미리보기</caption>
@@ -167,12 +213,37 @@ export function MappingReview({
           <p className="text-sm leading-relaxed text-text-body">
             확인이 필요한 거래가 {duplicateCandidates.length}건 있습니다. 전부 정한 뒤 진행할 수 있습니다.
           </p>
+          {/* 같은 파일을 다시 올리면 수백 행이 전부 후보가 됩니다. 하나씩 누르게 두지 않습니다. */}
+          {duplicateCandidates.length > 1 && (
+            <div className="flex flex-wrap gap-3">
+              {([["duplicate", "전부 기존 거래와 중복"], ["keep", "전부 별도 거래로 추가"]] as const).map(([action, text]) => (
+                <button
+                  key={action} type="button" className={SECONDARY}
+                  onClick={() => setDecisions((current) => Object.fromEntries(duplicateCandidates.map((candidate) => {
+                    const existing = current[candidate.dataRowIndex];
+                    // 같은 쪽으로 일괄 지정할 때는 직접 고른 기존 거래를 지우지 않습니다.
+                    return [candidate.dataRowIndex, existing?.action === action ? existing : { action }];
+                  })))}
+                >
+                  {text}
+                </button>
+              ))}
+            </div>
+          )}
+          {/* 행이 수백 개일 수 있습니다. 막힌 행이 몇 건인지와 그리로 가는 길이 함께 있어야 합니다. */}
+          {unassigned[0] !== undefined && (
+            <p className="text-sm leading-relaxed text-up">
+              기존 거래가 모자라 정하지 못한 행이 {unassigned.length}건 있습니다.{" "}
+              <a href={`#duplicate-row-${unassigned[0].dataRowIndex}`} className="underline">첫 행으로 가기</a>
+            </p>
+          )}
           <ul className="space-y-3">
             {duplicateCandidates.map((candidate) => {
               const decision = decisions[candidate.dataRowIndex];
               return (
                 <li
                   key={candidate.dataRowIndex}
+                  id={`duplicate-row-${candidate.dataRowIndex}`}
                   data-testid={`duplicate-${candidate.dataRowIndex}`}
                   className="space-y-3 rounded-md border border-border-default bg-bg p-4"
                 >
@@ -193,6 +264,11 @@ export function MappingReview({
                       </button>
                     ))}
                   </div>
+                  {decision?.action === "duplicate" && targets.get(candidate.dataRowIndex) === undefined && (
+                    <p className="text-sm leading-relaxed text-up">
+                      물릴 기존 거래가 남지 않았습니다. 다른 거래를 고르거나 별도 거래로 추가해 주세요.
+                    </p>
+                  )}
                   {decision?.action === "duplicate" && candidate.transactionIds.length > 1 && (
                     <div className="space-y-3">
                       <label htmlFor={`duplicate-target-${candidate.dataRowIndex}`} className="block text-xs font-medium text-muted">
@@ -200,12 +276,15 @@ export function MappingReview({
                       </label>
                       <select
                         id={`duplicate-target-${candidate.dataRowIndex}`} className={`w-full ${FIELD}`}
-                        value={decision.transactionId ?? candidate.transactionIds[0] ?? ""}
+                        value={targets.get(candidate.dataRowIndex) ?? ""}
                         onChange={(event) => setDecisions((current) => ({
                           ...current,
                           [candidate.dataRowIndex]: { action: "duplicate", transactionId: event.target.value },
                         }))}
                       >
+                        {targets.get(candidate.dataRowIndex) === undefined && (
+                          <option value="" disabled>고를 수 있는 거래 없음</option>
+                        )}
                         {candidate.transactionIds.map((id, position) => (
                           <option key={id} value={id}>기존 거래 {position + 1}</option>
                         ))}

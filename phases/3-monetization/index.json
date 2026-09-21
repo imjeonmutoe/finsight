@@ -5,17 +5,27 @@
     {
       "step": 10,
       "name": "landing",
-      "status": "pending"
+      "status": "completed",
+      "started_at": "2026-09-17T10:49:46+0900",
+      "summary": "S1·S1b 랜딩(`src/app/page.tsx`)을 KpiCard·CategoryBars 재사용 목업·기능 3개·Free ₩0/Pro ₩9,900 요금제·데이터 처리 섹션으로 구성하고, 세션 유무로 CTA를 `Google로 시작하기`↔`대시보드로` 전환. `ThemeToggle`(html data-theme 구독 + localStorage 저장)과 `LandingCta` 컴포넌트 추가, `/privacy` 개인정보처리방침(국외 이전 4곳 표) 신설, layout에 `@vercel/analytics` 2.0.1 `<Analytics />` 삽입.",
+      "completed_at": "2026-09-17T11:04:00+0900"
     },
     {
       "step": 11,
       "name": "billing",
-      "status": "pending"
+      "status": "completed",
+      "started_at": "2026-09-17T11:04:00+0900",
+      "summary": "Polar 샌드박스 결제를 붙였다. `src/services/polar.ts`가 SDK 없이 fetch로 `sandbox-api.polar.sh`를 호출한다 — 체크아웃 생성 시 `x-forwarded-for` 첫 항목을 `customer_ip_address`로 넘겨(없으면 USD 가격이 뜬다) `external_customer_id`·`metadata.user_id`에 사용자 ID를 심고, 고객 포털은 `/v1/customer-sessions/`로 누를 때마다 새로 만든다. 서명 검증은 Standard Webhooks 규격(`webhook-id`·`webhook-timestamp`·`webhook-signature`)을 직접 구현했고 `crypto.timingSafeEqual`로 비교하며 길이 불일치·v1 아닌 버전·±300초 밖 타임스탬프를 모두 거절한다. `POST /api/billing/webhook`은 service role로 `UPDATE profiles` 하나만 하고 이벤트 테이블을 두지 않는다 — 멱등과 순서 역전을 `.eq('id', userId).lt('plan_updated_at', eventAt)` 한 조건으로 함께 막는다(이벤트 시각은 재시도마다 바뀌는 전달 시각이 아니라 `modified_at ?? created_at`). 실제 종료인 `subscription.revoked`에서만 Free로 내리고, 해지 '예약'인 `subscription.canceled`는 상태가 active이므로 Pro를 유지한 채 `ends_at`만 `plan_expires_at`에 기록한다. 강등은 `profiles`만 건드리고 거래를 지우지 않는다. `POST /api/billing/checkout`(이미 Pro면 409)과 `GET /api/billing/portal`(302, no-store)을 추가하고, step 9의 `/dashboard/settings`에 `UpgradeButton`(Free)·고객 포털 링크(Pro)와 복귀 폴링 `CheckoutReturn`(1.5초 간격, 10초 상한, `router.refresh()`만 돌리고 플랜은 서버가 읽음)을 덧붙였다. 대시보드 잠금 카드는 설정으로 가는 텍스트 링크를 얻었다. 미들웨어 matcher의 웹훅 제외는 step 3에 이미 있고 테스트로 고정돼 있다. 다음 결제일은 저장하지 않고 고객 포털로 안내한다 — `plan_expires_at`은 만료 의미로만 쓴다.",
+      "completed_at": "2026-09-17T11:23:51+0900"
     },
     {
       "step": 12,
       "name": "deploy",
-      "status": "pending"
+      "status": "completed",
+      "started_at": "2026-09-18T16:20:00+0900",
+      "completed_at": "2026-09-21T10:05:00+0900",
+      "summary": "프로덕션 URL: https://finsight-zeta-peach.vercel.app (Vercel 프로젝트 finsight, 배포 finsight-7wtdlpbwe, 빌드 12초). 보안 검증: S1 gitleaks 8.30.1로 --log-opts=--all 90커밋 후보 0건·종료코드 0, S5 .next/static 후보 0건에 더해 서버 전용 변수 6개의 실제 값·이름을 번들 59개 파일에서 직접 대조해 0건, .env는 .gitignore:31의 .env*로 무시됨. S2 RLS는 public 6개 테이블 전부 활성(정책 각 1개, qual/with_check 모두 auth.uid()=user_id)이고 storage.objects는 statements 버킷 폴더명=auth.uid() 조건. 활성화 쿼리에 그치지 않고 실제 권한도 확인했다 — anon은 6개 테이블 전부 42501이고 경로를 아는 원본 CSV도 400, authenticated는 profiles·insight_cache에 SELECT만 있어 사용자가 스스로 plan을 pro로 못 올린다. 환경변수 8개 중 둘을 고쳤다: NEXT_PUBLIC_SITE_URL이 http://localhost:3000이어서 프로덕션 도메인으로 바꿨고(OAuth·결제 복귀가 사용자 PC로 가던 상태), ANTHROPIC_API_KEY를 현재 값으로 다시 넣었다. Vercel은 Secret 타입 값을 [SENSITIVE]로 내려보내 CLI로는 대조가 불가능하다. 배포가 세 번 막혔다. (1) 로컬 .next 667MB가 .vercelignore에 없어 업로드가 10분 넘게 멈췄다 — 커밋 dee9be9로 .next/를 추가해 업로드가 875B가 됐다. (2) 커밋 author 이메일이 GitHub 계정에 없어 Blocked. (3) 이메일 등록 후에도 Not authorized — Vercel 계정에 GitHub 연결이 없었다. 계정에 GitHub를 연결해 풀었다. 9/17 배포들이 통과했던 이유는 그때 git 메타데이터가 붙지 않았기 때문(Source=vercel deploy)이다. 외부 설정: Supabase Redirect URL에 프로덕션 /auth/callback이 이미 있었고, Google OAuth는 콜백이 supabase.co/auth/v1/callback이라 앱 도메인과 무관해 추가할 것이 없었다(step12 본문의 지시는 이 흐름에선 맞지 않는다). Polar 웹훅 엔드포인트는 POLAR_ACCESS_TOKEN에 조회 권한이 없어(insufficient_scope) 확인하지 못했다. 배포와 별개로 Supabase Auth의 Email 공급자를 껐다 — anon 키로 /auth/v1/signup에 이메일+비밀번호를 던지면 Google 전용 설계를 우회해 계정이 만들어지는 상태였다. 지금은 signup·password grant·magic link 모두 email_provider_disabled다. 유출 비밀번호 차단은 Pro 플랜 전용이라 켤 수 없고, 경고는 계속 뜨지만 비밀번호 계정이 존재할 수 없으므로 실질 위험은 없다. 스모크 22항목 중 7개 통과: 1(랜딩·테마 토글·원화), 2(/privacy 국외 이전 4곳), 3(로그인→대시보드), 11(Free 게이팅 — 응답 400KB에 추이·구독·이상거래 배열 없음), 13(서명 없는 웹훅 401), 16(업로드 삭제 확인에 거래 151건 표시), 그리고 프로덕션 모델 경로 — insight_cache를 비워 cache miss→claude-sonnet-5 호출→캐시 재기록을 실제로 확인했다(서버리스 타임아웃 없음). 나머지 15개는 미실행이며 실패가 아니다: 4·5·6·7·8·9·10·17·18·19·20·21은 새 명세서 업로드가 필요한데 Free 월 1회 한도를 쓰고 같은 Supabase 프로젝트에 중복 데이터가 쌓인다(프로덕션과 로컬이 DB를 공유한다). 14는 Polar 샌드박스 실결제, 15는 30분 경과가 필요하다. 이 항목들의 코드 경로는 9/18 로컬 세션에서 같은 커밋·같은 DB로 검증했고, 프로덕션 고유 위험(환경변수·런타임)은 위 7개와 모델 경로 확인으로 덮였다."
     }
-  ]
+  ],
+  "created_at": "2026-09-17T10:49:46+0900"
 }

@@ -3,7 +3,7 @@
 import { createHash } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import type { ColumnMapping, ImportContext } from "@/types/upload";
-import { buildTransactions, detectHeaderRow, parseAmount, parseCsvRows, parseDate } from "./csv";
+import { buildTransactions, detectHeaderRow, looksLikeHtml, parseAmount, parseCsvRows, parseDate } from "./csv";
 
 const mapping: ColumnMapping = { date: 0, merchant: 1, amount: 2, skipRows: 0 };
 const card: ImportContext = { sourceId: "card-a", sourceKind: "card", fileHash: "file-a", accountingMonth: "2026-02" };
@@ -16,6 +16,31 @@ describe("CSV 구조", () => {
     "E1: CSV가 아닌 내용은 한국어 오류를 반환합니다", (text) => {
       expect(() => parseCsvRows(text)).toThrow(/CSV.*확인/);
     },
+  );
+
+  it.each([
+    // 카드사 '엑셀 내려받기'가 주는 실제 모양입니다. 빈 행이 먼저 나와 `<`로 시작하지 않고,
+    // 줄마다 쉼표가 있어 셀로 쪼개지므로 "표처럼 보이는" 쓰레기로 파싱에 성공해 버립니다.
+    ",,\n,,\n<html>,,\n<body>,,\n<table>,,\n<tr><th>이용일</th></tr>,,\n</table>,,\n</body></html>,,",
+    ",,\r\n,,\r\n<!DOCTYPE html>,,\r\n<table>,,\r\n<tr><td>1</td></tr>,,\r\n</table>,,",
+  ])("E1b: 빈 행 뒤에 숨은 HTML 표도 거부합니다", (text) => {
+    // 고치기 전에는 여기서 던지지 않고 2000행짜리 가짜 표가 만들어졌습니다.
+    expect(() => parseCsvRows(text)).toThrow(/CSV.*확인/);
+  });
+
+  it("셀 안의 꺾쇠는 HTML로 오인하지 않습니다", () => {
+    // 태그 이름이 아닌 꺾쇠까지 막으면 정상 명세서를 거부합니다.
+    expect(parseCsvRows("가맹점,메모\n㈜가게 <본점>,3 < 5")).toEqual([
+      ["가맹점", "메모"], ["㈜가게 <본점>", "3 < 5"],
+    ]);
+  });
+
+  it.each(["<table>", ",,\n,,\n<tr><td>1</td></tr>", "\r\n<!doctype html>", "  <TBODY>", "</table>"])(
+    "looksLikeHtml이 HTML 표지를 찾습니다: %s", (text) => expect(looksLikeHtml(text)).toBe(true),
+  );
+
+  it.each(["", "a,b\n1,2", "가맹점,메모\n가게,3 < 5", "거래일자,가맹점명,금액\n2026-01-02,㈜가게 <본점>,5000"])(
+    "looksLikeHtml이 정상 CSV를 HTML로 보지 않습니다: %s", (text) => expect(looksLikeHtml(text)).toBe(false),
   );
 
   it("E2: 빈 파일과 헤더만 있는 파일을 처리합니다", () => {
@@ -201,6 +226,18 @@ describe("거래 생성", () => {
       expect(buildTransactions([header, ["2026-01-02", "카페", "5000"], [label, "", "9999"]], mapping, card)).toHaveLength(1);
     },
   );
+
+  it("날짜와 금액이 둘 다 없는 푸터 행을 건너뜁니다", () => {
+    // 현대카드 명세서 마지막 줄은 날짜 칸이 '-'이고 합계 문구는 가맹점 칸에 있다.
+    // 날짜도 금액도 없으면 거래가 될 수 없으므로 잘못된 거래 날짜를 숨기는 경우가 아니다.
+    const footer = ["-", "총 합계 151건", ""];
+
+    expect(buildTransactions([header, ["2026-01-02", "카페", "5000"], footer], mapping, card)).toHaveLength(1);
+  });
+
+  it("자리표시자 날짜라도 금액이 있으면 숨기지 않습니다", () => {
+    expect(() => buildTransactions([header, ["-", "카페", "5000"]], mapping, card)).toThrow(/날짜/);
+  });
 
   it("요약 표시는 날짜 위치에서만 인정합니다", () => {
     expect(() => buildTransactions([header, ["2026-01-02", "합계", "5000"], ["알수없음", "카페", "5000"]], mapping, card)).toThrow(/3행/);

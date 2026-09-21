@@ -203,6 +203,52 @@ describe("POST /api/uploads 입력 검증", () => {
     expect(response.status).toBe(400);
     expect(inferColumnMapping).not.toHaveBeenCalled();
   });
+
+  it("HTML 표로 된 명세서를 그대로 읽습니다", async () => {
+    // 카드사 '엑셀 내려받기'는 HTML 표를 내려줍니다. 사용자에게 스프레드시트로 열어
+    // CSV로 내보내라고 시키지 않습니다. 앞에 빈 행이 붙어 `<`로 시작하지도 않습니다.
+    happyPath();
+    const html = ",,\n,,\n<html><head><style>td{color:red}</style></head><body><table>"
+      + "<tr><th>이용일</th><th>이용가맹점</th><th>이용금액</th></tr>"
+      + "<tr><td>2026.08.03</td><td>가게, 본점</td><td>38,400</td></tr>"
+      + "</table></body></html>";
+
+    const response = await post(await multipart({ sourceId: SOURCE_ID, file: csvFile(html) }));
+
+    expect(response.status).toBe(200);
+    const body = await response.json() as { preview: string[][] };
+    expect(body.preview[0]).toEqual(["이용일", "이용가맹점", "이용금액"]);
+    // 칸 경계가 태그라 쉼표가 든 값이 쪼개지지 않습니다.
+    expect(body.preview[1]).toEqual(["2026.08.03", "가게, 본점", "38,400"]);
+    expect(inferColumnMapping).toHaveBeenCalled();
+  });
+
+  it("미리보기와 함께 파일 전체 행 수를 알려줍니다", async () => {
+    // 미리보기는 5행까지만 보여줍니다. 나머지가 버려진 게 아님을 화면이 말할 수 있어야 합니다.
+    happyPath();
+    const csv = ["거래일자,가맹점명,금액",
+      ...Array.from({ length: 8 }, (_, index) => `2026-08-0${index + 1},카페,5000`)].join("\n");
+
+    const response = await post(await multipart({ sourceId: SOURCE_ID, file: csvFile(csv) }));
+
+    expect(response.status).toBe(200);
+    const body = await response.json() as { preview: string[][]; totalRows: number };
+    expect(body.preview).toHaveLength(5);
+    expect(body.totalRows).toBe(9);
+  });
+
+  it("카드사가 내려주는 .xls 확장자도 받습니다", async () => {
+    // 내려받은 파일 이름이 .xls입니다. 이름을 바꿔 오라고 시키면 HTML을 읽는 의미가 없습니다.
+    happyPath();
+    const html = "<table><tr><th>이용일</th><th>가맹점</th><th>금액</th></tr>"
+      + "<tr><td>2026.08.03</td><td>쿠팡</td><td>38400</td></tr></table>";
+
+    const response = await post(await multipart({
+      sourceId: SOURCE_ID, file: csvFile(html, "명세서.xls", "application/vnd.ms-excel"),
+    }));
+
+    expect(response.status).toBe(200);
+  });
 });
 
 describe("POST /api/uploads 저장과 매핑", () => {
@@ -255,6 +301,7 @@ describe("POST /api/uploads 저장과 매핑", () => {
       uploadId: UPLOAD_ID, sourceId: SOURCE_ID, status: "mapped", reused: false,
       mapping: MAPPING, confidence: 0.94,
       preview: [["거래일자", "가맹점명", "이용금액"], ["2026-08-03", "쿠팡", "38400"], ["2026-08-04", "스타벅스", "4500"]],
+      totalRows: 3, headerRowIndex: 0,
     });
     const updated = argsOf("uploads:update", "update")[0]?.[0] as Record<string, unknown>;
     expect(updated).toMatchObject({ status: "mapped", column_mapping: MAPPING, mapping_confidence: 0.94 });
@@ -379,6 +426,41 @@ describe("POST /api/uploads 저장과 매핑", () => {
     expect(updated.error_message).toContain("횟수를 소비하지 않았습니다");
     expect(updated.error_message).not.toContain("쿠팡");
     expect(remove).not.toHaveBeenCalled();
+  });
+
+  it("매핑 추론이 실패해도 수동 매핑에 필요한 것을 함께 돌려줍니다", async () => {
+    // 화면이 "매핑 확인에서 직접 고르라"고 안내하므로 그 화면을 열 재료를 줘야 한다.
+    // uploadId·preview가 없으면 사용자는 안내받은 일을 할 수 없다.
+    happyPath();
+    inferColumnMapping.mockRejectedValue(new Error("분석 요청을 처리하지 못했습니다."));
+
+    const response = await post(await multipart({ sourceId: SOURCE_ID, file: csvFile(CSV) }));
+
+    expect(response.status).toBe(502);
+    const body = await response.json() as Record<string, unknown>;
+    expect(body.code).toBe("MAPPING_FAILED");
+    expect(body.uploadId).toBe(UPLOAD_ID);
+    expect(body.sourceId).toBe(SOURCE_ID);
+    expect(body.mapping).toBeNull();
+    expect(body.preview).toEqual([
+      ["거래일자", "가맹점명", "이용금액"], ["2026-08-03", "쿠팡", "38400"], ["2026-08-04", "스타벅스", "4500"],
+    ]);
+  });
+
+  it("추론이 실패하면 찾아둔 헤더 행 위치도 함께 돌려줍니다", async () => {
+    // 상단 요약행이 있는 명세서에서, 수동 매핑 화면이 제목 행을 컬럼 이름으로 쓰면 안 된다.
+    // 서버는 이미 헤더 행을 찾아놨다. 그 값을 안 주면 화면이 0행으로 되돌아간다.
+    happyPath();
+    inferColumnMapping.mockRejectedValue(new Error("분석 요청을 처리하지 못했습니다."));
+    const csv = ["2026년 10월 이용대금명세서(예정),,", "결제예정 상세내역,,",
+      "거래일자,가맹점명,이용금액", "2026-08-03,쿠팡,38400"].join("\n");
+
+    const response = await post(await multipart({ sourceId: SOURCE_ID, file: csvFile(csv) }));
+
+    expect(response.status).toBe(502);
+    const body = await response.json() as Record<string, unknown>;
+    expect(body.code).toBe("MAPPING_FAILED");
+    expect(body.headerRowIndex).toBe(2);
   });
 
   it("Storage 저장이 실패하면 failed로 기록하고 모델을 호출하지 않습니다", async () => {

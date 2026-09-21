@@ -1,7 +1,8 @@
 import { cookies } from "next/headers";
 import { z } from "zod";
 import { columnMappingSchema, errorResponse, jsonResponse, requireUserId } from "@/lib/api";
-import { buildTransactions, parseCsvRows } from "@/lib/csv";
+import { buildTransactions } from "@/lib/csv";
+import { parseStatementRows } from "@/lib/statement";
 import { decodeCsv } from "@/lib/encoding";
 import { MAX_CSV_ROWS } from "@/lib/limits";
 import { classifyByRule } from "@/lib/merchant-rules";
@@ -88,7 +89,9 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       unclassified: upload.unclassified_count,
     } satisfies ConfirmResponse);
   }
-  if (upload.status !== "mapped") {
+  // failed는 매핑 추론이 실패한 업로드입니다. 사용자가 직접 고른 매핑으로 승인할 수 있어야
+  // 합니다. 원본 보관에 실패한 경우라면 아래 Storage 다운로드가 걸러냅니다.
+  if (upload.status !== "mapped" && upload.status !== "failed") {
     return errorResponse(409, "UPLOAD_NOT_MAPPED", "아직 매핑을 확인하지 않은 업로드입니다. 매핑 확인부터 진행해 주세요.");
   }
 
@@ -116,7 +119,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   let parsed: ParsedTransaction[];
   let rowCount: number;
   try {
-    const rows = parseCsvRows(decodeCsv(new Uint8Array(await stored.data.arrayBuffer()), encoding));
+    const rows = parseStatementRows(decodeCsv(new Uint8Array(await stored.data.arrayBuffer()), encoding));
     rowCount = rows.length;
     if (rowCount > MAX_CSV_ROWS) {
       return errorResponse(413, "TOO_MANY_ROWS", "행이 10,000개를 넘습니다. 기간을 나눠 다시 올려 주세요.");
@@ -194,6 +197,16 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     const categorySource: CategorySource | null = fromUser ? "user" : fromRule ? "rule" : null;
     return { ...transaction, category, categorySource };
   });
+
+  // confirm_upload는 status가 'mapped'일 때만 저장합니다. 추론이 실패해 failed로 기록된
+  // 업로드는 사용자가 직접 고른 매핑이 곧 확인된 매핑이므로 여기서 되돌립니다.
+  if (upload.status === "failed") {
+    const promoted = await supabase.from("uploads").update({ status: "mapped", error_message: null })
+      .eq("id", uploadId).eq("user_id", userId);
+    if (promoted.error) {
+      return errorResponse(500, "CONFIRM_FAILED", "거래를 저장하지 못했습니다. 잠시 후 다시 시도해 주세요.");
+    }
+  }
 
   const result = await supabase.rpc("confirm_upload", {
     p_upload_id: uploadId,

@@ -13,7 +13,8 @@ import type { FinancialSource } from "@/types/upload";
 const STEPS = ["파일 선택", "매핑 확인", "분류 진행률", "결과 요약"];
 const NETWORK_ERROR = "요청을 보내지 못했습니다. 연결을 확인하고 다시 시도해 주세요.";
 const NO_PROGRESS = "더 이상 자동으로 분류되지 않습니다. 대시보드에서 직접 카테고리를 고를 수 있습니다.";
-const REVIEW_NOTICE = "비슷한 거래를 찾았습니다. 아래에서 추가·중복을 정한 뒤 다시 진행해 주세요.";
+// 확인 목록은 이 안내보다 위에 그려집니다. 방향 대신 섹션 이름으로 가리켜야 어긋나지 않습니다.
+const REVIEW_NOTICE = "비슷한 거래를 찾았습니다. '확인이 필요한 항목'에서 추가·중복을 정한 뒤 다시 진행해 주세요.";
 
 const PRIMARY = "rounded-md bg-text px-4 py-2 text-sm font-medium text-bg hover:opacity-90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent";
 
@@ -123,7 +124,9 @@ export function UploadFlow({ sources, plan, limitReached, resetsAt, monthsHeld, 
       setResets(typeof body.resetsAt === "string" ? body.resetsAt : null);
       return;
     }
-    if (!response.ok) {
+    // 추론만 실패한 것입니다. 원본은 보관돼 있으니 1단계에 가두지 않고 직접 고르게 합니다.
+    const manual = response.status === 502 && body.code === "MAPPING_FAILED";
+    if (!response.ok && !manual) {
       setError(messageOf(body, "파일을 올리지 못했습니다. 잠시 후 다시 시도해 주세요."));
       return;
     }
@@ -131,6 +134,7 @@ export function UploadFlow({ sources, plan, limitReached, resetsAt, monthsHeld, 
     setFilename(file.name);
     setSourceKind(list.find((source) => source.id === sourceId)?.kind ?? "card");
     setCandidates([]);
+    setError(manual ? messageOf(body, "") : null);
     setStep(2);
   }
 
@@ -246,7 +250,7 @@ export function UploadFlow({ sources, plan, limitReached, resetsAt, monthsHeld, 
 
       {step === 2 && mapped && (
         <MappingReview
-          mapping={mapped.mapping} confidence={mapped.confidence} preview={mapped.preview}
+          mapping={mapped.mapping} confidence={mapped.confidence} preview={mapped.preview} totalRows={mapped.totalRows} headerRowIndex={mapped.headerRowIndex}
           encoding={resume?.encoding ?? "utf-8"} filename={filename}
           sourceKind={sourceKind} reused={mapped.reused}
           accountingMonth={sourceKind === "card" && mapped.mapping?.billingMonth === undefined ? currentKstMonth() : ""}

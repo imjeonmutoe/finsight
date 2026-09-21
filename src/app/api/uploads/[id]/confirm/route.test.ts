@@ -167,6 +167,35 @@ describe("POST /api/uploads/[id]/confirm 검증", () => {
     expect(download).not.toHaveBeenCalled();
   });
 
+  it("추론이 실패한 업로드도 수동 매핑으로 승인할 수 있습니다", async () => {
+    // 매핑 추론 실패는 failed로 기록된다. 사용자가 직접 컬럼을 고른 뒤 승인하는 경로가
+    // 막히면, 화면이 안내하는 "직접 선택"을 실제로는 할 수 없다.
+    stage({ upload: uploadRow({ status: "failed" }) });
+
+    const response = await confirm();
+
+    expect(response.status).toBe(200);
+    expect(rpc).toHaveBeenCalled();
+  });
+
+  it("승인 전에 failed를 mapped로 되돌립니다", async () => {
+    // confirm_upload는 status가 'mapped'가 아니면 UPLOAD_NOT_MAPPED로 거절한다.
+    // 라우트만 failed를 통과시키면 화면은 진행되는데 저장에서 조용히 막힌다.
+    stage({ upload: uploadRow({ status: "failed" }) });
+
+    expect((await confirm()).status).toBe(200);
+    const updated = argsOf("uploads:update", "update")[0]?.[0] as Record<string, unknown>;
+    expect(updated).toMatchObject({ status: "mapped" });
+    expect(argsOf("uploads:update", "eq")).toEqual([["id", UPLOAD_ID], ["user_id", "user-1"]]);
+  });
+
+  it("이미 mapped면 상태를 다시 쓰지 않습니다", async () => {
+    stage();
+
+    expect((await confirm()).status).toBe(200);
+    expect(argsOf("uploads:update", "update")).toEqual([]);
+  });
+
   it("아직 매핑되지 않은 업로드는 409입니다", async () => {
     enqueue("uploads:select", uploadRow({ status: "pending" }));
 

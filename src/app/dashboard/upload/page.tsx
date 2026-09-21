@@ -3,7 +3,7 @@ import { redirect } from "next/navigation";
 import { z } from "zod";
 import { UploadFlow } from "@/components/UploadFlow";
 import { columnMappingSchema, kstMonthStart, nextKstMonthStart, requireUserId } from "@/lib/api";
-import { parseCsvRows } from "@/lib/csv";
+import { parseStatementRows } from "@/lib/statement";
 import { decodeCsv } from "@/lib/encoding";
 import { getMonthlyTrend } from "@/lib/queries";
 import { createServerSupabase } from "@/services/supabase";
@@ -57,10 +57,9 @@ async function loadResume(
   const stored = await supabase.storage.from(BUCKET).download(found.data.storage_path);
   if (stored.error || !stored.data) return null;
 
-  let preview: string[][];
+  let rows: string[][];
   try {
-    preview = parseCsvRows(decodeCsv(new Uint8Array(await stored.data.arrayBuffer()), encoding))
-      .slice(0, PREVIEW_ROWS);
+    rows = parseStatementRows(decodeCsv(new Uint8Array(await stored.data.arrayBuffer()), encoding));
   } catch {
     return null;
   }
@@ -68,7 +67,10 @@ async function loadResume(
   return {
     mapping: {
       uploadId: found.data.id, sourceId: found.data.source_id, status: "mapped", reused: true,
-      mapping: mapping.data, confidence: found.data.mapping_confidence ?? 0, preview,
+      mapping: mapping.data, confidence: found.data.mapping_confidence ?? 0,
+      preview: rows.slice(0, PREVIEW_ROWS), totalRows: rows.length,
+      // 이어서 진행은 저장된 매핑이 있으므로 그 헤더 행이 곧 폴백 값이다.
+      headerRowIndex: mapping.data.skipRows,
     } satisfies MappingResponse,
     filename: found.data.filename,
     sourceKind: sources.find((source) => source.id === found.data.source_id)?.kind ?? "card",

@@ -1,5 +1,7 @@
 import type { Metadata } from "next";
 import { JetBrains_Mono } from "next/font/google";
+// 계측은 이것 하나다. 이벤트 테이블도 직접 작성한 추적 코드도 두지 않는다(step 10).
+import { Analytics } from "@vercel/analytics/next";
 // Pretendard — 한글 본문 서체. dynamic subset은 92개 woff2를 unicode-range로 쪼개
 // 두어 브라우저가 화면에 실제로 쓰인 글자의 청크만 받는다. 통짜 variable 파일은
 // 2.0MB라 쓸 수 없다. 이 서체를 쓰는 이유는 시스템 폰트로 두면 macOS는 Apple SD
@@ -60,7 +62,10 @@ export default function RootLayout({
       <head>
         <script id="theme-init">{themeScript}</script>
       </head>
-      <body className="bg-bg text-text antialiased">{children}</body>
+      <body className="bg-bg text-text antialiased">
+        {children}
+        <Analytics />
+      </body>
     </html>
   );
 }

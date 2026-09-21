@@ -1,0 +1,29 @@
+# Vercel CLI는 .gitignore를 따르지 않는다. 이 파일이 없으면 작업 디렉토리가 통째로
+# 업로드된다. 실제로 첫 배포에 .env가 그대로 올라갔다.
+
+# 시크릿
+.env
+.env.*
+
+# 하네스 산출물. step*-output.json에는 에이전트 실행 기록이 들어 있다.
+phases/
+scripts/
+
+# 빌드에 필요 없는 문서·마이그레이션
+docs/
+supabase/
+AGENTS.md
+CLAUDE.md
+
+# 에이전트·IDE 설정. .claude/worktrees는 다른 브랜치의 전체 체크아웃이다.
+.claude/
+.codex/
+.idea/
+.pytest_cache/
+.mcp.json
+
+# 로컬 빌드 산출물. Vercel은 어차피 서버에서 다시 빌드한다.
+# `.next`는 개발 서버를 오래 켜 두면 `dev`·`cache`만으로 수백 MB가 된다. 실측(2026-09-18):
+# 667MB가 쌓여 있었고, 28초면 끝나던 배포가 10분 넘게 업로드에서 멈췄다.
+.next/
+tsconfig.tsbuildinfo

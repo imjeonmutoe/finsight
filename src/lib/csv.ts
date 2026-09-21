@@ -6,10 +6,23 @@ import { isSensitiveHeader } from "./mapping-labels";
 import { normalizeMerchant } from "./merchant";
 import { buildSanitizedMappingInput, sanitizeMerchantForLlm } from "./sanitize";
 
+// 카드사·은행의 "엑셀 내려받기"는 대부분 HTML 표를 `.xls` 확장자로 내려줍니다. 사용자가
+// 확장자만 `.csv`로 바꿔 올리는 경로가 흔합니다. 문서 앞에 빈 행(`,,`)이 먼저 나오는 경우가
+// 있어 "`<`로 시작하는가"만으로는 못 잡고, 줄마다 쉼표가 있으면 표처럼 보이는 쓰레기로
+// 파싱까지 성공합니다. 그래서 문서 전체에서 태그 이름을 찾습니다.
+// 여는 꺾쇠만으로 판정하지 않는 이유: 가맹점명에 `㈜가게 <본점>` 같은 값이 들어올 수 있습니다.
+const HTML_MARKER = /<\s*\/?\s*(!doctype|html|head|body|table|thead|tbody|tr|td|th)\b/i;
+
+/** 내용이 CSV가 아니라 HTML 문서·표인지 봅니다. 업로드 라우트가 안내 문구를 고르는 데 씁니다. */
+export function looksLikeHtml(text: string): boolean {
+  return HTML_MARKER.test(text);
+}
+
+const invalid = () => new Error("CSV 형식이 올바르지 않습니다. 파일의 구분자와 따옴표를 확인해 주세요.");
+
 export function parseCsvRows(text: string): string[][] {
   const input = text.replace(/^\ufeff/, "");
   if (!input.trim()) return [];
-  const invalid = () => new Error("CSV 형식이 올바르지 않습니다. 파일의 구분자와 따옴표를 확인해 주세요.");
   let json = false;
   if (/^[{[]/.test(input.trimStart())) {
     try {
@@ -19,10 +32,18 @@ export function parseCsvRows(text: string): string[][] {
       // 대괄호로 시작하는 요약문도 CSV에 포함될 수 있습니다.
     }
   }
-  if (json || input.trimStart().startsWith("<") || /[\u0000-\u0008\u000b\u000c\u000e-\u001f]/.test(input)) {
+  if (json || input.trimStart().startsWith("<") || looksLikeHtml(input)
+    || /[\u0000-\u0008\u000b\u000c\u000e-\u001f]/.test(input)) {
     throw invalid();
   }
 
+  const rows = scanCsvRows(input);
+  if (rows.length > 0 && !rows.some((values) => values.length > 1)) throw invalid();
+  return rows;
+}
+
+/** 따옴표 규칙만 적용해 CSV를 행으로 자릅니다. 내용이 CSV인지는 호출자가 판단합니다. */
+export function scanCsvRows(input: string): string[][] {
   const rows: string[][] = [];
   let row: string[] = [];
   let cell = "";
@@ -71,7 +92,6 @@ export function parseCsvRows(text: string): string[][] {
   }
   if (quoted) throw invalid();
   finishRow();
-  if (rows.length > 0 && !rows.some((values) => values.length > 1)) throw invalid();
   return rows;
 }
 
@@ -157,10 +177,14 @@ function readCell(row: string[], index: number | undefined): string {
 const summaryLabels = ["합계", "총합계", "소계", "총계", "누계", "이월", "전월이월", "중간합계"];
 const placeholder = /^[-‐-―−]+$/;
 
+function isBlank(raw: string): boolean {
+  const value = raw.normalize("NFKC").replace(/\s/g, "");
+  return !value || placeholder.test(value);
+}
+
 // 빈칸과 '-' 같은 자리표시자는 값이 없는 것으로 봅니다.
 function toAmount(raw: string): number | null {
-  const value = raw.normalize("NFKC").replace(/\s/g, "");
-  return !value || placeholder.test(value) ? null : parseAmount(raw);
+  return isBlank(raw) ? null : parseAmount(raw);
 }
 
 // 해외결제 행의 금액 컬럼은 외화 표기일 수 있어 금액 자체는 원화환산 컬럼이 담당합니다.
@@ -217,6 +241,11 @@ export function buildTransactions(
       const rawDate = readCell(row, mapping.date);
       // 합계 표시는 날짜 위치에서만 인정합니다. 잘못된 거래 날짜를 요약행으로 숨기지 않습니다.
       if (summaryLabels.includes(rawDate.replace(/\s/g, ""))) continue;
+      // 합계 문구를 가맹점 칸에 쓰고 날짜 칸은 '-'로 두는 명세서가 있습니다. 날짜도 금액도
+      // 없으면 거래가 될 수 없으므로, 이 조합만은 잘못된 날짜를 숨기는 경우가 아닙니다.
+      if (placeholder.test(rawDate.normalize("NFKC").replace(/\s/g, ""))
+        && [mapping.amount, mapping.withdrawal, mapping.deposit, mapping.krwEquivalent]
+          .every((index) => isBlank(readCell(row, index)))) continue;
       const occurredOn = parseDate(rawDate);
       const merchantRaw = readCell(row, mapping.merchant);
       if (!merchantRaw.trim()) throw new Error("가맹점이 비어 있습니다. 가맹점 컬럼을 확인해 주세요.");

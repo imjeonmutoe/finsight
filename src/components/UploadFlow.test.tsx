@@ -40,7 +40,7 @@ function csv(name = "8월 명세서.csv"): File {
 }
 
 async function pickFile() {
-  fireEvent.change(screen.getByLabelText("CSV 파일 선택"), { target: { files: [csv()] } });
+  fireEvent.change(screen.getByLabelText("명세서 파일 선택"), { target: { files: [csv()] } });
   await act(async () => {
     fireEvent.click(screen.getByRole("button", { name: "이 파일 올리기" }));
   });
@@ -48,7 +48,7 @@ async function pickFile() {
 
 const MAPPED = {
   uploadId: "22222222-2222-4222-8222-222222222222", sourceId: "source-1", status: "mapped",
-  reused: false, mapping: MAPPING, confidence: 0.94, preview: PREVIEW,
+  reused: false, mapping: MAPPING, confidence: 0.94, preview: PREVIEW, totalRows: PREVIEW.length, headerRowIndex: 0,
 };
 
 beforeEach(() => {
@@ -207,6 +207,27 @@ describe("승인과 중복 확인", () => {
     expect(fetchMock.mock.calls.filter(([url]) => url === "/api/transactions/classify")).toHaveLength(1);
   });
 
+  it("매핑 추론이 실패하면 1단계에 가두지 않고 수동 매핑으로 넘깁니다", async () => {
+    // 응답 문구가 "매핑 확인 화면에서 직접 선택하라"고 안내한다. 1단계에 머물면
+    // 안내받은 일을 할 수 없는 막다른 화면이 된다.
+    respond({
+      "/api/uploads": [{
+        status: 502,
+        body: {
+          code: "MAPPING_FAILED", uploadId: MAPPED.uploadId, sourceId: "source-1",
+          mapping: null, confidence: 0, preview: PREVIEW,
+          message: "컬럼 매핑을 추론하지 못했습니다. 매핑 확인 화면에서 컬럼을 직접 선택해 주세요.",
+        },
+      }],
+    });
+    setup();
+    await pickFile();
+
+    const steps = within(screen.getByTestId("upload-steps")).getAllByRole("listitem");
+    expect(steps[1]).toHaveAttribute("aria-current", "step");
+    expect(screen.getByRole("alert")).toHaveTextContent("컬럼을 직접 선택해 주세요");
+  });
+
   it("분류 실패 응답에서 자동 반복을 멈추고 재시도 경로를 줍니다", async () => {
     respond({
       "/api/uploads": [{ body: MAPPED }],
@@ -263,6 +284,10 @@ describe("승인과 중복 확인", () => {
 
     expect(screen.getByTestId("duplicate-4")).toHaveTextContent("5번째 거래 행");
     expect(screen.getByRole("button", { name: "이대로 진행" })).toBeDisabled();
+    // 확인 목록은 이 안내보다 위에 그려집니다. "아래에서"라고 하면 반대쪽을 보게 됩니다.
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "비슷한 거래를 찾았습니다. \u0027확인이 필요한 항목\u0027에서 추가·중복을 정한 뒤 다시 진행해 주세요.",
+    );
 
     fireEvent.click(within(screen.getByTestId("duplicate-4")).getByRole("button", { name: "기존 거래와 중복" }));
     await act(async () => {
@@ -292,7 +317,7 @@ describe("승인과 중복 확인", () => {
     });
     fireEvent.click(screen.getByRole("button", { name: "다른 파일 올리기" }));
 
-    expect(screen.getByLabelText("CSV 파일 선택")).toBeVisible();
+    expect(screen.getByLabelText("명세서 파일 선택")).toBeVisible();
     const steps = within(screen.getByTestId("upload-steps")).getAllByRole("listitem");
     expect(steps[0]).toHaveAttribute("aria-current", "step");
   });
@@ -303,7 +328,7 @@ describe("승인과 중복 확인", () => {
     await pickFile();
     fireEvent.click(screen.getByRole("button", { name: "뒤로" }));
 
-    expect(screen.getByLabelText("CSV 파일 선택")).toBeVisible();
+    expect(screen.getByLabelText("명세서 파일 선택")).toBeVisible();
   });
 });
 
@@ -320,7 +345,7 @@ describe("이어서 진행", () => {
     const steps = within(screen.getByTestId("upload-steps")).getAllByRole("listitem");
     expect(steps[1]).toHaveAttribute("aria-current", "step");
     expect(screen.getByRole("button", { name: "이대로 진행" })).toBeVisible();
-    expect(screen.queryByLabelText("CSV 파일 선택")).toBeNull();
+    expect(screen.queryByLabelText("명세서 파일 선택")).toBeNull();
   });
 
   it("보관된 인코딩을 그대로 이어받습니다", () => {

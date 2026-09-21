@@ -27,3 +27,5 @@ scripts/__pycache__/
 
 # 에이전트 worktree 체크아웃
 .claude/worktrees/
+.vercel
+.env*

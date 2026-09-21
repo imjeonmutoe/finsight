@@ -3,7 +3,8 @@ import { z } from "zod";
 import {
   columnMappingSchema, errorResponse, jsonResponse, kstMonthStart, nextKstMonthStart, readLimitedBody, requireUserId,
 } from "@/lib/api";
-import { detectHeaderRow, parseCsvRows } from "@/lib/csv";
+import { detectHeaderRow } from "@/lib/csv";
+import { parseStatementRows } from "@/lib/statement";
 import { computeFileHash } from "@/lib/dedupe";
 import { decodeCsv, detectEncoding } from "@/lib/encoding";
 import { MAX_CSV_ROWS, MAX_FILE_BYTES, MAX_MULTIPART_BODY_BYTES } from "@/lib/limits";
@@ -22,6 +23,8 @@ const PENDING_TIMEOUT_MS = 300_000;
 const ALLOWED_TYPES = new Set([
   "", "text/csv", "text/plain", "application/csv", "application/vnd.ms-excel", "application/octet-stream",
 ]);
+// 카드사가 주는 확장자입니다. 내용은 아래에서 CSV·HTML 표 어느 쪽이든 읽습니다.
+const STATEMENT_EXTENSIONS = [".csv", ".xls"];
 const EXISTING_COLUMNS = "id,status,storage_path,column_mapping,mapping_confidence,encoding,created_at";
 
 const uploadSchema = z.object({ sourceId: z.uuid() });
@@ -80,8 +83,12 @@ export async function POST(request: Request) {
   if (!fields.success || !(file instanceof File)) {
     return errorResponse(400, "INVALID_UPLOAD", "카드·계좌를 선택하고 CSV 파일을 첨부해 주세요.");
   }
-  if (!file.name.toLowerCase().endsWith(".csv") || !ALLOWED_TYPES.has(file.type)) {
-    return errorResponse(400, "INVALID_FILE_TYPE", "CSV 파일만 올릴 수 있습니다. 명세서를 CSV로 내려받아 주세요.");
+  // .xls도 받습니다 — 카드사·은행의 "엑셀 내려받기"가 주는 것은 대개 HTML 표이고,
+  // 파일 이름을 바꿔 오라고 시키지 않으려면 확장자도 함께 받아야 합니다.
+  if (!STATEMENT_EXTENSIONS.some((extension) => file.name.toLowerCase().endsWith(extension))
+    || !ALLOWED_TYPES.has(file.type)) {
+    return errorResponse(400, "INVALID_FILE_TYPE",
+      "CSV 또는 카드사에서 내려받은 엑셀 파일만 올릴 수 있습니다.");
   }
 
   const fileBytes = new Uint8Array(await file.arrayBuffer());
@@ -100,11 +107,11 @@ export async function POST(request: Request) {
   let rows: string[][];
   let headerRowIndex: number;
   try {
-    rows = parseCsvRows(decodeCsv(fileBytes, encoding));
+    rows = parseStatementRows(decodeCsv(fileBytes, encoding));
     headerRowIndex = detectHeaderRow(rows);
   } catch {
     // 파서 오류 메시지에는 셀 값이 없지만 사용자에게는 고정 문구로 안내합니다.
-    return errorResponse(400, "INVALID_CSV", "CSV로 읽을 수 없는 파일입니다. 명세서를 CSV로 내려받아 다시 올려 주세요.");
+    return errorResponse(400, "INVALID_CSV", "읽을 수 없는 파일입니다. 명세서를 다시 내려받아 올려 주세요.");
   }
   if (rows.length > MAX_CSV_ROWS) {
     return errorResponse(413, "TOO_MANY_ROWS", "행이 10,000개를 넘습니다. 기간을 나눠 다시 올려 주세요.");
@@ -112,11 +119,13 @@ export async function POST(request: Request) {
 
   const fileHash = computeFileHash(fileBytes);
   const preview = rows.slice(0, PREVIEW_ROWS);
+  const totalRows = rows.length;
 
   function reuseResponse(row: { id: string; status: UploadStatus; column_mapping: unknown; mapping_confidence: number | null }): Response {
     return jsonResponse({
       uploadId: row.id, sourceId, status: row.status, reused: true,
-      mapping: storedMapping(row.column_mapping), confidence: row.mapping_confidence ?? 0, preview,
+      mapping: storedMapping(row.column_mapping), confidence: row.mapping_confidence ?? 0,
+      preview, totalRows, headerRowIndex,
     } satisfies MappingResponse);
   }
 
@@ -223,7 +232,12 @@ export async function POST(request: Request) {
     ({ mapping, confidence } = await inferColumnMapping(sanitized));
   } catch {
     await markFailed(MAPPING_ERROR);
-    return errorResponse(502, "MAPPING_FAILED", MAPPING_ERROR);
+    // 추론만 실패했습니다. 원본은 Storage에 있으므로 사용자가 직접 컬럼을 고르면 그대로 진행됩니다.
+    // 안내 문구가 "매핑 확인 화면에서 직접 선택하라"고 하므로 그 화면을 열 재료를 함께 줍니다.
+    return errorResponse(502, "MAPPING_FAILED", MAPPING_ERROR, {
+      uploadId, sourceId, status: "failed", reused: false, mapping: null, confidence: 0,
+      preview, totalRows, headerRowIndex,
+    });
   }
 
   const { error } = await supabase.from("uploads")
@@ -232,6 +246,6 @@ export async function POST(request: Request) {
   if (error) return errorResponse(500, "UPLOAD_FAILED", "매핑을 저장하지 못했습니다. 잠시 후 다시 시도해 주세요.");
 
   return jsonResponse({
-    uploadId, sourceId, status: "mapped", reused: false, mapping, confidence, preview,
+    uploadId, sourceId, status: "mapped", reused: false, mapping, confidence, preview, totalRows, headerRowIndex,
   } satisfies MappingResponse);
 }
