@@ -182,6 +182,7 @@ function applyVerdicts(d, found, res) {
       raw: found.length,
       killed: 0,
       phantom: 0,
+      unverified: found.length,
     }
   }
   const byId = new Map(res.verdicts.map((v) => [v.id, v]))
@@ -189,8 +190,11 @@ function applyVerdicts(d, found, res) {
   let killed = 0
   let phantom = 0
   let floored = 0
+  let unverified = 0
   found.forEach((f, i) => {
     const v = byId.get(i)
+    // 검증자가 이 id를 빠뜨렸으면 아무도 반박을 시도하지 않은 것이다. 통과로 세지 않는다.
+    if (!v) unverified += 1
     if (v && v.phantom) phantom += 1
     if (v && v.refuted) {
       killed += 1
@@ -200,18 +204,24 @@ function applyVerdicts(d, found, res) {
     // 심각도 바닥: CRITICAL 규칙 위반은 major 아래로 못 내린다. 검증자가 내리려 해도 코드가 되돌린다.
     const sev = f.critical_rule && rank(asked) > rank('major') ? 'major' : asked
     if (sev !== asked) floored += 1
-    kept.push({ ...f, severity: sev, dims: [d.key], verified: true })
+    kept.push({ ...f, severity: sev, dims: [d.key], verified: Boolean(v) })
   })
   const tail =
-    (phantom ? ' (phantom ' + phantom + '건 포함)' : '') + (floored ? ', 바닥 복원 ' + floored + '건' : '')
+    (phantom ? ' (phantom ' + phantom + '건 포함)' : '') +
+    (floored ? ', 바닥 복원 ' + floored + '건' : '') +
+    (unverified ? ', 판정 누락 ' + unverified + '건' : '')
   log(d.key + ': ' + found.length + '건 중 ' + killed + '건 반박 탈락' + tail + ', ' + kept.length + '건 확정')
-  return { kept: kept, raw: found.length, killed: killed, phantom: phantom }
+  return { kept: kept, raw: found.length, killed: killed, phantom: phantom, unverified: unverified }
 }
 
+// 같은 줄에 두 차원이 **다른** 문제를 짚는 일이 있다. file:line만으로 묶으면 그중 하나가
+// 본문째 사라진다. 제목까지 키에 넣어 글자 그대로 같은 지적만 합친다.
+// 대가: 같은 문제를 다르게 표현하면 둘 다 남아 PR에 비슷한 코멘트가 두 개 달린다.
+// 중복 노출보다 지적 유실이 나쁘다고 보고 이쪽을 택했다.
 function dedupe(list) {
   const byKey = new Map()
   for (const f of list) {
-    const key = f.file + ':' + f.line
+    const key = f.file + ':' + f.line + ':' + f.title
     const prev = byKey.get(key)
     if (!prev) {
       byKey.set(key, f)
@@ -247,7 +257,15 @@ function renderInline(f) {
 
 function renderSummary(decision, counts, findings, summary, stats) {
   const tally = SEVERITIES.map((s) => EMOJI[s] + ' ' + s + ' ' + counts[s]).join(' · ')
-  const pass = '(검증 통과 ' + stats.passed + '/' + stats.raw + (stats.phantom ? ', phantom 기각 ' + stats.phantom : '') + ')'
+  // '검증 통과'는 반박 검증을 실제로 받고 살아남은 건수다. 판정이 누락된 건은 여기서 빠진다.
+  const pass =
+    '(검증 통과 ' +
+    (stats.passed - stats.unverified) +
+    '/' +
+    stats.raw +
+    (stats.unverified ? ', 미검증 ' + stats.unverified : '') +
+    (stats.phantom ? ', phantom 기각 ' + stats.phantom : '') +
+    ')'
   const blocking = findings.filter((f) => f.severity === 'critical' || f.severity === 'major')
 
   const out = []
@@ -324,7 +342,7 @@ const reviewed = await pipeline(
       schema: FINDINGS_SCHEMA,
     }),
   (review, d) => {
-    const empty = { kept: [], raw: 0, killed: 0, phantom: 0 }
+    const empty = { kept: [], raw: 0, killed: 0, phantom: 0, unverified: 0 }
     if (!review) {
       log(d.key + ': 리뷰 에이전트 실패 — 이 차원은 결과 없음')
       return empty
@@ -349,8 +367,9 @@ const stats = parts.reduce(
     passed: a.passed + r.kept.length,
     killed: a.killed + r.killed,
     phantom: a.phantom + r.phantom,
+    unverified: a.unverified + r.unverified,
   }),
-  { raw: 0, passed: 0, killed: 0, phantom: 0 }
+  { raw: 0, passed: 0, killed: 0, phantom: 0, unverified: 0 }
 )
 const findings = dedupe(parts.flatMap((r) => r.kept))
 

@@ -12,16 +12,32 @@ description: 변경분을 3개 차원 서브에이전트로 병렬 리뷰하고 
 스크립트에는 파일시스템 접근이 없다. diff는 여기서 한 번만 떠서 파일로 남기고, 서브에이전트는 그 경로를 읽는다.
 에이전트마다 `git diff`를 다시 돌리면 토큰이 3배가 된다.
 
+`git diff HEAD`는 아직 `git add` 하지 않은 신규 파일을 출력하지 않는다. 방금 만든 제일 위험한
+코드가 통째로 리뷰에서 빠지는데도 다른 변경 덕에 팩은 비어 보이지 않아 판정이 Approve로 난다.
+untracked 파일을 `--no-index`로 따로 떠서 붙인다 (gitignore된 것은 `--exclude-standard`가 걸러 준다).
+
 ```bash
 BASE=$(git merge-base main HEAD)
 PACK=$(mktemp -d)
-{ git diff "$BASE" HEAD; git diff HEAD; } > "$PACK/diff.patch"
-{ git diff --name-only "$BASE" HEAD; git diff --name-only HEAD; } | sort -u > "$PACK/files.txt"
+{
+  git diff "$BASE" HEAD
+  git diff HEAD
+  git ls-files --others --exclude-standard | while IFS= read -r f; do
+    git diff --no-index /dev/null "$f" || true
+  done
+} > "$PACK/diff.patch"
+{
+  git diff --name-only "$BASE" HEAD
+  git diff --name-only HEAD
+  git ls-files --others --exclude-standard
+} | sort -u > "$PACK/files.txt"
 echo "PACK=$PACK  BASE=$BASE  lines=$(wc -l < "$PACK/diff.patch")  files=$(wc -l < "$PACK/files.txt")"
 ```
 
-**검증**: `diff.patch`가 0바이트가 아니다. 비었으면 "리뷰할 변경이 없다"고 알리고 **여기서 멈춘다** —
-워크플로우를 돌리지 마라.
+(`git diff --no-index`는 차이가 있으면 종료 코드 1을 돌려준다. `|| true`가 그래서 붙어 있다.)
+
+**검증**: `diff.patch`가 0바이트가 아니고, `files.txt`에 방금 만든 신규 파일이 들어 있다.
+비었으면 "리뷰할 변경이 없다"고 알리고 **여기서 멈춘다** — 워크플로우를 돌리지 마라.
 
 ## 2. 워크플로우 실행
 
@@ -54,20 +70,34 @@ gh pr view --json number,headRefOid 2>/dev/null
 ### PR이 있으면
 
 Layer 2를 리뷰 본문으로, Layer 1을 라인별 인라인 코멘트로 올린다.
-`findings`의 각 항목을 `{path: file, line: line, side: "RIGHT", body: <인라인 4줄>}`로 만들어
-한 번의 리뷰로 묶어 보낸다.
+
+인라인 코멘트는 **PR diff의 hunk 안에 있는 줄에만** 달 수 있다. 범위 밖 지적이 하나라도 섞이면
+GitHub이 리뷰 전체를 422로 거절해서 멀쩡한 인라인까지 같이 날아간다. 보내고 실패를 기다리지 말고
+보내기 전에 갈라라. `scripts/pr_review_payload.py`가 그 일을 한다 — 범위 안은 인라인으로,
+범위 밖은 요약 본문 끝에 목록으로 붙인다.
+
+기준이 되는 patch는 **PR 자신의 diff**다. 1단계 팩이 아니다. 팩에는 아직 커밋하지 않은 변경과
+untracked 파일이 섞여 있고, 그것들은 PR에 존재하지 않아 어차피 인라인을 달 수 없다.
 
 ```bash
-gh api "repos/{owner}/{repo}/pulls/<번호>/reviews" --method POST --input <JSON 파일>
+# 워크플로우 반환값을 파일로 남긴다 (findings·summaryMd가 들어 있는 객체 그대로)
+cat > "$PACK/result.json" <<'JSON'
+<워크플로우 반환값 JSON>
+JSON
+
+gh pr diff <번호> > "$PACK/pr.diff"
+python3 scripts/pr_review_payload.py "$PACK/result.json" "$PACK/pr.diff" <headRefOid> > "$PACK/payload.json"
+gh api "repos/{owner}/{repo}/pulls/<번호>/reviews" --method POST --input "$PACK/payload.json"
 ```
 
-JSON은 `{commit_id, body: summaryMd, event: "COMMENT", comments: [...]}` 형태다.
-`event`는 항상 `COMMENT`를 쓴다. 이유: GitHub은 자기 PR에 `APPROVE`·`REQUEST_CHANGES`를 거부한다.
+스크립트가 stderr로 `인라인 N건 / 범위 밖 M건은 본문으로`를 찍는다. **M이 0이 아니면 그 사실을
+사용자에게 말해라.** 어떤 지적이 인라인으로 안 붙었는지 알아야 한다.
+
+`event`는 항상 `COMMENT`다. 이유: GitHub은 자기 PR에 `APPROVE`·`REQUEST_CHANGES`를 거부한다.
 판정은 본문 안에 이미 적혀 있다.
 
-**실패하면(대개 422) 조용히 넘어가지 마라.** 인라인 코멘트는 diff hunk에 포함된 줄에만 달 수 있어서,
-지적한 줄이 변경 범위 밖이면 리뷰 전체가 거절된다. 그 경우 `gh pr comment`로 `markdown` 전체를
-코멘트 하나로 올리고, 인라인이 불발됐다는 사실을 사용자에게 말해라.
+**그래도 422가 나면 조용히 넘어가지 마라.** `gh pr comment`로 `markdown` 전체를 코멘트 하나로
+올리고, 인라인이 불발됐다는 사실과 API가 돌려준 메시지를 사용자에게 말해라.
 
 ### PR이 없으면
 
