@@ -22,7 +22,8 @@
     },
     {
       "dir": "3-monetization",
-      "status": "pending"
+      "status": "completed",
+      "completed_at": "2026-09-28T13:20:33+0900"
     }
   ]
 }
