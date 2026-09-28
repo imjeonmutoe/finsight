@@ -133,6 +133,33 @@ describe("업로드 2단계 — 매핑 확인", () => {
     expect(confirmed().accountingMonth).toBe("2026-07");
   });
 
+  // 서버는 청구월 컬럼이 있으면 accountingMonth를 아예 받지 않습니다. 빈 문자열을 실어 보내면
+  // `^\d{4}-(0[1-9]|1[0-2])$`에 걸려 400 INVALID_CONFIRM이 나고, 화면에는 원인이 보이지 않습니다.
+  it("청구월을 컬럼에서 얻으면 accountingMonth를 실어 보내지 않습니다", () => {
+    setup({
+      mapping: { date: 0, merchant: 1, amount: 2, billingMonth: 4, skipRows: 0 },
+      accountingMonth: "",
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "이대로 진행" }));
+
+    expect(Object.keys(confirmed())).not.toContain("accountingMonth");
+  });
+
+  // 청구월 컬럼이 있어도 입력란은 남겨 둡니다 — 그 컬럼이 비어 있는 행의 폴백이라
+  // 사용자가 채워 넣으면 그대로 보내야 합니다(`src/lib/csv.ts`에서 행별 값이 우선).
+  it("청구월 컬럼이 있어도 직접 입력한 달은 폴백으로 실어 보냅니다", () => {
+    setup({
+      mapping: { date: 0, merchant: 1, amount: 2, billingMonth: 4, skipRows: 0 },
+      accountingMonth: "",
+    });
+
+    fireEvent.change(screen.getByLabelText("카드 청구월"), { target: { value: "2026-07" } });
+    fireEvent.click(screen.getByRole("button", { name: "이대로 진행" }));
+
+    expect(confirmed().accountingMonth).toBe("2026-07");
+  });
+
   it("은행 거래내역에는 청구월을 묻지 않습니다", () => {
     setup({ sourceKind: "bank", accountingMonth: "" });
 

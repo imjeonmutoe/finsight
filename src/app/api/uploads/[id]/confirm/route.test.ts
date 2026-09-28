@@ -224,6 +224,23 @@ describe("POST /api/uploads/[id]/confirm 검증", () => {
     expect(rows().map((row) => row.accountingMonth)).toEqual(["2026-08", "2026-08"]);
   });
 
+  // 청구월 컬럼이 있으면 화면은 accountingMonth를 아예 싣지 않습니다. 이 조합이 막히면
+  // 청구월이 있는 카드 명세서는 확정 자체가 안 됩니다(`MappingReview`가 ""를 보내던 회귀).
+  it("청구월 컬럼이 있으면 청구월 입력 없이도 승인하고 행별 값을 씁니다", async () => {
+    stage({ csv: "거래일자,가맹점명,이용금액,청구월\n2026-08-03,쿠팡,38400,2026-09\n2026-08-04,스타벅스,4500,2026-10\n" });
+    enqueue("transactions:select", { data: [] });
+    enqueue("merchant_rules:select", { data: [] });
+
+    const response = await confirm({
+      ...BODY,
+      mapping: { date: 0, merchant: 1, amount: 2, billingMonth: 3, skipRows: 0 },
+      accountingMonth: undefined,
+    });
+
+    expect(response.status).toBe(200);
+    expect(rows().map((row) => row.accountingMonth)).toEqual(["2026-09", "2026-10"]);
+  });
+
   it("파싱 오류는 행 번호만 담은 400으로 돌려줍니다", async () => {
     stage({ csv: "거래일자,가맹점명,이용금액\n2026-99-99,쿠팡,38400\n" });
 

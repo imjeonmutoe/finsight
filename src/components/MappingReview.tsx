@@ -149,7 +149,9 @@ export function MappingReview({
       });
     onConfirm({
       mapping: nextMapping, encoding: chosenEncoding, duplicateDecisions,
-      ...(sourceKind === "card" ? { accountingMonth: month } : {}),
+      // 빈 값은 키째로 뺍니다. 서버 스키마가 `^\d{4}-(0[1-9]|1[0-2])$`라 ""는 400으로 거절되고,
+      // 청구월 컬럼이 매핑되면 이 입력란은 비어 있는 게 정상입니다.
+      ...(sourceKind === "card" && month !== "" ? { accountingMonth: month } : {}),
     });
   }
 
