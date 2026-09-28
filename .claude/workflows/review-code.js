@@ -43,13 +43,17 @@ const FINDINGS_SCHEMA = {
           file: { type: 'string', description: '리포 루트 기준 상대 경로' },
           line: { type: 'integer', description: '변경 후 파일의 줄 번호' },
           severity: { type: 'string', enum: SEVERITIES },
+          critical_rule: {
+            type: 'boolean',
+            description: 'CLAUDE.md가 `CRITICAL:`로 표시한 규칙의 위반이면 true. 이 값이 true면 심각도가 major 아래로 내려가지 않는다',
+          },
           title: { type: 'string', description: '한 줄 제목' },
           tldr: { type: 'string', description: '왜 문제인지 한 문장' },
           good: { type: 'string', description: '이 코드가 잘한 부분. 없으면 빈 문자열' },
           fix: { type: 'string', description: '고칠 코드. 설명이 아니라 코드' },
           failure_scenario: { type: 'string', description: '구체적 입력/상황 → 잘못된 결과' },
         },
-        required: ['file', 'line', 'severity', 'title', 'tldr', 'good', 'fix', 'failure_scenario'],
+        required: ['file', 'line', 'severity', 'critical_rule', 'title', 'tldr', 'good', 'fix', 'failure_scenario'],
       },
     },
   },
@@ -106,7 +110,7 @@ function reviewPrompt(d) {
 function verifyPrompt(d, found) {
   const listed = found
     .map((f, i) => [
-      '[' + i + '] ' + f.file + ':' + f.line + ' (' + f.severity + ') ' + f.title,
+      '[' + i + '] ' + f.file + ':' + f.line + ' (' + f.severity + (f.critical_rule ? ', CRITICAL 규칙' : '') + ') ' + f.title,
       '    주장: ' + f.tldr,
       '    실패 시나리오: ' + f.failure_scenario,
     ].join('\n'))
@@ -134,12 +138,10 @@ function verifyPrompt(d, found) {
     '- 심각도가 과장·축소됐으면 severity_correction에 맞는 값을 적어라.',
     '  critical = 데이터 유출·금전 손실·데이터 손상이 실제로 일어난다.',
     '  major = 기능이 틀린다. minor = 규칙 위반이지만 동작은 맞다. nit = 취향.',
-    '- 심각도 바닥: CLAUDE.md가 `CRITICAL:`로 표시한 규칙의 위반은 **minor 이하로 내리지 마라.**',
-    '  (비밀키 NEXT_PUBLIC_ 접두사, 클라이언트에서 외부 API 직접 호출, RLS 누락, profiles 쓰기 권한,',
-    '  금융 데이터 로깅, dangerouslySetInnerHTML, 라우트 쿼리의 user_id 누락, 매핑 LLM 입력 정제,',
-    '  금액 부동소수점, kind 의미, 집계를 LLM에 위임, 중복 판정 범위, 카테고리 3단 분류 순서,',
-    '  insight_cache 우회, LLM 쿼터 시스템 부활, kind 미확정 상태)',
-    '  "호출부가 아직 없어서 피해가 안 난다"는 내릴 근거가 아니다. 코드의 존재 자체가 금지 대상이다.',
+    '- 위 목록에서 [CRITICAL 규칙]으로 표시된 항목은 심각도 바닥이 걸려 있다.',
+    '  severity_correction으로 minor·nit을 적어도 코드가 major로 되돌린다. 내리려고 시도하지 마라.',
+    '  규칙 위반 자체가 성립하지 않는다고 보면 심각도를 낮추지 말고 refuted=true로 기각하라.',
+    '  심각도를 깎아 무마하는 것과 기각하는 것은 다른 판단이다. 둘 중 하나를 골라라.',
     '',
     '모든 항목에 대해 id를 붙여 verdict를 반환하라. 빠뜨리지 마라.',
   ].join('\n')
@@ -186,6 +188,7 @@ function applyVerdicts(d, found, res) {
   const kept = []
   let killed = 0
   let phantom = 0
+  let floored = 0
   found.forEach((f, i) => {
     const v = byId.get(i)
     if (v && v.phantom) phantom += 1
@@ -193,10 +196,14 @@ function applyVerdicts(d, found, res) {
       killed += 1
       return
     }
-    const sev = v && v.severity_correction ? v.severity_correction : f.severity
+    const asked = v && v.severity_correction ? v.severity_correction : f.severity
+    // 심각도 바닥: CRITICAL 규칙 위반은 major 아래로 못 내린다. 검증자가 내리려 해도 코드가 되돌린다.
+    const sev = f.critical_rule && rank(asked) > rank('major') ? 'major' : asked
+    if (sev !== asked) floored += 1
     kept.push({ ...f, severity: sev, dims: [d.key], verified: true })
   })
-  const tail = phantom ? ' (phantom ' + phantom + '건 포함)' : ''
+  const tail =
+    (phantom ? ' (phantom ' + phantom + '건 포함)' : '') + (floored ? ', 바닥 복원 ' + floored + '건' : '')
   log(d.key + ': ' + found.length + '건 중 ' + killed + '건 반박 탈락' + tail + ', ' + kept.length + '건 확정')
   return { kept: kept, raw: found.length, killed: killed, phantom: phantom }
 }
