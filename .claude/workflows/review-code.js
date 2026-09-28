@@ -174,15 +174,20 @@ function summaryPrompt(findings) {
 const SEV_RANK = { critical: 0, major: 1, minor: 2, nit: 3 }
 const rank = (s) => (s in SEV_RANK ? SEV_RANK[s] : 9)
 
+// 심각도 바닥: CRITICAL 규칙 위반은 major 아래로 못 내린다.
+// 검증자가 깎으려 해도, 아예 검증이 못 돌아도 여기서 되돌린다.
+const floorSev = (f, sev) => (f.critical_rule && rank(sev) > rank('major') ? 'major' : sev)
+
 function applyVerdicts(d, found, res) {
   if (!res || !res.verdicts) {
     log(d.key + ': 검증 에이전트 실패 — ' + found.length + '건을 미검증 상태로 통과시킨다')
     return {
-      kept: found.map((f) => ({ ...f, dims: [d.key], verified: false })),
+      kept: found.map((f) => ({ ...f, severity: floorSev(f, f.severity), dims: [d.key], verified: false })),
       raw: found.length,
       killed: 0,
       phantom: 0,
       unverified: found.length,
+      failed: 0,
     }
   }
   const byId = new Map(res.verdicts.map((v) => [v.id, v]))
@@ -204,8 +209,7 @@ function applyVerdicts(d, found, res) {
       return
     }
     const asked = v && v.severity_correction ? v.severity_correction : f.severity
-    // 심각도 바닥: CRITICAL 규칙 위반은 major 아래로 못 내린다. 검증자가 내리려 해도 코드가 되돌린다.
-    const sev = f.critical_rule && rank(asked) > rank('major') ? 'major' : asked
+    const sev = floorSev(f, asked)
     if (sev !== asked) floored += 1
     kept.push({ ...f, severity: sev, dims: [d.key], verified: Boolean(v) })
   })
@@ -214,7 +218,14 @@ function applyVerdicts(d, found, res) {
     (floored ? ', 바닥 복원 ' + floored + '건' : '') +
     (unverified ? ', 판정 누락 ' + unverified + '건' : '')
   log(d.key + ': ' + found.length + '건 중 ' + killed + '건 반박 탈락' + tail + ', ' + kept.length + '건 확정')
-  return { kept: kept, raw: found.length, killed: killed, phantom: phantom, unverified: unverified }
+  return {
+    kept: kept,
+    raw: found.length,
+    killed: killed,
+    phantom: phantom,
+    unverified: unverified,
+    failed: 0,
+  }
 }
 
 // 같은 줄에 두 차원이 **다른** 문제를 짚는 일이 있다. file:line만으로 묶으면 그중 하나가
@@ -277,6 +288,13 @@ function renderSummary(decision, counts, findings, summary, stats) {
   out.push('## 판정: ' + decision)
   out.push('')
   out.push(tally + '   ' + pass)
+  if (stats.failed) {
+    out.push('')
+    out.push(
+      '> ⚠️ **차원 ' + stats.failed + '개가 미실행이다.** 그 차원은 한 번도 보지 않았으므로 ' +
+        '여기 없는 문제가 없다는 뜻이 아니다. 재실행을 권한다.'
+    )
+  }
   out.push('')
   out.push('### 변경 요약')
   out.push(summary ? summary.walkthrough : '(종합 에이전트 실패)')
@@ -345,15 +363,17 @@ const reviewed = await pipeline(
       schema: FINDINGS_SCHEMA,
     }),
   (review, d) => {
-    const empty = { kept: [], raw: 0, killed: 0, phantom: 0, unverified: 0 }
+    const clean = { kept: [], raw: 0, killed: 0, phantom: 0, unverified: 0, failed: 0 }
     if (!review) {
+      // 이 차원은 한 번도 안 봤다. '지적 0건'과 같은 값을 돌려주면 안 된다 —
+      // 그러면 보안 리뷰가 통째로 빠진 PR에 Approve가 붙는다.
       log(d.key + ': 리뷰 에이전트 실패 — 이 차원은 결과 없음')
-      return empty
+      return { ...clean, failed: 1 }
     }
     const found = review.findings || []
     if (!found.length) {
       log(d.key + ': 지적 0건')
-      return empty
+      return clean
     }
     return agent(verifyPrompt(d, found), {
       agentType: 'review-verify',
@@ -365,6 +385,10 @@ const reviewed = await pipeline(
 )
 
 const parts = reviewed.filter(Boolean)
+// 스테이지가 예외로 끝난 차원은 pipeline이 null로 떨군다. filter가 지워 버리면
+// 로그조차 남지 않으므로, 사라진 개수를 여기서 세어 미실행에 합친다.
+const dropped = reviewed.length - parts.length
+if (dropped) log(dropped + '개 차원이 예외로 중단됐다')
 const stats = parts.reduce(
   (a, r) => ({
     raw: a.raw + r.raw,
@@ -372,8 +396,9 @@ const stats = parts.reduce(
     killed: a.killed + r.killed,
     phantom: a.phantom + r.phantom,
     unverified: a.unverified + r.unverified,
+    failed: a.failed + r.failed,
   }),
-  { raw: 0, passed: 0, killed: 0, phantom: 0, unverified: 0 }
+  { raw: 0, passed: 0, killed: 0, phantom: 0, unverified: 0, failed: dropped }
 )
 const findings = dedupe(parts.flatMap((r) => r.kept))
 
@@ -382,8 +407,16 @@ findings.forEach((f) => {
   if (f.severity in counts) counts[f.severity] += 1
 })
 
-const decision = counts.critical > 0 ? 'Blocked' : counts.major > 0 ? 'Changes Requested' : 'Approve'
-log('확정 ' + findings.length + '건 → 판정 ' + decision)
+// 차원이 하나라도 안 돌았으면 '깨끗하다'고 말할 근거가 없다. Approve만은 못 준다.
+const decision =
+  counts.critical > 0
+    ? 'Blocked'
+    : counts.major > 0
+      ? 'Changes Requested'
+      : stats.failed > 0
+        ? 'Incomplete'
+        : 'Approve'
+log('확정 ' + findings.length + '건 → 판정 ' + decision + (stats.failed ? ' (미실행 차원 ' + stats.failed + '개)' : ''))
 
 phase('Summarize')
 const summary = await agent(summaryPrompt(findings), {

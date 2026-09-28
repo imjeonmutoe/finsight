@@ -67,6 +67,7 @@ Workflow({
 
 **검증**: 완료 알림의 결과에 `decision`, `counts`, `markdown`이 들어 있다.
 `markdown`이 없으면 워크플로우가 중간에 죽은 것이다 — 로그를 보고 원인을 말해라. 결과를 지어내지 마라.
+`stats.failed`가 0이 아니면 그만큼의 차원이 안 돌았다는 뜻이다. **사용자에게 반드시 말해라.**
 
 ## 3. 결과 출력 — PR 우선, 콘솔 fallback
 
@@ -125,7 +126,12 @@ gh api "repos/{owner}/{repo}/pulls/<번호>/reviews" --method POST --input "$PAC
 |---|---|
 | Blocked | critical ≥ 1 |
 | Changes Requested | critical 0, major ≥ 1 |
-| Approve | critical 0, major 0 |
+| Incomplete | 위 둘이 아니고 **안 돌아간 차원이 있다** |
+| Approve | critical 0, major 0, 세 차원 모두 실행됨 |
+
+`Incomplete`는 '깨끗하다'가 아니라 **'모르겠다'**는 뜻이다. 차원 하나가 죽으면 그 차원은 한 번도
+보지 않은 것이고, 그걸 Approve로 내보내면 보안 리뷰가 빠진 PR에 초록불이 붙는다.
+요약 머리말에도 미실행 경고가 함께 찍힌다. 이 판정이 나오면 재실행하라.
 
 심각도: 🔴 critical(데이터 유출·금전 손실·데이터 손상) · 🟠 major(기능이 틀린다) ·
 🟡 minor(규칙 위반이지만 동작은 맞다) · ⚪ nit(취향)

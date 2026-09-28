@@ -25,11 +25,17 @@ const makeWorkflow = new Function(
 
 // ── 런타임 스텁 ────────────────────────────────────────────────────────────
 
+// 런타임 계약: 스테이지가 던지면 그 항목만 null이 되고 나머지 스테이지를 건너뛴다.
+// 전체를 reject하지 않는다 — 스텁이 이걸 틀리면 실패 경로 테스트가 거짓 신호를 낸다.
 function pipeline(items, ...stages) {
   return Promise.all(
     items.map(async (item, i) => {
       let v = item
-      for (const stage of stages) v = await stage(v, item, i)
+      try {
+        for (const stage of stages) v = await stage(v, item, i)
+      } catch {
+        return null
+      }
       return v
     })
   )
@@ -40,7 +46,12 @@ const parallel = (thunks) => Promise.all(thunks.map((t) => t().catch(() => null)
 /** responses: {label -> 반환값}. 없는 label은 null (에이전트 실패와 같은 취급). */
 function run(responses) {
   const logs = []
-  const agent = (_prompt, opts) => Promise.resolve(responses[opts.label] ?? null)
+  const agent = (_prompt, opts) => {
+    const r = responses[opts.label]
+    // 'THROW'는 에이전트 호출이 예외로 끝나는 경우 — 파이프라인이 그 차원을 null로 떨군다.
+    if (r === 'THROW') return Promise.reject(new Error('에이전트 폭발'))
+    return Promise.resolve(r ?? null)
+  }
   return makeWorkflow(agent, pipeline, parallel, (m) => logs.push(m), () => {}, { packDir: '/tmp/pack' }, {}, () => {}).then(
     (out) => ({ ...out, logs })
   )
@@ -147,6 +158,57 @@ test('검증 에이전트가 통째로 죽으면 전부 미검증으로 통과�
   eq(out.findings.length, 1, '검증 실패가 지적을 삼키면 안 된다')
   eq(out.findings[0].verified, false, '미검증 표시')
   eq(out.stats.unverified, 1, '미검증 집계')
+})
+
+test('검증 에이전트가 죽어도 CRITICAL 규칙 심각도 바닥은 걸린다', async () => {
+  const out = await run({
+    // 리뷰어가 바닥을 안 지키고 minor로 매긴 CRITICAL 규칙 위반.
+    // 바닥이 검증 경로에만 있으면 이 건은 minor로 새어 나가 Approve가 된다.
+    'review:correctness': { findings: [finding({ critical_rule: true, severity: 'minor' })] },
+    'review:security': { findings: [] },
+    'review:architecture': { findings: [] },
+    // verify:correctness 없음 → null
+    summary: SUMMARY,
+  })
+  eq(out.findings[0].severity, 'major', '검증이 없어도 바닥은 코드가 건다')
+  eq(out.decision, 'Changes Requested', '판정')
+})
+
+// ── 회귀: 차원이 안 돌았는데 Approve가 나오면 안 된다 ──────────────────────
+
+test('리뷰 에이전트가 죽은 차원이 있으면 Approve로 끝나지 않는다', async () => {
+  const out = await run({
+    // correctness 없음 → null (에이전트 실패)
+    'review:security': { findings: [] },
+    'review:architecture': { findings: [] },
+    summary: SUMMARY,
+  })
+  eq(out.stats.failed, 1, '미실행 차원 집계')
+  ok(out.decision !== 'Approve', `미실행 차원이 있는데 판정이 ${out.decision}이면 안 된다`)
+  ok(out.summaryMd.includes('미실행'), '요약에 미실행 사실이 드러나야 한다')
+})
+
+test('스테이지가 예외로 죽어도 미실행으로 잡힌다', async () => {
+  const out = await run({
+    'review:correctness': { findings: [finding({})] },
+    'verify:correctness': 'THROW', // 검증 호출이 터지면 그 차원 전체가 null이 된다
+    'review:security': { findings: [] },
+    'review:architecture': { findings: [] },
+    summary: SUMMARY,
+  })
+  eq(out.stats.failed, 1, '예외로 떨어진 차원도 세야 한다')
+  ok(out.decision !== 'Approve', `판정이 ${out.decision}이면 안 된다`)
+})
+
+test('지적 0건은 실패가 아니다', async () => {
+  const out = await run({
+    'review:correctness': { findings: [] },
+    'review:security': { findings: [] },
+    'review:architecture': { findings: [] },
+    summary: SUMMARY,
+  })
+  eq(out.stats.failed, 0, '정상적으로 돌아 0건인 것은 미실행이 아니다')
+  eq(out.decision, 'Approve', '깨끗하면 Approve')
 })
 
 // ── 기존 계약 (깨지지 않았는지) ────────────────────────────────────────────
