@@ -66,6 +66,7 @@ const VERDICTS_SCHEMA = {
         properties: {
           id: { type: 'integer', description: '검증 대상 지적의 번호' },
           refuted: { type: 'boolean', description: '반박에 성공했으면 true' },
+          phantom: { type: 'boolean', description: '지적한 코드가 워크스페이스에 실재하지 않으면 true' },
           reason: { type: 'string', description: '반박 근거 또는 유지 근거' },
           severity_correction: { type: 'string', enum: SEVERITIES, description: '심각도가 과장·축소됐을 때만 채운다' },
         },
@@ -120,6 +121,11 @@ function verifyPrompt(d, found) {
     '검증 방법: ' + DIFF + ' 와 해당 소스 파일 원본을 직접 읽어라.',
     '리뷰어가 diff만 보고 문맥을 놓쳤을 수 있다 — 호출부, 타입 정의, 기존 테스트를 확인하라.',
     '',
+    '먼저 phantom부터 걸러라. 지적한 file:line의 코드가 **워크스페이스 실제 파일에 존재하는지**',
+    '직접 열어 확인하라. diff 헤더의 줄 번호를 잘못 읽었거나, 삭제된 줄을 지적했거나,',
+    '존재하지 않는 함수·필드를 지어냈으면 phantom=true, refuted=true로 기각하고',
+    'reason에 실제로 그 위치에 무엇이 있는지 적어라. diff에 보인다는 것만으로는 실재의 근거가 아니다.',
+    '',
     '판정 기준:',
     '- 실패 시나리오가 실제로 재현되지 않으면 refuted=true.',
     '- 이미 다른 곳에서 방어되고 있으면 refuted=true.',
@@ -163,13 +169,20 @@ const rank = (s) => (s in SEV_RANK ? SEV_RANK[s] : 9)
 function applyVerdicts(d, found, res) {
   if (!res || !res.verdicts) {
     log(d.key + ': 검증 에이전트 실패 — ' + found.length + '건을 미검증 상태로 통과시킨다')
-    return found.map((f) => ({ ...f, dims: [d.key], verified: false }))
+    return {
+      kept: found.map((f) => ({ ...f, dims: [d.key], verified: false })),
+      raw: found.length,
+      killed: 0,
+      phantom: 0,
+    }
   }
   const byId = new Map(res.verdicts.map((v) => [v.id, v]))
   const kept = []
   let killed = 0
+  let phantom = 0
   found.forEach((f, i) => {
     const v = byId.get(i)
+    if (v && v.phantom) phantom += 1
     if (v && v.refuted) {
       killed += 1
       return
@@ -177,8 +190,9 @@ function applyVerdicts(d, found, res) {
     const sev = v && v.severity_correction ? v.severity_correction : f.severity
     kept.push({ ...f, severity: sev, dims: [d.key], verified: true })
   })
-  log(d.key + ': ' + found.length + '건 중 ' + killed + '건 반박 탈락, ' + kept.length + '건 확정')
-  return kept
+  const tail = phantom ? ' (phantom ' + phantom + '건 포함)' : ''
+  log(d.key + ': ' + found.length + '건 중 ' + killed + '건 반박 탈락' + tail + ', ' + kept.length + '건 확정')
+  return { kept: kept, raw: found.length, killed: killed, phantom: phantom }
 }
 
 function dedupe(list) {
@@ -218,16 +232,17 @@ function renderInline(f) {
   ].join('\n')
 }
 
-function render(decision, counts, findings, summary) {
+function renderSummary(decision, counts, findings, summary, stats) {
   const tally = SEVERITIES.map((s) => EMOJI[s] + ' ' + s + ' ' + counts[s]).join(' · ')
+  const pass = '(검증 통과 ' + stats.passed + '/' + stats.raw + (stats.phantom ? ', phantom 기각 ' + stats.phantom : '') + ')'
   const blocking = findings.filter((f) => f.severity === 'critical' || f.severity === 'major')
 
   const out = []
-  out.push('# 코드 리뷰 — ' + BASE + ' → ' + HEAD)
+  out.push('# Layer 2 — 전체 요약')
   out.push('')
   out.push('## 판정: ' + decision)
   out.push('')
-  out.push(tally)
+  out.push(tally + '   ' + pass)
   out.push('')
   out.push('### 변경 요약')
   out.push(summary ? summary.walkthrough : '(종합 에이전트 실패)')
@@ -243,7 +258,9 @@ function render(decision, counts, findings, summary) {
   out.push('### 짚어야 할 것 (critical / major)')
   if (blocking.length) {
     blocking.forEach((f) =>
-      out.push('- [' + EMOJI[f.severity] + ' ' + f.severity + '] ' + f.file + ':' + f.line + ' — ' + f.title)
+      out.push(
+        '- ' + EMOJI[f.severity] + ' [' + f.dims.join('][') + '] ' + f.file + ':' + f.line + ' — ' + f.title
+      )
     )
   } else {
     out.push('- 없음')
@@ -254,30 +271,30 @@ function render(decision, counts, findings, summary) {
   if (actions.length) {
     out.push('### 다음 액션')
     actions.forEach((a, i) => out.push(String(i + 1) + '. ' + a))
-    out.push('')
   }
+  return out.join('\n')
+}
 
-  out.push('---')
-  out.push('')
-  out.push('## 인라인 코멘트')
+function renderInlineLayer(findings) {
+  const out = ['# Layer 1 — 인라인']
   if (!findings.length) {
     out.push('')
     out.push('없음.')
-  } else {
-    let currentFile = null
-    findings
-      .slice()
-      .sort((a, b) => (a.file !== b.file ? (a.file < b.file ? -1 : 1) : a.line - b.line))
-      .forEach((f) => {
-        if (f.file !== currentFile) {
-          currentFile = f.file
-          out.push('')
-          out.push('### ' + currentFile)
-        }
-        out.push('')
-        out.push(renderInline(f))
-      })
+    return out.join('\n')
   }
+  let currentFile = null
+  findings
+    .slice()
+    .sort((a, b) => (a.file !== b.file ? (a.file < b.file ? -1 : 1) : a.line - b.line))
+    .forEach((f) => {
+      if (f.file !== currentFile) {
+        currentFile = f.file
+        out.push('')
+        out.push('## ' + currentFile)
+      }
+      out.push('')
+      out.push(renderInline(f))
+    })
   return out.join('\n')
 }
 
@@ -294,14 +311,15 @@ const reviewed = await pipeline(
       schema: FINDINGS_SCHEMA,
     }),
   (review, d) => {
+    const empty = { kept: [], raw: 0, killed: 0, phantom: 0 }
     if (!review) {
       log(d.key + ': 리뷰 에이전트 실패 — 이 차원은 결과 없음')
-      return []
+      return empty
     }
     const found = review.findings || []
     if (!found.length) {
       log(d.key + ': 지적 0건')
-      return []
+      return empty
     }
     return agent(verifyPrompt(d, found), {
       label: 'verify:' + d.key,
@@ -311,7 +329,17 @@ const reviewed = await pipeline(
   }
 )
 
-const findings = dedupe(reviewed.filter(Boolean).flat())
+const parts = reviewed.filter(Boolean)
+const stats = parts.reduce(
+  (a, r) => ({
+    raw: a.raw + r.raw,
+    passed: a.passed + r.kept.length,
+    killed: a.killed + r.killed,
+    phantom: a.phantom + r.phantom,
+  }),
+  { raw: 0, passed: 0, killed: 0, phantom: 0 }
+)
+const findings = dedupe(parts.flatMap((r) => r.kept))
 
 const counts = { critical: 0, major: 0, minor: 0, nit: 0 }
 findings.forEach((f) => {
@@ -328,9 +356,15 @@ const summary = await agent(summaryPrompt(findings), {
   schema: SUMMARY_SCHEMA,
 })
 
+const summaryMd = renderSummary(decision, counts, findings, summary, stats)
+const inlineMd = renderInlineLayer(findings)
+
 return {
   decision: decision,
   counts: counts,
+  stats: stats,
   findings: findings,
-  markdown: render(decision, counts, findings, summary),
+  summaryMd: summaryMd,
+  inlineMd: inlineMd,
+  markdown: summaryMd + '\n\n---\n\n' + inlineMd,
 }

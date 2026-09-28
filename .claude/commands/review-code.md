@@ -40,11 +40,40 @@ Workflow({
 **검증**: 완료 알림의 결과에 `decision`, `counts`, `markdown`이 들어 있다.
 `markdown`이 없으면 워크플로우가 중간에 죽은 것이다 — 로그를 보고 원인을 말해라. 결과를 지어내지 마라.
 
-## 3. 결과 출력
+## 3. 결과 출력 — PR 우선, 콘솔 fallback
 
-반환된 `markdown`을 **그대로** 사용자에게 출력한다. 요약하거나 다시 쓰지 마라.
-심각도 집계와 판정(Approve / Changes Requested / Blocked)은 스크립트가 코드로 계산한 값이다.
-네가 다시 세거나 판정을 바꾸지 마라.
+반환값에 `summaryMd`(Layer 2), `inlineMd`(Layer 1), `markdown`(둘을 합친 것), `findings`가 들어 있다.
+심각도 집계와 판정은 스크립트가 코드로 계산한 값이다. **네가 다시 세거나 판정을 바꾸지 마라.**
+
+먼저 열린 PR이 있는지 본다.
+
+```bash
+gh pr view --json number,headRefOid 2>/dev/null
+```
+
+### PR이 있으면
+
+Layer 2를 리뷰 본문으로, Layer 1을 라인별 인라인 코멘트로 올린다.
+`findings`의 각 항목을 `{path: file, line: line, side: "RIGHT", body: <인라인 4줄>}`로 만들어
+한 번의 리뷰로 묶어 보낸다.
+
+```bash
+gh api "repos/{owner}/{repo}/pulls/<번호>/reviews" --method POST --input <JSON 파일>
+```
+
+JSON은 `{commit_id, body: summaryMd, event: "COMMENT", comments: [...]}` 형태다.
+`event`는 항상 `COMMENT`를 쓴다. 이유: GitHub은 자기 PR에 `APPROVE`·`REQUEST_CHANGES`를 거부한다.
+판정은 본문 안에 이미 적혀 있다.
+
+**실패하면(대개 422) 조용히 넘어가지 마라.** 인라인 코멘트는 diff hunk에 포함된 줄에만 달 수 있어서,
+지적한 줄이 변경 범위 밖이면 리뷰 전체가 거절된다. 그 경우 `gh pr comment`로 `markdown` 전체를
+코멘트 하나로 올리고, 인라인이 불발됐다는 사실을 사용자에게 말해라.
+
+### PR이 없으면
+
+반환된 `markdown`을 **그대로** 출력한다. 요약하거나 다시 쓰지 마라.
+
+### 공통
 
 출력 뒤에 팩 경로 한 줄을 덧붙인다: `팩: <PACK>` (재실행·디버깅용).
 
