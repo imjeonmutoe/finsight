@@ -165,6 +165,24 @@ test('반박당한 지적은 탈락한다', async () => {
   eq(out.decision, 'Approve', '남은 지적이 없으면 Approve')
 })
 
+test('phantom으로 판정되면 기각한다 — 실재하지 않는 지적을 통과시키지 않는다', async () => {
+  const out = await run({
+    'review:correctness': { findings: [finding({ title: '없는 함수를 지적' })] },
+    'review:security': { findings: [] },
+    'review:architecture': { findings: [] },
+    // 스키마상 phantom과 refuted는 독립이다. 검증자가 phantom만 켜는 일이 실제로 생긴다.
+    'verify:correctness': { verdicts: [verdict(0, { phantom: true, refuted: false })] },
+    summary: SUMMARY,
+  })
+  eq(out.findings.length, 0, 'phantom은 남기지 않는다')
+  eq(out.stats.phantom, 1, 'phantom 집계')
+  eq(out.stats.killed, 1, '기각 집계에도 잡혀야 통과+기각이 raw를 넘지 않는다')
+  ok(
+    out.stats.passed + out.stats.killed <= out.stats.raw,
+    `집계 모순: 통과 ${out.stats.passed} + 기각 ${out.stats.killed} > raw ${out.stats.raw}`
+  )
+})
+
 test('CRITICAL 규칙 위반은 검증자가 깎아도 major로 되돌아온다', async () => {
   const out = await run({
     'review:security': { findings: [finding({ critical_rule: true })] },

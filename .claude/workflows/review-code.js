@@ -122,7 +122,7 @@ function verifyPrompt(d, found) {
     '',
     listed,
     '',
-    '검증 방법: ' + DIFF + ' 와 해당 소스 파일 원본을 직접 읽어라.',
+    '검증 방법: ' + DIFF + ' 와 해당 소스 파일 원본을 직접 읽어라. 너는 읽기 전용이다.',
     '리뷰어가 diff만 보고 문맥을 놓쳤을 수 있다 — 호출부, 타입 정의, 기존 테스트를 확인하라.',
     '',
     '먼저 phantom부터 걸러라. 지적한 file:line의 코드가 **워크스페이스 실제 파일에 존재하는지**',
@@ -195,8 +195,11 @@ function applyVerdicts(d, found, res) {
     const v = byId.get(i)
     // 검증자가 이 id를 빠뜨렸으면 아무도 반박을 시도하지 않은 것이다. 통과로 세지 않는다.
     if (!v) unverified += 1
-    if (v && v.phantom) phantom += 1
-    if (v && v.refuted) {
+    // phantom은 '지적한 코드가 워크스페이스에 없다'는 판정이다. 실재하지 않는 것을
+    // 리포트에 남길 수 없으므로 refuted를 켜지 않았더라도 기각한다. 스키마상 둘은
+    // 독립이라, 묶지 않으면 통과 + 기각의 합이 raw를 넘는 집계 모순이 생긴다.
+    if (v && (v.phantom || v.refuted)) {
+      if (v.phantom) phantom += 1
       killed += 1
       return
     }
@@ -353,6 +356,7 @@ const reviewed = await pipeline(
       return empty
     }
     return agent(verifyPrompt(d, found), {
+      agentType: 'review-verify',
       label: 'verify:' + d.key,
       phase: 'Verify',
       schema: VERDICTS_SCHEMA,
@@ -383,6 +387,7 @@ log('확정 ' + findings.length + '건 → 판정 ' + decision)
 
 phase('Summarize')
 const summary = await agent(summaryPrompt(findings), {
+  agentType: 'review-summary',
   label: 'summary',
   phase: 'Summarize',
   schema: SUMMARY_SCHEMA,

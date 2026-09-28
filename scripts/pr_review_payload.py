@@ -27,13 +27,22 @@ def hunk_lines(patch):
     out = {}
     path = None
     lineno = 0
+    in_header = False
     for raw in patch.splitlines():
-        if raw.startswith("+++ "):
-            target = raw[4:].strip()
-            path = None if target == "/dev/null" else re.sub(r"^b/", "", target)
+        # `diff --git`부터 첫 `@@`까지가 헤더 구역이다. 그 밖의 `+++ `는 내용이 '++ '로
+        # 시작하는 추가된 줄이지 파일 헤더가 아니다. 구별하지 않으면 그 줄에서 번호가
+        # 0으로 리셋돼 뒤따르는 줄이 통째로 '범위 밖'으로 밀린다.
+        if raw.startswith("diff --git "):
+            in_header = True
+            path = None
             lineno = 0
             continue
+        if in_header and raw.startswith("+++ "):
+            target = raw[4:].strip()
+            path = None if target == "/dev/null" else re.sub(r"^b/", "", target)
+            continue
         if raw.startswith("@@"):
+            in_header = False
             m = re.match(r"@@ -\S+ \+(\d+)", raw)
             lineno = int(m.group(1)) if m else 0
             continue

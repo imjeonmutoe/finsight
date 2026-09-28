@@ -42,6 +42,19 @@ diff --git a/src/lib/edit.ts b/src/lib/edit.ts
    const tail = 5
 """
 
+# 추가된 줄은 앞에 '+'가 붙는다. 내용이 '++ '로 시작하면 diff에서 '+++ '가 되어
+# 파일 헤더와 글자 모양이 같아진다.
+PLUS_CONTENT_PATCH = """\
+diff --git a/docs/GUIDE.md b/docs/GUIDE.md
+--- a/docs/GUIDE.md
++++ b/docs/GUIDE.md
+@@ -3,2 +3,4 @@
+ 앞 문맥
++++ 세 번째 수준 항목
++뒤따르는 줄
+ 뒤 문맥
+"""
+
 DELETED_PATCH = """\
 diff --git a/src/lib/dead.ts b/src/lib/dead.ts
 deleted file mode 100644
@@ -89,6 +102,12 @@ def test_edit_numbers_added_and_context_lines_but_not_removed():
 
 def test_deleted_file_has_no_commentable_lines():
     assert prp.hunk_lines(DELETED_PATCH) == {}
+
+
+def test_content_line_that_looks_like_a_header_does_not_reset_numbering():
+    """'+++ '로 시작하는 추가 줄을 파일 헤더로 오인하면 뒤따르는 줄이 통째로 범위 밖으로 밀린다."""
+    # @@ +3,4 → 3:앞 문맥 4:'++ 세 번째...' 5:뒤따르는 줄 6:뒤 문맥
+    assert prp.hunk_lines(PLUS_CONTENT_PATCH) == {"docs/GUIDE.md": {3, 4, 5, 6}}
 
 
 def test_multiple_files_in_one_patch():
@@ -171,7 +190,12 @@ def test_unverified_finding_is_marked():
     assert "미검증" not in prp.comment_body(finding("src/lib/new.ts", 1))
 
 
-def test_missing_good_renders_a_dash_not_the_word_none():
-    f = finding("src/lib/new.ts", 1)
-    f["good"] = ""
-    assert "None" not in prp.comment_body(f)
+def test_missing_good_renders_a_dash():
+    """good이 비어도 대시로 렌더해야 한다. 'None'이 안 나온다는 단언만으로는 구현을 고정하지 못한다."""
+    empty = finding("src/lib/new.ts", 1)
+    empty["good"] = ""
+    assert "**✓ Good** —" in prp.comment_body(empty)
+
+    absent = finding("src/lib/new.ts", 1)
+    del absent["good"]
+    assert "**✓ Good** —" in prp.comment_body(absent)

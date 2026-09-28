@@ -53,6 +53,17 @@ Workflow({
 에이전트 7개가 뜬다 — 리뷰 3 + 검증 3 + 종합 1. 백그라운드로 돌고 완료 알림이 온다.
 진행 상황은 `/workflows`로 볼 수 있다.
 
+7개 **전부** `.claude/agents/`의 `tools: Read, Grep, Glob` 타입으로 뜬다 (차원별 리뷰어 3종,
+`review-verify`, `review-summary`). 셸도 파일 쓰기도 없다. 이유: 이 에이전트들이 읽는 diff는
+신뢰할 수 없는 입력이다. 남의 브랜치나 외부 기여 PR의 주석에 에이전트를 향한 지시문이
+심겨 있을 수 있고, 워크플로우는 백그라운드로 돌아 중간 툴 호출이 눈에 띄지 않는다.
+**새 차원을 추가할 때 `agentType`을 빠뜨리면 그 에이전트만 셸을 든 채 뜬다.**
+
+`.claude/agents/`에 파일을 새로 만든 **그 세션에서는 레지스트리가 아직 그 에이전트를 모른다.**
+워크플로우가 `agent type '...' not found`로 즉시 죽는다. 토큰은 안 쓰이니 손해는 없고,
+세션을 새로 열면 잡힌다. 없는 타입을 조용히 기본 타입으로 대체하지 않는 건 의도한 것이다 —
+권한 제한이 빠진 채로 도는 것보다 안 도는 게 낫다.
+
 **검증**: 완료 알림의 결과에 `decision`, `counts`, `markdown`이 들어 있다.
 `markdown`이 없으면 워크플로우가 중간에 죽은 것이다 — 로그를 보고 원인을 말해라. 결과를 지어내지 마라.
 
@@ -121,7 +132,11 @@ gh api "repos/{owner}/{repo}/pulls/<번호>/reviews" --method POST --input "$PAC
 ## 차원 추가하는 법
 
 1. `.claude/agents/review-<차원>.md` 를 만든다 (기존 3개와 같은 틀: 읽는 법 / 체크리스트 / 보고 규칙 / 필드 의미).
-2. `.claude/workflows/review-code.js` 의 `DIMENSIONS` 배열에 한 줄 추가한다.
+   프론트매터에 **`tools: Read, Grep, Glob`을 반드시 넣어라.** 빠뜨리면 그 에이전트만
+   기본 도구 집합(Bash·Write 포함)으로 뜬다.
+2. `.claude/workflows/review-code.js` 의 `DIMENSIONS` 배열에 한 줄 추가한다 (`agentType` 포함).
+
+검증·종합 에이전트(`review-verify`·`review-summary`)는 차원과 무관하게 공유하므로 건드릴 필요가 없다.
 
 오케스트레이터 로직은 건드릴 필요가 없다. 단, 차원이 늘면 에이전트 수가 `2N+1`로 늘어난다.
 세션 워크플로우 크기 가이드라인(10개 미만)을 넘기면 `/config`의 "Dynamic workflow size"를 올려야 한다.
