@@ -1,0 +1,115 @@
+name: 코드 리뷰
+
+# PR이 열리거나 갱신되면 `/review-code`를 그대로 돌린다. 커맨드·워크플로우·에이전트 정의는
+# 리포에 이미 있는 것을 쓴다 (`.claude/commands/review-code.md`, `.claude/workflows/review-code.js`,
+# `.claude/agents/review-*.md`). CI용으로 로직을 한 벌 더 두지 않는다 — 두 벌이 되는 순간
+# 로컬에서 보던 리뷰와 PR에 붙는 리뷰가 조용히 달라진다.
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+
+# synchronize는 푸시마다 뜬다. 한 번에 에이전트가 7개 도는 워크플로우라, 이전 실행을
+# 취소하지 않으면 연달아 푸시할 때 비용이 그대로 곱절이 된다.
+concurrency:
+  group: review-code-pr-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  review:
+    # 드래프트는 아직 리뷰받을 상태가 아니다.
+    # fork PR에는 GitHub이 시크릿을 주지 않아 인증이 반드시 실패한다. 빨간불만 남기느니
+    # 아예 돌지 않게 한다. (fork PR을 리뷰하려면 pull_request_target을 써야 하는데,
+    # 그건 남의 코드에 우리 토큰을 쥐여 주는 것이라 이 리포에서는 하지 않는다.)
+    if: >-
+      github.event.pull_request.draft == false &&
+      github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      pull-requests: write # /review-code 3단계가 gh api로 리뷰를 올린다
+      id-token: write # claude-code-action의 GitHub App 인증에 필요하다
+
+    steps:
+      # ref: head.ref — 커밋 SHA로 체크아웃하면 detached HEAD가 되고, 그러면 `gh pr view`가
+      #   PR을 못 찾는다. /review-code는 조용히 "PR 없음" 경로로 빠져 결과를 워크플로우
+      #   로그에만 남긴다. 잡은 초록불인데 PR에는 아무것도 안 붙는다.
+      # fetch-depth: 0 — 1단계가 `git merge-base main HEAD`를 쓴다. 얕은 클론이면
+      #   merge-base가 실패해 팩이 비고, 커맨드는 "리뷰할 변경이 없다"며 **정상 종료**한다.
+      #   리뷰 0건에 초록불이 붙는 게 제일 위험한 실패다.
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+          fetch-depth: 0
+
+      # checkout은 PR 헤드 브랜치만 만들어 둔다. 로컬 `main` ref가 없으면 merge-base가 죽는다.
+      - name: main ref 확보
+        run: git fetch --no-tags origin +refs/heads/main:refs/heads/main
+
+      # 아래 검증 스텝이 "이번 실행이 올린 리뷰"만 세기 위한 기준선. 재실행했을 때
+      # 이전 실행이 남긴 리뷰를 이번 것으로 착각하지 않게 한다.
+      - name: 시작 시각 기록
+        run: echo "REVIEW_STARTED_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_ENV"
+
+      - uses: anthropics/claude-code-action@v1
+        env:
+          # /review-code 3단계의 `gh pr view` · `gh api .../reviews` 가 쓴다.
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          # 이걸 빼면 액션이 OIDC를 Anthropic에 보내 Claude GitHub App 토큰으로 바꾸려 하고,
+          # App이 설치돼 있지 않으면 거기서 죽는다("Claude Code is not installed on this
+          # repository"). 값을 주면 `setupGitHubToken()`이 OVERRIDE_GITHUB_TOKEN을 보고
+          # 교환 자체를 건너뛴다(action.yml: github_token → OVERRIDE_GITHUB_TOKEN).
+          #
+          # App 경로보다 **권한이 좁다**: App 토큰의 기본값은 contents:write·issues:write·
+          # pull_requests:write지만, 이 토큰은 위 permissions 블록 그대로 contents:read다.
+          # 읽기 전용이어야 할 리뷰 잡에 쓰기 권한을 줄 이유가 없다.
+          #
+          # 대가: App 경로에 붙는 Anthropic 측 워크플로우 검증(워크플로우가 default branch에
+          # 있는지 확인해 PR이 워크플로우를 고쳐 토큰을 빼가는 것을 막는 장치)을 건너뛴다.
+          # fork PR은 위 `if`에서 이미 걸렀고, 같은 리포에 PR을 여는 사람은 write 권한자다.
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          # 커맨드 파일에도 같은 지시가 있지만 여기에 또 적는다. 액션이 `.claude/`와
+          # CLAUDE.md를 origin/main 것으로 되돌리기 때문에(PR head는 신뢰하지 않음),
+          # 이 PR에서 고친 커맨드는 머지 전까지 CI에 반영되지 않는다. 워크플로우 파일은
+          # PR head 것을 그대로 쓰므로 여기 적은 것만 이번 실행에 효력이 있다.
+          prompt: |
+            /review-code
+
+            워크플로우를 띄운 뒤 **완료 알림을 기다렸다가 3단계(PR에 리뷰 게시)까지 끝내라.**
+            "백그라운드로 시작했습니다"라는 보고만 남기고 턴을 끝내면, 비대화형 실행이라
+            그 턴이 세션의 마지막이 되어 아무도 결과를 올리지 않는다.
+          # allowedTools는 보안 경계가 아니다 — Bash가 열려 있는 이상 무엇이든 할 수 있다.
+          # 에이전트가 리뷰 밖으로 새는 것을 막는 울타리일 뿐이다. 실제 권한 제한은
+          # `.claude/agents/review-*.md`의 `tools: Read, Grep, Glob`가 건다.
+          claude_args: |
+            --allowedTools "Bash,Read,Grep,Glob,Workflow"
+            --max-turns 30
+
+      # 액션이 초록불이어도 리뷰가 PR에 안 붙을 수 있다. 실제로 첫 성공 실행이 워크플로우를
+      # 띄우자마자 "백그라운드로 시작했습니다"로 턴을 끝냈고, 잡은 success인데 PR에는 리뷰도
+      # 코멘트도 0건이었다. **리뷰 없는 초록불은 리뷰가 통과한 것처럼 보인다** — 이 잡이
+      # 막으려는 것 중 제일 위험한 실패라서, 결과가 실제로 올라왔는지 여기서 확인한다.
+      - name: 리뷰가 PR에 실제로 올라왔는지 확인
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+          # github-actions[bot]이 이번 실행 시작 이후에 남긴 것만 센다.
+          # 사람이 리뷰 중에 단 코멘트를 결과로 착각하면 안 된다.
+          reviews=$(gh api "repos/$REPO/pulls/$PR/reviews" --paginate \
+            --jq "[.[] | select(.user.login == \"github-actions[bot]\" and .submitted_at > \"$REVIEW_STARTED_AT\")] | length")
+          comments=$(gh api "repos/$REPO/issues/$PR/comments" --paginate \
+            --jq "[.[] | select(.user.login == \"github-actions[bot]\" and .created_at > \"$REVIEW_STARTED_AT\")] | length")
+          echo "이번 실행이 올린 리뷰 ${reviews}건 / 코멘트 ${comments}건 (기준 $REVIEW_STARTED_AT)"
+          if [ "$reviews" -eq 0 ] && [ "$comments" -eq 0 ]; then
+            echo "::error::리뷰가 PR에 올라오지 않았습니다. 잡은 돌았지만 결과가 없으므로 초록불로 내보내지 않습니다."
+            exit 1
+          fi
+
+      # 판정이 Blocked여도 잡은 통과시킨다. 리뷰는 PR 코멘트로 남고, 머지할지는 사람이 정한다.
+      # 잡이 빨간불이 되는 경우는 리뷰가 **돌지 못했을 때**뿐이다.
