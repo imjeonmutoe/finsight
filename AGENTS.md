@@ -98,6 +98,48 @@ bash scripts/hooks/test-tdd-backstop.sh
 codex는 처음 보는 훅을 실행하기 전에 사용자 검토를 요구한다. 대화형 세션에서는 한 번 신뢰해 주면
 되고, `scripts/execute.py`는 비대화형이라 `--dangerously-bypass-hook-trust`를 붙여 실행한다.
 
+### 리뷰 자동화 — 세 층
+
+| 층 | 언제 | 무엇을 보나 | LLM |
+|---|---|---|---|
+| `scripts/githooks/pre-commit` | 커밋마다 (~1초) | CRITICAL 규칙 중 텍스트로 확정되는 6종 | ✗ |
+| `.github/workflows/review-code.yml` | PR 열림·푸시 | `/review-code` 전체 (에이전트 7개) | ✓ |
+| `/review-code` 수동 | 페이즈 끝, 올리기 전 | 위와 같은 것 | ✓ |
+
+**LLM 리뷰를 커밋 훅에 넣지 마라.** 리뷰의 단위는 `merge-base(main)..HEAD` 브랜치 전체이고
+에이전트 7개에 수 분이 걸린다. 커밋은 하루에 수십 번 일어난다. 단위도 비용도 맞지 않는다.
+
+pre-commit이 보는 것은 **스테이지된 추가 줄**뿐이고, 주석 줄과 테스트·문서·`scripts/`는
+검사하지 않는다. 이유: 이미 리포에 있던 코드나 규칙을 적어 둔 주석으로 남의 커밋을 막으면,
+훅은 그날로 `--no-verify`로 우회되고 그 순간 잡던 것도 같이 못 잡게 된다.
+
+git 훅은 `.git/hooks`에 있어 커밋되지 않는다. 클론한 뒤 한 번 설치해야 한다:
+
+```bash
+git config core.hooksPath scripts/githooks
+```
+
+`scripts/hooks/`(에이전트 훅)와 `scripts/githooks/`(git 훅)는 다른 것이다. 섞지 마라.
+
+### CI에 이미 물려 있는 것 세 가지
+
+고치기 전에 이유를 읽어라. 셋 다 **실패해도 빨간불이 안 뜨는** 종류의 함정이다.
+
+- Stop 훅 커맨드 앞에 `[ -n "$GITHUB_ACTIONS" ] && exit 0;` 가드가 붙어 있다
+  (`.claude/settings.json`·`.codex/hooks.json` 양쪽). CI에서 훅이 `lint && build && test`를 돌면,
+  실패를 본 에이전트가 **읽기 전용이어야 할 리뷰 잡에서 PR 브랜치를 고치기 시작한다.**
+  `--settings`로는 못 끈다 — 병합만 되고 덮어쓰기가 안 된다(실측). 그래서 훅 안에서 가드한다.
+- `fetch-depth: 0`. 얕은 클론이면 `git merge-base main HEAD`가 실패해 팩이 비고,
+  `/review-code`는 "리뷰할 변경이 없다"며 **정상 종료**한다. 리뷰 0건에 초록불이 붙는다.
+- `ref: head.ref` (커밋 SHA 아님). SHA로 체크아웃하면 detached HEAD가 되어 `gh pr view`가
+  PR을 못 찾고, 리뷰가 PR이 아니라 워크플로우 로그로만 간다.
+
+판정이 Blocked여도 잡은 통과한다. 머지 여부는 사람이 정한다. 잡이 빨간불인 것은
+리뷰가 **돌지 못했다**는 뜻이므로 재실행하라.
+
+필요한 리포 시크릿은 `CLAUDE_CODE_OAUTH_TOKEN` 하나다 (`claude setup-token`으로 발급).
+fork PR에는 GitHub이 시크릿을 주지 않으므로 잡이 아예 뜨지 않게 걸러 둔다.
+
 ## 명령어
 npm run dev      # 개발 서버
 npm run build    # 프로덕션 빌드
@@ -109,4 +151,5 @@ bash scripts/preview-shot.sh [경로]   # 빌드 후 headless Chrome 스크린�
 uv run --with pytest python -m pytest scripts/ -q
 bash scripts/hooks/test-tdd-guard.sh
 bash scripts/hooks/test-tdd-backstop.sh
+bash scripts/githooks/test-pre-commit.sh   # git pre-commit 훅
 node scripts/test-review-workflow.mjs   # /review-code 워크플로우 후처리
