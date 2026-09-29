@@ -62,7 +62,10 @@ check() {
   local hits=$ADDED
   [ -n "$paths" ] && hits=$(printf '%s\n' "$hits" | grep -E "$paths")
   hits=$(printf '%s\n' "$hits" | grep -E "$pat")
-  [ -n "$pat2" ] && hits=$(printf '%s\n' "$hits" | grep -E "$pat2")
+  # 2차 패턴은 **내용에만** 건다. 줄이 "경로:줄:내용" 형태라 그냥 걸면 파일 경로에
+  # transaction·amount가 들어 있다는 이유로 멀쩡한 로그가 걸린다(src/lib/transaction-parser.ts).
+  # `^[^:]+:[0-9]+:` 가 접두사를 정확히 먹고, 패턴은 그 뒤에서만 찾는다.
+  [ -n "$pat2" ] && hits=$(printf '%s\n' "$hits" | grep -E "^[^:]+:[0-9]+:.*($pat2)")
   [ -z "$hits" ] && return 0
   report "$rule" "$desc" "$hits"
 }
@@ -112,7 +115,8 @@ while IFS= read -r f; do
   esac
   git show ":$f" 2>/dev/null | head -5 | grep -qE "^[[:space:]]*['\"]use client['\"]" || continue
   hits=$(printf '%s\n' "$ADDED" | awk -v f="$f:" 'index($0, f) == 1' \
-    | grep -E 'process\.env\.[A-Z0-9_]+' | grep -vE 'process\.env\.NEXT_PUBLIC_')
+    | grep -E 'process\.env\.[A-Z0-9_]+' | grep -vE 'process\.env\.(NEXT_PUBLIC_|NODE_ENV)')
+  # NODE_ENV는 Next가 빌드 타임에 치환하는 공개 값이라 클라이언트에서 정상이다.
   [ -n "$hits" ] && CLIENT_HITS="${CLIENT_HITS}${hits}"$'\n'
 done <<EOF
 $(git diff --cached --name-only --diff-filter=ACMR | grep -Ev "$EXCLUDE")

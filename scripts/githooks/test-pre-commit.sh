@@ -116,6 +116,22 @@ r=$(fresh_repo)
 stage "$r" "src/components/Chart.tsx" "const url = process.env.NEXT_PUBLIC_SUPABASE_URL"
 expect 0 "NEXT_PUBLIC_ env는 클라이언트에서 정상이다" "$r"
 
+# 검사 대상 줄은 "경로:줄:내용" 형태다. 2차 패턴을 줄 전체에 걸면 파일 **경로**에
+# transaction·amount가 들어 있다는 이유로 멀쩡한 로그가 걸린다.
+r=$(fresh_repo)
+stage "$r" "src/lib/transaction-parser.ts" 'console.log("파싱 시작", rowIndex)'
+expect 0 "경로에 transaction이 있어도 내용이 깨끗하면 통과한다" "$r"
+
+r=$(fresh_repo)
+stage "$r" "src/lib/amount-utils.ts" 'console.warn("행 %d 건너뜀", i)'
+expect 0 "경로에 amount가 있어도 내용이 깨끗하면 통과한다" "$r"
+
+# NODE_ENV는 클라이언트 번들에 들어가도 되는 값이다. Next가 빌드 타임에 치환한다.
+r=$(fresh_repo)
+stage "$r" "src/components/Debug.tsx" "'use client'
+const dev = process.env.NODE_ENV === 'development'"
+expect 0 "클라이언트의 process.env.NODE_ENV는 정상이다" "$r"
+
 r=$(fresh_repo)
 stage "$r" "src/app/api/insights/route.ts" "const key = process.env.ANTHROPIC_API_KEY"
 expect 0 "서버 라우트의 서버 전용 env는 정상이다" "$r"
