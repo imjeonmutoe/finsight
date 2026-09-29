@@ -121,7 +121,7 @@ git config core.hooksPath scripts/githooks
 
 `scripts/hooks/`(에이전트 훅)와 `scripts/githooks/`(git 훅)는 다른 것이다. 섞지 마라.
 
-### CI에 이미 물려 있는 것 세 가지
+### CI에 이미 물려 있는 것 네 가지
 
 고치기 전에 이유를 읽어라. 셋 다 **실패해도 빨간불이 안 뜨는** 종류의 함정이다.
 
@@ -133,6 +133,13 @@ git config core.hooksPath scripts/githooks
   `/review-code`는 "리뷰할 변경이 없다"며 **정상 종료**한다. 리뷰 0건에 초록불이 붙는다.
 - `ref: head.ref` (커밋 SHA 아님). SHA로 체크아웃하면 detached HEAD가 되어 `gh pr view`가
   PR을 못 찾고, 리뷰가 PR이 아니라 워크플로우 로그로만 간다.
+- `github_token: ${{ secrets.GITHUB_TOKEN }}`. 이걸 빼면 액션이 OIDC를 Anthropic에 보내
+  Claude GitHub App 토큰으로 바꾸려 하고, App 미설치면 거기서 죽는다. 값을 주면 교환 자체를
+  건너뛴다. App 경로보다 **권한이 좁다** — App 토큰 기본값은 `contents:write`·`issues:write`인데
+  이 토큰은 워크플로우의 `permissions` 그대로 `contents:read`다. 읽기 전용이어야 할 리뷰 잡에
+  쓰기 권한을 줄 이유가 없다. 대가는 Anthropic 측 워크플로우 검증(워크플로우가 default branch에
+  있는지 확인)을 건너뛴다는 것인데, fork PR은 잡 조건에서 이미 걸렀다.
+  App을 나중에 설치해도 이 워크플로우 동작은 그대로다 — `github_token`이 항상 이긴다.
 
 판정이 Blocked여도 잡은 통과한다. 머지 여부는 사람이 정한다. 잡이 빨간불인 것은
 리뷰가 **돌지 못했다**는 뜻이므로 재실행하라.

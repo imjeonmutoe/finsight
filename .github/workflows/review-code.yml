@@ -53,6 +53,19 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          # 이걸 빼면 액션이 OIDC를 Anthropic에 보내 Claude GitHub App 토큰으로 바꾸려 하고,
+          # App이 설치돼 있지 않으면 거기서 죽는다("Claude Code is not installed on this
+          # repository"). 값을 주면 `setupGitHubToken()`이 OVERRIDE_GITHUB_TOKEN을 보고
+          # 교환 자체를 건너뛴다(action.yml: github_token → OVERRIDE_GITHUB_TOKEN).
+          #
+          # App 경로보다 **권한이 좁다**: App 토큰의 기본값은 contents:write·issues:write·
+          # pull_requests:write지만, 이 토큰은 위 permissions 블록 그대로 contents:read다.
+          # 읽기 전용이어야 할 리뷰 잡에 쓰기 권한을 줄 이유가 없다.
+          #
+          # 대가: App 경로에 붙는 Anthropic 측 워크플로우 검증(워크플로우가 default branch에
+          # 있는지 확인해 PR이 워크플로우를 고쳐 토큰을 빼가는 것을 막는 장치)을 건너뛴다.
+          # fork PR은 위 `if`에서 이미 걸렀고, 같은 리포에 PR을 여는 사람은 write 권한자다.
+          github_token: ${{ secrets.GITHUB_TOKEN }}
           prompt: "/review-code"
           # allowedTools는 보안 경계가 아니다 — Bash가 열려 있는 이상 무엇이든 할 수 있다.
           # 에이전트가 리뷰 밖으로 새는 것을 막는 울타리일 뿐이다. 실제 권한 제한은
