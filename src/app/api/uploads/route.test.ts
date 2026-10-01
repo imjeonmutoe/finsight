@@ -39,7 +39,7 @@ function builder(table: string) {
       return Promise.resolve({ data: null, error: null, ...result }).then(resolve);
     },
   };
-  for (const method of [...WRITERS, "eq", "in", "gte", "order", "limit", "single", "maybeSingle"]) {
+  for (const method of [...WRITERS, "eq", "neq", "in", "gte", "order", "limit", "single", "maybeSingle"]) {
     api[method] = (...args: unknown[]) => {
       if (WRITERS.includes(method) && key === table) key = `${table}:${method}`;
       calls.push({ key, method, args });
@@ -509,15 +509,30 @@ describe("POST /api/uploads Free 업로드 한도", () => {
     expect(argsOf("uploads:delete", "eq")).toEqual([["id", UPLOAD_ID], ["user_id", "user-1"]]);
   });
 
-  it("한도는 KST 캘린더 월의 mapped·parsed만 셉니다", async () => {
+  it("한도는 KST 캘린더 월에 만든 업로드를 상태와 관계없이 세고 지금 행은 뺍니다", async () => {
+    // status로 거르면 추론을 일부러 실패시킨 업로드(failed)가 세어지지 않아, 그런 파일을 여러 개
+    // 쌓아 두고 하나씩 confirm하는 것으로 한도가 무력화됩니다. status는 클라이언트가 바꿀 수도 있습니다.
     vi.useFakeTimers().setSystemTime(new Date("2026-09-16T06:17:00.000Z"));
     happyPath({ plan: "free", monthCount: 0 });
 
     const response = await post(await multipart({ sourceId: SOURCE_ID, file: csvFile(CSV) }));
 
     expect(response.status).toBe(200);
-    expect(argsOf("uploads:select", "in")).toEqual([["status", ["mapped", "parsed"]]]);
+    expect(argsOf("uploads:select", "in")).toEqual([]);
+    expect(argsOf("uploads:select", "neq")).toEqual([["id", UPLOAD_ID]]);
     expect(argsOf("uploads:select", "gte")).toEqual([["created_at", "2026-08-31T15:00:00.000Z"]]);
+  });
+
+  it("같은 달의 실패한 업로드도 한도에 들어갑니다", async () => {
+    vi.useFakeTimers().setSystemTime(new Date("2026-09-16T06:17:00.000Z"));
+    // 카운트 쿼리가 failed 행 하나를 찾았다고 돌려줍니다.
+    happyPath({ plan: "free", monthCount: 1 });
+    enqueue("uploads:delete", { data: null });
+
+    const response = await post(await multipart({ sourceId: SOURCE_ID, file: csvFile(CSV) }));
+
+    expect(response.status).toBe(403);
+    expect(inferColumnMapping).not.toHaveBeenCalled();
   });
 
   it("Pro는 한도를 세지 않습니다", async () => {
