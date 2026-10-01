@@ -199,6 +199,8 @@ git config core.hooksPath scripts/githooks
 fork PR에는 GitHub이 시크릿을 주지 않으므로 잡이 아예 뜨지 않게 걸러 둔다.
 
 ## 명령어
+
+```bash
 npm run dev      # 개발 서버
 npm run build    # 프로덕션 빌드
 npm run lint     # ESLint
@@ -211,3 +213,4 @@ bash scripts/hooks/test-tdd-guard.sh
 bash scripts/hooks/test-tdd-backstop.sh
 bash scripts/githooks/test-pre-commit.sh   # git pre-commit 훅
 node scripts/test-review-workflow.mjs   # /review-code 워크플로우 후처리
+```
