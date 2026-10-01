@@ -98,7 +98,11 @@ jobs:
           status=0
           claude -p "$PROMPT" --output-format json --max-turns 60 \
             --allowedTools "Bash,Read,Write,Grep,Glob,Agent,SendMessage" > "$out" 2> /dev/null || status=$?
-          jq -c '{subtype, is_error, num_turns, duration_ms, total_cost_usd}' "$out" 2> /dev/null \
+          # 모델 이름과 감사자 수만 더 남긴다. 숫자라 공개돼도 지적이 새지 않는다.
+          # 감사자가 덜 떴거나 중간에 죽으면 점수가 실제보다 좋게 나오는데, 이 줄이 없으면 구분할 수 없다.
+          jq -c '{subtype, is_error, num_turns, duration_ms, total_cost_usd,
+                  models: (.modelUsage | keys),
+                  agents: (.subagent_stats | {spawned, completed, failed, killed, by_type})}' "$out" 2> /dev/null \
             || echo "결과 JSON을 읽지 못했습니다."
           exit "$status"
 
