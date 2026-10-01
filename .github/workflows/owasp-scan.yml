@@ -23,6 +23,9 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  # 액션은 커밋 SHA로 고정한다(review-code.yml과 같은 이유). 올릴 때는 태그가 가리키는 커밋을
+  # 확인해 SHA와 주석을 함께 바꾼다. 스캔 잡은 CLAUDE_CODE_OAUTH_TOKEN을, 업로드 잡은
+  # security-events: write를 쥐므로 태그가 옮겨지면 그대로 넘어간다.
   check:
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -31,7 +34,7 @@ jobs:
     outputs:
       due: ${{ steps.due.outputs.due }}
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           sparse-checkout: .claude/skills/owasp-scan/scripts
       # 기준일(금요일)로부터 짝수 주에만 돈다. 기준일을 바꾸면 격주 위상이 바뀐다.
@@ -60,7 +63,7 @@ jobs:
       security-events: write
 
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
 
       # claude-code-action을 쓰지 않는다. 액션은 SDK의 첫 `result` 메시지에서 루프를 끊는다
       # (base-action/src/run-claude-sdk.ts). 에이전트가 감사자를 백그라운드로 띄우고 "기다리는 중"으로
@@ -114,7 +117,7 @@ jobs:
       - name: SARIF 만들기
         run: python3 .claude/skills/owasp-scan/scripts/notify.py sarif .owasp/owasp-score.json > owasp.sarif
 
-      - uses: github/codeql-action/upload-sarif@v4
+      - uses: github/codeql-action/upload-sarif@2892aa5e19bbd11bc0cff5427e3b750a04d9e3c2 # v4
         with:
           sarif_file: owasp.sarif
           category: owasp-scan
