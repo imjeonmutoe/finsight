@@ -1,0 +1,410 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>OWASP 보안 스캔</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap"
+      rel="stylesheet"
+    />
+    <!--
+      이 파일은 report.py가 복사해 채운다. 직접 고쳐 쓰지 마라 — 매번 디자인이 달라진다.
+      데이터는 아래 DATA 한 곳으로만 들어오고, 화면은 전부 textContent로 그린다.
+      지적 문구에는 리포의 코드 조각이 그대로 들어 있으므로 innerHTML을 쓰면 리포트 자체가 XSS가 된다.
+    -->
+    <style>
+      :root {
+        --bg: #fafafa;
+        --surface: #ffffff;
+        --border: #e5e7eb;
+        --border-strong: #d1d5db;
+        --text: #0f172a;
+        --text-2: #475569;
+        --text-3: #94a3b8;
+        --accent: #2563eb;
+        --accent-soft: #eff6ff;
+        --green: #16a34a;
+        --green-soft: #dcfce7;
+        --amber: #d97706;
+        --amber-soft: #fef3c7;
+        --red: #dc2626;
+        --red-soft: #fee2e2;
+        --orange: #ea580c;
+        --orange-soft: #ffedd5;
+        --grid: #f1f5f9;
+        --mono: "JetBrains Mono", ui-monospace, monospace;
+      }
+      * { box-sizing: border-box; }
+      html, body {
+        margin: 0;
+        padding: 0;
+        background: var(--bg);
+        color: var(--text);
+        font-family: "Inter", "Pretendard", "Apple SD Gothic Neo", -apple-system, system-ui, sans-serif;
+        font-feature-settings: "cv11", "ss01";
+        -webkit-font-smoothing: antialiased;
+        word-break: keep-all;
+        overflow-wrap: break-word;
+      }
+      .page { max-width: 1280px; margin: 0 auto; padding: 48px 40px 64px; }
+      .mono { font-family: var(--mono); }
+      /* 코드 조각의 !==·=>·>=가 합자로 뭉치면 다른 연산자로 읽힌다 */
+      .f-ev, .f-loc, .f-grid dd.code { font-variant-ligatures: none; }
+
+      /* header */
+      .header {
+        display: flex; justify-content: space-between; align-items: flex-end; gap: 24px;
+        padding-bottom: 24px; border-bottom: 1px solid var(--border); margin-bottom: 32px;
+      }
+      .eyebrow { font-family: var(--mono); font-size: 11px; font-weight: 500; color: var(--text-3); margin-bottom: 8px; }
+      .header h1 { font-size: 30px; font-weight: 700; margin: 0; }
+      .header .sub { font-size: 14px; color: var(--text-2); margin-top: 4px; }
+      .header-meta { text-align: right; font-family: var(--mono); font-size: 11px; color: var(--text-3); line-height: 1.7; }
+      .header-meta strong { color: var(--text); font-weight: 500; }
+
+      /* score strip */
+      .score-strip { display: grid; grid-template-columns: 320px 1fr; gap: 24px; margin-bottom: 24px; }
+      .card { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; }
+      .score-hero { padding: 28px 28px 24px; }
+      .label { font-size: 12px; font-weight: 500; color: var(--text-3); }
+      .value { display: flex; align-items: baseline; gap: 6px; margin-top: 8px; }
+      .num-big { font-size: 64px; font-weight: 700; letter-spacing: -0.04em; line-height: 1; }
+      .denom { font-size: 20px; color: var(--text-3); font-weight: 500; }
+      .grade-row { display: flex; align-items: center; gap: 10px; margin-top: 14px; }
+      .badge {
+        display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 999px;
+        font-size: 12px; font-weight: 600;
+      }
+      .badge i { width: 6px; height: 6px; border-radius: 999px; background: currentColor; }
+      .tone-green { background: var(--green-soft); color: var(--green); }
+      .tone-amber { background: var(--amber-soft); color: var(--amber); }
+      .tone-red { background: var(--red-soft); color: var(--red); }
+      .tone-gray { background: var(--grid); color: var(--text-2); }
+      .desc { font-size: 13px; color: var(--text-2); line-height: 1.6; margin-top: 10px; }
+      .score-hero hr { border: 0; border-top: 1px solid var(--border); margin: 18px 0 14px; }
+      .mini-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+      .mini-stat .k { font-size: 11px; color: var(--text-3); margin-bottom: 2px; }
+      .mini-stat .v { font-family: var(--mono); font-size: 18px; font-weight: 600; }
+
+      .cats { padding: 20px 24px 24px; }
+      .head-row { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 12px; flex-wrap: wrap; }
+      h2 { font-size: 14px; font-weight: 600; margin: 0; }
+      .legend { display: flex; gap: 14px; font-size: 11px; color: var(--text-2); flex-wrap: wrap; }
+      .legend span { display: inline-flex; align-items: center; gap: 5px; }
+      .legend i { width: 8px; height: 8px; border-radius: 2px; }
+      .cat-row {
+        display: grid; grid-template-columns: 36px 1fr 200px 56px; gap: 12px; align-items: center;
+        padding: 7px 0; font-size: 13px;
+      }
+      .cat-row + .cat-row { border-top: 1px dashed var(--border); }
+      .cat-row .idx { font-family: var(--mono); font-size: 11px; color: var(--text-3); font-weight: 500; }
+      .cat-row .title { font-weight: 500; }
+      .cat-row .sub { font-size: 11.5px; color: var(--text-3); margin-top: 1px; }
+      .bar { height: 8px; border-radius: 3px; background: var(--grid); overflow: hidden; }
+      .bar > span { display: block; height: 100%; border-radius: 3px; }
+      .bar.good > span { background: var(--green); }
+      .bar.warn > span { background: var(--amber); }
+      .bar.bad > span { background: var(--red); }
+      .bar.none { background: repeating-linear-gradient(45deg, var(--grid) 0 4px, #fff 4px 8px); }
+      .cat-row .num { font-family: var(--mono); font-size: 13px; font-weight: 600; text-align: right; }
+      .cat-row .num.none { color: var(--text-3); font-weight: 500; font-size: 11px; }
+
+      /* matrix */
+      .matrix { padding: 20px 24px 24px; margin-bottom: 24px; }
+      .matrix svg { display: block; width: 100%; height: auto; margin-top: 8px; }
+
+      /* findings */
+      .findings { padding: 0; margin-bottom: 24px; overflow: hidden; }
+      .findings .head-row { padding: 18px 24px; border-bottom: 1px solid var(--border); margin: 0; }
+      .filters { display: flex; gap: 6px; flex-wrap: wrap; }
+      .filters button {
+        font: inherit; font-size: 12px; padding: 4px 10px; border-radius: 999px; cursor: pointer;
+        border: 1px solid var(--border); background: var(--surface); color: var(--text-2);
+      }
+      .filters button[aria-pressed="true"] { background: var(--text); color: #fff; border-color: var(--text); }
+      .f-item { padding: 16px 24px; border-top: 1px solid var(--border); }
+      .f-item:first-child { border-top: 0; }
+      .f-top { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+      .tag { font-family: var(--mono); font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 4px; }
+      .sev-critical { background: var(--red-soft); color: var(--red); }
+      .sev-major { background: var(--orange-soft); color: var(--orange); }
+      .sev-minor { background: var(--amber-soft); color: var(--amber); }
+      .sev-nit { background: var(--grid); color: var(--text-2); }
+      .tag-cat { background: var(--accent-soft); color: var(--accent); }
+      .f-title { font-size: 14px; font-weight: 600; }
+      .f-loc { font-family: var(--mono); font-size: 12px; color: var(--text-2); margin-top: 6px; }
+      .f-ev {
+        font-family: var(--mono); font-size: 12px; background: var(--grid); border-radius: 4px;
+        padding: 8px 10px; margin-top: 8px; white-space: pre-wrap; word-break: break-all;
+      }
+      .f-grid { display: grid; grid-template-columns: 64px 1fr; gap: 4px 12px; margin-top: 10px; font-size: 13px; line-height: 1.55; }
+      .f-grid dt { color: var(--text-3); font-size: 12px; }
+      .f-grid dd { margin: 0; color: var(--text-2); }
+      .f-grid dd.code { font-family: var(--mono); font-size: 12px; color: var(--text); }
+      .f-foot { display: flex; gap: 12px; margin-top: 10px; font-size: 11px; color: var(--text-3); }
+      .f-foot .unv { color: var(--amber); font-weight: 600; }
+      .empty { padding: 32px 24px; text-align: center; color: var(--text-2); font-size: 14px; }
+
+      details.card { padding: 0; margin-bottom: 24px; }
+      details.card summary { padding: 16px 24px; cursor: pointer; font-size: 14px; font-weight: 600; }
+      .ref-row { padding: 10px 24px; border-top: 1px solid var(--border); font-size: 13px; }
+      .ref-row .r { color: var(--text-2); margin-top: 4px; }
+
+      .footer { font-family: var(--mono); font-size: 11px; color: var(--text-3); text-align: center; margin-top: 32px; }
+
+      @media (max-width: 960px) {
+        .page { padding: 32px 16px 48px; }
+        .header { flex-direction: column; align-items: flex-start; }
+        .header-meta { text-align: left; }
+        .score-strip { grid-template-columns: 1fr; }
+        .cat-row { grid-template-columns: 36px 1fr 56px; }
+        .cat-row .bar { grid-column: 2 / 4; grid-row: 2; }
+        .f-item, .findings .head-row, details.card summary, .ref-row { padding-left: 16px; padding-right: 16px; }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="page">
+      <header class="header">
+        <div>
+          <div class="eyebrow">OWASP Top 10:2025</div>
+          <h1 id="h-title">보안 스캔</h1>
+          <div class="sub">자동 검사와 수동 검토를 거쳐 반박 검증을 통과한 지적만 점수에 반영했습니다.</div>
+        </div>
+        <div class="header-meta" id="h-meta"></div>
+      </header>
+
+      <section class="score-strip">
+        <div class="card score-hero">
+          <div class="label">보안 점수</div>
+          <div class="value"><span class="num-big mono" id="s-total"></span><span class="denom mono" id="s-max"></span></div>
+          <div class="grade-row"><span class="badge" id="s-grade"><i></i><span></span></span></div>
+          <div class="desc" id="s-desc"></div>
+          <hr />
+          <div class="mini-stats" id="s-mini"></div>
+        </div>
+        <div class="card cats">
+          <div class="head-row">
+            <h2>카테고리별 점수</h2>
+            <div class="legend">
+              <span><i style="background: var(--green)"></i>8~10</span>
+              <span><i style="background: var(--amber)"></i>5~7</span>
+              <span><i style="background: var(--red)"></i>0~4</span>
+              <span><i style="background: var(--grid); border: 1px solid var(--border)"></i>미검토</span>
+            </div>
+          </div>
+          <div id="cat-list"></div>
+        </div>
+      </section>
+
+      <section class="card matrix">
+        <div class="head-row">
+          <h2>심각도 분포</h2>
+          <div class="legend">
+            <span><i style="background: var(--red)"></i>critical −10</span>
+            <span><i style="background: var(--orange)"></i>major −4</span>
+            <span><i style="background: var(--amber)"></i>minor −1</span>
+            <span><i style="background: var(--text-3)"></i>nit 0</span>
+          </div>
+        </div>
+        <svg id="matrix" role="img" aria-label="카테고리별 심각도 분포"></svg>
+      </section>
+
+      <section class="card findings">
+        <div class="head-row">
+          <h2 id="f-head">지적</h2>
+          <div class="filters" id="filters"></div>
+        </div>
+        <div id="f-list"></div>
+      </section>
+
+      <details class="card" id="refuted">
+        <summary id="r-head"></summary>
+        <div id="r-list"></div>
+      </details>
+
+      <div class="footer" id="footer"></div>
+    </div>
+
+    <script>
+      const DATA = /*__DATA__*/null;
+
+      const SEV = ["critical", "major", "minor", "nit"];
+      const SEV_COLOR = { critical: "var(--red)", major: "var(--orange)", minor: "var(--amber)", nit: "var(--text-3)" };
+      const GRADE_TONE = { 양호: "tone-green", 보통: "tone-amber", 취약: "tone-amber", 위험: "tone-red", "판정 불가": "tone-gray" };
+
+      function el(tag, attrs, ...children) {
+        const n = document.createElement(tag);
+        for (const [k, v] of Object.entries(attrs || {})) {
+          if (k === "class") n.className = v;
+          else if (k === "style") n.setAttribute("style", v);
+          else n.setAttribute(k, v);
+        }
+        for (const c of children.flat()) {
+          if (c == null || c === false) continue;
+          n.append(typeof c === "string" || typeof c === "number" ? document.createTextNode(String(c)) : c);
+        }
+        return n;
+      }
+      function svg(tag, attrs, text) {
+        const n = document.createElementNS("http://www.w3.org/2000/svg", tag);
+        for (const [k, v] of Object.entries(attrs || {})) n.setAttribute(k, v);
+        if (text != null) n.textContent = String(text);
+        return n;
+      }
+      const $ = (id) => document.getElementById(id);
+      const catName = (id) => (DATA.categories.find((c) => c.id === id) || {}).name || id;
+      const loc = (f) => (f.line > 0 ? `${f.file}:${f.line}` : f.check === "npm-audit" ? `package.json · ${f.file}` : f.file);
+
+      function header() {
+        const m = DATA.meta || {};
+        document.title = `${m.repo || "리포"} · OWASP 보안 스캔`;
+        $("h-title").textContent = `${m.repo || "리포"} 보안 스캔`;
+        const rows = [
+          ["스캔", m.scanned_at], ["브랜치", m.branch], ["커밋", m.commit],
+          ["파일", m.files_scanned], ["npm audit", m.npm_audit],
+        ];
+        for (const [k, v] of rows) $("h-meta").append(el("div", {}, `${k} `, el("strong", {}, v ?? "-")));
+      }
+
+      function hero() {
+        $("s-total").textContent = DATA.total;
+        $("s-max").textContent = `/${DATA.max}`;
+        const g = $("s-grade");
+        g.classList.add(GRADE_TONE[DATA.grade] || "tone-gray");
+        g.querySelector("span").textContent = DATA.grade;
+
+        const scored = DATA.categories.filter((c) => c.score !== null);
+        const unassessed = DATA.categories.filter((c) => c.score === null);
+        const weakest = [...scored].sort((a, b) => a.score - b.score).filter((c) => c.score < c.max).slice(0, 2);
+        const parts = [];
+        if (DATA.counts.critical) {
+          parts.push(DATA.grade === "위험"
+            ? `critical ${DATA.counts.critical}건이 남아 있어 점수와 관계없이 '위험'입니다.`
+            : `critical ${DATA.counts.critical}건이 남아 있습니다.`);
+        }
+        if (weakest.length) parts.push(`가장 약한 곳은 ${weakest.map((c) => `${c.id} ${c.name}(${c.score}/${c.max})`).join(", ")}입니다.`);
+        else if (scored.length) parts.push("검토한 카테고리에서 남은 지적이 없습니다.");
+        if (unassessed.length) parts.push(`${unassessed.map((c) => c.id).join("·")}는 수동 검토를 하지 않아 점수에서 뺐습니다.`);
+        $("s-desc").textContent = parts.join(" ");
+
+        const s = DATA.stats;
+        for (const [k, v] of [["자동 후보", s.auto], ["수동 지적", s.manual], ["기각", s.refuted]]) {
+          $("s-mini").append(el("div", { class: "mini-stat" }, el("div", { class: "k" }, k), el("div", { class: "v" }, v)));
+        }
+      }
+
+      function cats() {
+        for (const c of DATA.categories) {
+          const counts = SEV.filter((s) => c.counts[s]).map((s) => `${s} ${c.counts[s]}`).join(" · ");
+          const sub = [counts || (c.score === null ? "" : "지적 없음"), c.note].filter(Boolean).join(" — ");
+          let bar, num;
+          if (c.score === null) {
+            bar = el("div", { class: "bar none" });
+            num = el("div", { class: "num none" }, "미검토");
+          } else {
+            const r = c.score / c.max;
+            bar = el("div", { class: "bar " + (r >= 0.8 ? "good" : r >= 0.5 ? "warn" : "bad") },
+              el("span", { style: `width:${Math.max(r * 100, 2)}%` }));
+            num = el("div", { class: "num" }, `${c.score}/${c.max}`);
+          }
+          $("cat-list").append(el("div", { class: "cat-row" },
+            el("div", { class: "idx" }, c.id),
+            el("div", {}, el("div", { class: "title" }, c.name), sub ? el("div", { class: "sub" }, sub) : null),
+            bar, num));
+        }
+      }
+
+      function matrix() {
+        const W = 1180, left = 220, top = 28, rowH = 30, colW = (W - left) / SEV.length;
+        const H = top + rowH * DATA.categories.length + 4;
+        const s = $("matrix");
+        s.setAttribute("viewBox", `0 0 ${W} ${H}`);
+        const max = Math.max(1, ...DATA.categories.flatMap((c) => SEV.map((k) => c.counts[k])));
+        SEV.forEach((k, j) => s.append(svg("text", {
+          x: left + colW * j + colW / 2, y: 16, "text-anchor": "middle",
+          "font-family": "JetBrains Mono, monospace", "font-size": 12, fill: "#475569",
+        }, k)));
+        DATA.categories.forEach((c, i) => {
+          const y = top + i * rowH;
+          s.append(svg("text", { x: 0, y: y + 19, "font-family": "JetBrains Mono, monospace", "font-size": 12, fill: "#94a3b8" }, c.id));
+          s.append(svg("text", { x: 40, y: y + 19, "font-size": 13, fill: "#0f172a" }, c.name));
+          SEV.forEach((k, j) => {
+            const n = c.counts[k];
+            const x = left + colW * j + 4;
+            const cell = svg("rect", { x, y: y + 3, width: colW - 8, height: rowH - 6, rx: 4, fill: n ? SEV_COLOR[k] : "#f1f5f9" });
+            if (n) cell.setAttribute("fill-opacity", String(0.25 + 0.75 * (n / max)));
+            s.append(cell);
+            if (n) s.append(svg("text", {
+              x: x + (colW - 8) / 2, y: y + 19, "text-anchor": "middle",
+              "font-family": "JetBrains Mono, monospace", "font-size": 12, "font-weight": 600, fill: "#0f172a",
+            }, n));
+          });
+        });
+      }
+
+      const filter = { sev: null };
+      function findingItem(f) {
+        return el("article", { class: "f-item" },
+          el("div", { class: "f-top" },
+            el("span", { class: `tag sev-${f.severity}` }, f.severity),
+            el("span", { class: "tag tag-cat" }, `${f.category} ${catName(f.category)}`),
+            el("span", { class: "f-title" }, f.title)),
+          el("div", { class: "f-loc" }, loc(f)),
+          f.evidence ? el("div", { class: "f-ev" }, f.evidence) : null,
+          el("dl", { class: "f-grid" },
+            el("dt", {}, "시나리오"), el("dd", {}, f.failure_scenario),
+            el("dt", {}, "수정"), el("dd", { class: "code" }, f.fix),
+            f.verify_note ? [el("dt", {}, "검증"), el("dd", {}, f.verify_note)] : null),
+          el("div", { class: "f-foot" },
+            el("span", {}, f.source === "auto" ? "자동 검사" : "수동 검토"),
+            el("span", { class: f.status === "미검증" ? "unv" : "" }, f.status),
+            f.critical_rule ? el("span", {}, "CLAUDE.md CRITICAL 규칙") : null));
+      }
+      function findings() {
+        const list = $("f-list");
+        list.replaceChildren();
+        const shown = DATA.findings.filter((f) => !filter.sev || f.severity === filter.sev);
+        $("f-head").textContent = `지적 ${DATA.findings.length}건`;
+        if (!DATA.findings.length) {
+          list.append(el("div", { class: "empty" }, "반박 검증을 통과한 지적이 없습니다. 미검토 카테고리가 있으면 그 부분은 아직 모릅니다."));
+          return;
+        }
+        if (!shown.length) list.append(el("div", { class: "empty" }, "이 심각도의 지적은 없습니다."));
+        shown.forEach((f) => list.append(findingItem(f)));
+      }
+      function filters() {
+        const box = $("filters");
+        const opts = [[null, "전체"], ...SEV.filter((s) => DATA.counts[s]).map((s) => [s, `${s} ${DATA.counts[s]}`])];
+        for (const [v, label] of opts) {
+          const b = el("button", { type: "button", "aria-pressed": String(filter.sev === v) }, label);
+          b.addEventListener("click", () => {
+            filter.sev = v;
+            box.querySelectorAll("button").forEach((x) => x.setAttribute("aria-pressed", String(x === b)));
+            findings();
+          });
+          box.append(b);
+        }
+      }
+
+      function refuted() {
+        const r = DATA.refuted;
+        $("r-head").textContent = `반박 검증에서 기각된 후보 ${r.length}건`;
+        if (!r.length) { $("refuted").hidden = true; return; }
+        for (const f of r) {
+          $("r-list").append(el("div", { class: "ref-row" },
+            el("div", {}, el("span", { class: "tag tag-cat" }, f.category), " ", f.title, " ",
+              el("span", { class: "mono", style: "color:var(--text-3);font-size:12px" }, loc(f)),
+              f.phantom ? el("span", { class: "tag sev-nit", style: "margin-left:6px" }, "phantom") : null),
+            f.reason ? el("div", { class: "r" }, f.reason) : null));
+        }
+      }
+
+      header(); hero(); cats(); matrix(); filters(); findings(); refuted();
+      $("footer").textContent = `${DATA.meta.repo || ""} · OWASP Top 10:2025 · ${DATA.meta.scanned_at || ""}`;
+    </script>
+  </body>
+</html>

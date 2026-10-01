@@ -1,0 +1,120 @@
+name: OWASP 정기 스캔
+
+# `/owasp-scan`을 격주로 그대로 돌린다. 스킬 로직을 CI용으로 한 벌 더 두지 않는다
+# (`.claude/skills/owasp-scan/`, `.claude/agents/owasp-auditor.md`).
+#
+# **이 리포는 공개다.** Actions 로그·아티팩트·Job Summary는 누구나 본다. 그래서
+#   - 공개(Job Summary): 총점·등급·카테고리별 점수만
+#   - 비공개(code scanning 알림): 남은 지적 전부. Security 탭의 알림 목록은 쓰기 권한자만 본다.
+#     PR에 붙는 주석은 읽기 권한으로도 보이지만, 이 워크플로우는 PR에서 돌지 않는다.
+#   - `.owasp/`는 아티팩트로 올리지 않는다. 러너와 함께 사라진다.
+# 실패 알림은 GitHub 기본 메일에 맡긴다 — 예약 워크플로우의 메일은 cron을 마지막으로 고친 사람에게 간다.
+
+on:
+  # cron은 UTC다. 금 09:00 UTC = 금 18:00 KST. cron으로는 "격주"를 못 쓰므로 매주 띄우고
+  # check 잡이 홀수 주를 걸러낸다.
+  schedule:
+    - cron: "0 9 * * 5"
+  # 수동 실행은 주 판정 없이 바로 돈다.
+  workflow_dispatch:
+
+concurrency:
+  group: owasp-scan
+  cancel-in-progress: false
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    outputs:
+      due: ${{ steps.due.outputs.due }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          sparse-checkout: .claude/skills/owasp-scan/scripts
+      # 기준일(금요일)로부터 짝수 주에만 돈다. 기준일을 바꾸면 격주 위상이 바뀐다.
+      - name: 이번 주가 스캔 주인지 판정
+        id: due
+        env:
+          EVENT: ${{ github.event_name }}
+        run: |
+          if [ "$EVENT" = "workflow_dispatch" ]; then
+            echo "due=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "due=$(python3 .claude/skills/owasp-scan/scripts/notify.py due --anchor 2026-10-02)" >> "$GITHUB_OUTPUT"
+          fi
+
+  scan:
+    needs: check
+    if: needs.check.outputs.due == 'true'
+    runs-on: ubuntu-latest
+    # 감사자 3개 + 반박 검증이 돈다. 리뷰 워크플로우(30분)보다 넉넉히.
+    timeout-minutes: 60
+    permissions:
+      contents: read
+      # SARIF 업로드. review-code.yml은 쓰기 권한을 LLM 없는 잡으로 떼어 냈지만 여기서는 같은 잡에 둔다.
+      # 잡을 나누려면 SARIF를 아티팩트로 넘겨야 하는데, 공개 리포의 아티팩트는 누구나 받는다.
+      # 이 권한으로 할 수 있는 최악은 알림을 지우거나 닫는 것이고, 에이전트가 읽는 것은 main의 코드다.
+      security-events: write
+
+    steps:
+      - uses: actions/checkout@v6
+
+      # claude-code-action을 쓰지 않는다. 액션은 SDK의 첫 `result` 메시지에서 루프를 끊는다
+      # (base-action/src/run-claude-sdk.ts). 에이전트가 감사자를 백그라운드로 띄우고 "기다리는 중"으로
+      # 턴을 끝내면 그 자리에서 프로세스가 정리돼 감사가 통째로 사라진다 — PR #11의 review-code가
+      # 정확히 이렇게 죽었다. `claude -p`는 백그라운드 subagent·workflow가 끝날 때까지 기다린다
+      # (docs: headless#background-tasks-at-exit).
+      #
+      # 버전·설치 방식은 액션(@v1, 12dd8d7)이 쓰던 것과 같게 고정한다.
+      - name: Claude Code 설치
+        run: |
+          set -o pipefail
+          curl -fsSL https://claude.ai/install.sh | bash -s -- 2.1.286
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: /owasp-scan 실행
+        timeout-minutes: 50
+        env:
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          # 마지막 턴 이후 백그라운드 작업을 기다리는 idle 상한(기본 10분). 스텝 타임아웃보다 짧게 둬서
+          # 멈춘 감사자가 있으면 스텝이 강제 종료되지 않고 Claude가 스스로 끝내게 한다.
+          CLAUDE_CODE_PRINT_BG_WAIT_CEILING_MS: "2400000"
+          PROMPT: |
+            /owasp-scan
+
+            비대화형 CI 실행이다. 물어볼 사람이 없다.
+            - 감사자·검증자 완료 알림을 받아 4단계(report.py)까지 끝내라.
+            - 5단계 화면 확인은 러너의 `google-chrome --headless=new`로 한다 (macOS 경로 대신).
+            - 리포트·JSON을 커밋하거나 `.owasp/` 밖으로 옮기지 마라. 코드를 고치지 마라.
+        # **공개 리포라 대화를 로그에 찍지 않는다.** 결과 JSON은 러너 임시 디렉토리에만 쓰고,
+        # 로그에는 결과 메타데이터만 남긴다(`.result` 본문에는 지적이 들어 있을 수 있다).
+        # allowedTools는 보안 경계가 아니다. 감사자의 실제 권한은 에이전트 정의의 tools가 건다.
+        run: |
+          set -o pipefail
+          out="$RUNNER_TEMP/claude-result.json"
+          status=0
+          claude -p "$PROMPT" --output-format json --max-turns 60 \
+            --allowedTools "Bash,Read,Write,Grep,Glob,Agent,SendMessage" > "$out" 2> /dev/null || status=$?
+          jq -c '{subtype, is_error, num_turns, duration_ms, total_cost_usd}' "$out" 2> /dev/null \
+            || echo "결과 JSON을 읽지 못했습니다."
+          exit "$status"
+
+      # Claude가 0으로 끝나도 리포트가 없을 수 있다. 점수 없는 초록불을 막는다.
+      - name: 리포트가 만들어졌는지 확인
+        run: |
+          test -s .owasp/owasp-score.json || { echo "::error::.owasp/owasp-score.json이 없습니다."; exit 1; }
+
+      - name: 공개 요약 (점수만)
+        run: python3 .claude/skills/owasp-scan/scripts/notify.py summary .owasp/owasp-score.json >> "$GITHUB_STEP_SUMMARY"
+
+      # 지적이 0건이어도 올린다. 빈 결과가 올라가야 고쳐진 지적의 알림이 닫힌다.
+      - name: SARIF 만들기
+        run: python3 .claude/skills/owasp-scan/scripts/notify.py sarif .owasp/owasp-score.json > owasp.sarif
+
+      - uses: github/codeql-action/upload-sarif@v4
+        with:
+          sarif_file: owasp.sarif
+          category: owasp-scan
