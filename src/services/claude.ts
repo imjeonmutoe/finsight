@@ -7,6 +7,7 @@ import {
   CLASSIFICATION_BATCH_SIZE, MAX_LLM_INPUT_BYTES, MAX_LLM_OUTPUT_TOKENS,
   LLM_TIMEOUT_MS, MAX_LLM_RETRIES, SONNET_MODEL, modelForInsights,
 } from "@/lib/limits";
+import { groundedNumbers, knownNumbers } from "@/lib/insight-numbers";
 import { sanitizeMerchantForLlm } from "@/lib/sanitize";
 import { CATEGORIES } from "@/types/category";
 import type { Category } from "@/types/category";
@@ -27,6 +28,8 @@ headline은 간결한 요약이며 items의 모든 문장에 입력에서 제공
 evidence는 해당 월 카테고리 집계의 근거이고, outliers의 transactionId는 이상거래의 근거다.
 연결할 근거가 없으면 해당 문장을 만들지 않는다.`;
 
+// headline의 숫자가 계산값과 맞지 않을 때 대신 쓴다. 숫자를 담지 않는다.
+const FALLBACK_HEADLINE = "이번 달 지출을 정리했습니다.";
 const INPUT_ERROR = "분석 입력을 확인하지 못했습니다. 입력 형식을 확인해 주세요.";
 const OUTPUT_ERROR = "분석 결과를 확인하지 못했습니다. 다시 시도해 주세요.";
 const REQUEST_ERROR = "분석 요청을 처리하지 못했습니다. 잠시 후 다시 시도해 주세요.";
@@ -240,8 +243,11 @@ export async function generateInsights(
     ...safe.evidence.flatMap((item) => item.transactionIds),
     ...(safe.outliers ?? []).map((item) => item.transactionId),
   ]);
+  // 실제로 보낸 값(safe)과 대조한다. 입력 원본에는 Free에 보내지 않은 Pro 상세 금액도 들어 있다.
+  const known = knownNumbers(safe);
   return {
-    headline: result.headline,
-    items: result.items.filter((item) => item.transactionIds.length > 0 && item.transactionIds.every((id) => evidenceIds.has(id))),
+    headline: groundedNumbers(result.headline, known) ? result.headline : FALLBACK_HEADLINE,
+    items: result.items.filter((item) => item.transactionIds.length > 0
+      && item.transactionIds.every((id) => evidenceIds.has(id)) && groundedNumbers(item.text, known)),
   };
 }

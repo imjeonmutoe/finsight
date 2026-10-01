@@ -279,6 +279,24 @@ describe("인사이트 입력 범위와 근거", () => {
       { text: "유효한 문장입니다.", transactionIds: [id1] },
     ] });
   });
+  it("보낸 계산값에 없는 금액·비율을 담은 문장은 반환하지 않습니다", async () => {
+    // 화면은 '숫자는 모두 코드로 계산한 값'이라고 안내합니다. 모델이 지어낸 숫자는 그 안내와 함께 나가면 안 됩니다.
+    respond({ headline: "이번 달 지출은 ₩9,999입니다.", items: [
+      { text: "식비로 9,000원을 사용했습니다.", transactionIds: [id1] },
+      { text: "식비가 전체의 100%입니다.", transactionIds: [id1] },
+      { text: "식비로 6,000원을 사용했습니다.", transactionIds: [id1] },
+    ] });
+    expect(await generateInsights(insightInput, "free")).toEqual({
+      headline: "이번 달 지출을 정리했습니다.",
+      items: [{ text: "식비로 6,000원을 사용했습니다.", transactionIds: [id1] }],
+    });
+  });
+
+  it("Free에 보내지 않은 Pro 상세 금액은 근거로 인정하지 않습니다", async () => {
+    // 이상거래 3,000원은 Pro에만 보냅니다. 입력 원본이 아니라 실제로 보낸 값과 대조해야 합니다.
+    respond({ headline: "요약했습니다.", items: [{ text: "3,000원 결제가 눈에 띕니다.", transactionIds: [id1] }] });
+    expect((await generateInsights(insightInput, "free")).items).toEqual([]);
+  });
 });
 
 describe("실패와 유한 재시도", () => {
