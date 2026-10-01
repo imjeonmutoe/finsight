@@ -1,6 +1,6 @@
 from datetime import date
 
-from notify import failure_payload, is_scan_week, public_summary, slack_payload
+from notify import is_scan_week, public_summary, sarif
 
 
 def score(**over):
@@ -8,24 +8,25 @@ def score(**over):
         "total": 82,
         "max": 100,
         "grade": "보통",
-        "counts": {"critical": 0, "major": 1, "minor": 2, "nit": 0},
+        "counts": {"critical": 0, "major": 1, "minor": 1, "nit": 0},
         "categories": [
             {"id": "A01", "name": "접근 통제 실패", "score": 6},
             {"id": "A02", "name": "보안 설정 오류", "score": None},
         ],
         "findings": [
             {"severity": "major", "category": "A01", "file": "src/app/api/x/route.ts", "line": 12,
-             "title": "user_id 조건 <누락>", "status": "검증됨"},
+             "title": "user_id 조건 <누락>", "status": "검증됨",
+             "failure_scenario": "남의 거래를 읽는다", "fix": "eq('user_id', user.id)"},
             {"severity": "minor", "category": "A09", "file": "src/lib/log.ts", "line": 3,
-             "title": "minor는 Slack에 안 나간다", "status": "검증됨"},
+             "title": "로그 레벨", "status": "미검증"},
         ],
-        "stats": {"refuted": 3, "unverified": 1, "assessed": 9},
     }
     data.update(over)
     return data
 
 
-RUN = "https://github.com/o/r/actions/runs/1"
+def by_rule(log):
+    return {r["ruleId"]: r for r in log["runs"][0]["results"]}
 
 
 def test_공개_요약에는_점수만_있고_지적은_없다():
@@ -37,38 +38,44 @@ def test_공개_요약에는_점수만_있고_지적은_없다():
     assert "누락" not in md
 
 
-def test_slack에는_critical_major만_file_line과_함께_간다():
-    text = slack_payload(score(), RUN)["text"]
-    assert "82/100 · 보통" in text
-    assert "`src/app/api/x/route.ts:12`" in text
-    assert "minor는 Slack에" not in text
-    assert "기각 3 · 미검증 1 · 미검토 1" in text
-    assert RUN in text
+def test_sarif는_남은_지적을_파일_줄에_심각도와_함께_올린다():
+    log = sarif(score())
+    assert log["version"] == "2.1.0"
+    assert log["runs"][0]["tool"]["driver"]["name"] == "owasp-scan"
+    r = by_rule(log)["A01/major"]
+    assert r["level"] == "error"
+    assert r["message"]["text"].startswith("user_id 조건 <누락>")
+    assert "남의 거래를 읽는다" in r["message"]["text"]
+    loc = r["locations"][0]["physicalLocation"]
+    assert loc["artifactLocation"]["uri"] == "src/app/api/x/route.ts"
+    assert loc["region"]["startLine"] == 12
+    assert by_rule(log)["A09/minor"]["level"] == "warning"
+    assert "미검증" in by_rule(log)["A09/minor"]["message"]["text"]
 
 
-def test_slack_특수문자를_이스케이프한다():
-    # 지적 제목에는 리포 코드가 섞인다. <...>는 Slack에서 링크·멘션 문법이다.
-    text = slack_payload(score(), RUN)["text"]
-    assert "&lt;누락&gt;" in text
-    assert "<누락>" not in text
+def test_규칙마다_security_태그와_심각도_점수가_붙는다():
+    # security-severity는 규칙 속성이고 security 태그가 있어야 보안 심각도로 쓰인다.
+    log = sarif(score())
+    rules = {r["id"]: r for r in log["runs"][0]["tool"]["driver"]["rules"]}
+    assert rules["A01/major"]["properties"]["tags"] == ["security"]
+    assert rules["A01/major"]["properties"]["security-severity"] == "7.5"
+    assert rules["A09/minor"]["properties"]["security-severity"] == "5.0"
+    assert set(rules) == set(by_rule(log))
 
 
-def test_critical_major가_없으면_없음이라고_쓴다():
-    text = slack_payload(score(findings=[]), RUN)["text"]
-    assert "critical·major 지적 없음" in text
+def test_줄이_없는_의존성_지적은_package_json에_패키지별_규칙으로_붙는다():
+    # npm audit 지적은 file이 패키지 이름이고 line이 0이다. 같은 위치·같은 규칙이면 알림 하나로 합쳐진다.
+    deps = [{"severity": "major", "category": "A03", "file": n, "line": 0, "title": f"취약 의존성: {n}"}
+            for n in ("next", "zod")]
+    rs = by_rule(sarif(score(findings=deps)))
+    assert set(rs) == {"A03/major/next", "A03/major/zod"}
+    loc = rs["A03/major/next"]["locations"][0]["physicalLocation"]
+    assert loc["artifactLocation"]["uri"] == "package.json"
+    assert loc["region"]["startLine"] == 1
 
 
-def test_지적이_많으면_잘라서_남은_건수를_쓴다():
-    many = [{"severity": "major", "category": "A01", "file": f"f{i}.ts", "line": 1, "title": "t"}
-            for i in range(40)]
-    text = slack_payload(score(findings=many), RUN)["text"]
-    assert "`f29.ts:1`" in text
-    assert "`f30.ts:1`" not in text
-    assert "외 10건" in text
-
-
-def test_실패_알림에는_실행_링크만_있다():
-    assert RUN in failure_payload(RUN)["text"]
+def test_지적이_없으면_빈_결과를_올려_이전_알림을_닫게_한다():
+    assert sarif(score(findings=[]))["runs"][0]["results"] == []
 
 
 def test_격주_판정은_기준일부터_짝수_주에만_참이다():
