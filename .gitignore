@@ -23,9 +23,12 @@ phases/**/step*-output.json
 coverage/
 
 # 하네스 스크립트 테스트 실행 산출물
-scripts/__pycache__/
+__pycache__/
 
 # 에이전트 worktree 체크아웃
 .claude/worktrees/
 .vercel
 .env*
+
+# OWASP 스캔 리포트 (공개 리포 — 미수정 취약점 목록을 커밋하지 않는다)
+.owasp/
