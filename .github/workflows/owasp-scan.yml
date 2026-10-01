@@ -95,13 +95,19 @@ jobs:
         # **공개 리포라 대화를 로그에 찍지 않는다.** 결과 JSON은 러너 임시 디렉토리에만 쓰고,
         # 로그에는 결과 메타데이터만 남긴다(`.result` 본문에는 지적이 들어 있을 수 있다).
         # allowedTools는 보안 경계가 아니다. 감사자의 실제 권한은 에이전트 정의의 tools가 건다.
+        # 모델을 고정한다. 안 주면 CI 기본값(sonnet)이 돌아 로컬(opus)보다 지적을 덜 찾는다 —
+        # 같은 코드에서 CI 98점, 로컬 75점이 나왔다. 감사자는 에이전트 정의에 model이 없어 이 모델을 따른다.
         run: |
           set -o pipefail
           out="$RUNNER_TEMP/claude-result.json"
           status=0
-          claude -p "$PROMPT" --output-format json --max-turns 60 \
+          claude -p "$PROMPT" --model claude-opus-5-5 --output-format json --max-turns 60 \
             --allowedTools "Bash,Read,Write,Grep,Glob,Agent,SendMessage" > "$out" 2> /dev/null || status=$?
-          jq -c '{subtype, is_error, num_turns, duration_ms, total_cost_usd}' "$out" 2> /dev/null \
+          # 모델 이름과 감사자 수만 더 남긴다. 숫자라 공개돼도 지적이 새지 않는다.
+          # 감사자가 덜 떴거나 중간에 죽으면 점수가 실제보다 좋게 나오는데, 이 줄이 없으면 구분할 수 없다.
+          jq -c '{subtype, is_error, num_turns, duration_ms, total_cost_usd,
+                  models: (.modelUsage | keys),
+                  agents: (.subagent_stats | {spawned, completed, failed, killed, by_type})}' "$out" 2> /dev/null \
             || echo "결과 JSON을 읽지 못했습니다."
           exit "$status"
 
