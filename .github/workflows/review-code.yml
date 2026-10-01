@@ -65,6 +65,8 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          # 진단용. 이 브랜치에서만 켠다 — main에는 넣지 않는다.
+          show_full_output: true
           # 이걸 빼면 액션이 OIDC를 Anthropic에 보내 Claude GitHub App 토큰으로 바꾸려 하고,
           # App이 설치돼 있지 않으면 거기서 죽는다("Claude Code is not installed on this
           # repository"). 값을 주면 `setupGitHubToken()`이 OVERRIDE_GITHUB_TOKEN을 보고
