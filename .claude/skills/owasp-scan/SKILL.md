@@ -130,6 +130,7 @@ PNG를 열어 점수·카테고리 10행·분포 행렬·지적 목록이 다 �
 
 - `scripts/scan.py` — 자동 검사 (stdlib, Python 3.10+)
 - `scripts/report.py` — 채점 + HTML 렌더
+- `scripts/notify.py` — 정기 실행(`.github/workflows/owasp-scan.yml`, 격주 금 18:00 KST)의 공개 요약·Slack 페이로드. 공개 요약에는 점수만 넣는다
 - `scripts/test_*.py` — `uv run --with pytest python -m pytest .claude/skills/owasp-scan/scripts -q`
 - `assets/template.html` — 고정 디자인 (Inter + JetBrains Mono, 인라인 SVG, 차트 라이브러리 없음)
 - `references/checklist.md` — 카테고리별 자동·수동 기준, 권고 금지, 심각도 기준
