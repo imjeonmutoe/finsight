@@ -51,6 +51,8 @@
       }
       .page { max-width: 1280px; margin: 0 auto; padding: 48px 40px 64px; }
       .mono { font-family: var(--mono); }
+      /* 코드 조각의 !==·=>·>=가 합자로 뭉치면 다른 연산자로 읽힌다 */
+      .f-ev, .f-loc, .f-grid dd.code { font-variant-ligatures: none; }
 
       /* header */
       .header {
