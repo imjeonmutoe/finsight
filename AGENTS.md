@@ -121,6 +121,43 @@ git config core.hooksPath scripts/githooks
 
 `scripts/hooks/`(에이전트 훅)와 `scripts/githooks/`(git 훅)는 다른 것이다. 섞지 마라.
 
+### 자동 승인·머지 게이트
+
+리뷰가 끝나면 `review-code.yml`의 `gate` 잡이 **심각도만 보고** 승인·머지를 정한다.
+판정과 집계는 `/review-code` 워크플로우가 이미 코드로 계산한 값이고, 게이트는 그 숫자를 읽어
+행동만 고른다 — 여기에 LLM은 없다.
+
+| 남은 지적 | 행동 |
+|---|---|
+| 없음 · ⚪ nit만 | 승인 + **머지**(merge commit, 브랜치는 남긴다) |
+| 🟡 minor가 하나라도 (critical·major는 0) | **승인만.** 머지는 사람이 한다 |
+| 🔴 critical · 🟠 major 하나라도 | **승인도 머지도 하지 않는다** |
+| 판정이 `Incomplete` (차원 미실행) | 아무것도 하지 않는다 — '모르겠다'는 '깨끗하다'가 아니다 |
+
+틀리는 쪽은 항상 '아무것도 안 함'이다. 판정을 모르겠으면 머지하지 않는다.
+
+**게이트를 리뷰 잡과 분리한 이유.** 리뷰 에이전트는 신뢰할 수 없는 입력(남의 diff·주석)을
+읽는다. 같은 잡에 `contents: write`를 주면 PR에 심긴 지시문 하나로 머지·푸시 권한이 샌다.
+`gate`는 LLM을 전혀 띄우지 않으므로, 쓰기 권한을 여기에 몰아 두면 에이전트와 토큰이 영영
+만나지 않는다. **리뷰 잡에 쓰기 권한을 주는 식으로 두 잡을 합치지 마라.**
+
+**판정 전달은 마커로 한다.** `.claude/workflows/review-code.js`가 요약 본문 끝에
+`<!-- finsight-review {"decision":…,"counts":…,"stats":…} -->`를 찍고, `scripts/merge_gate.py`가
+그것만 읽는다. 한국어 본문을 파싱하지 않으므로 요약 문구를 고쳐도 게이트는 그대로 돈다.
+대신 **마커 형식을 고치면 양쪽을 함께 고쳐라** — 정규식이 두 곳(JS 테스트와 `MARKER_RE`)에 있다.
+
+마커를 못 읽으면 게이트는 **exit 3으로 죽는다.** 리뷰는 올라왔는데 판정을 못 읽는 것은
+파이프라인이 깨진 것이고, 조용히 넘기면 그때부터 게이트가 없는 것과 같다.
+
+**자동 머지를 막는 탈출구는 draft PR이다.** draft는 리뷰 잡의 `if`에서 걸러지므로 게이트도
+돌지 않는다. 라벨 같은 별도 장치를 만들지 마라.
+
+**게이트 잡은 `main`을 체크아웃한다.** 액션이 `.claude/`를 origin/main 것으로 되돌리므로 마커를
+**찍는 쪽**은 CI에서 언제나 main 것이 돈다. 읽는 쪽(`scripts/merge_gate.py`)만 PR head로 두면
+마커 형식을 바꾸는 PR에서 새 파서가 옛 마커를 읽는 **버전 엇갈림**이 생긴다. 계약의 양쪽을
+같은 ref에 묶어 둔 것이다. 대가는 **게이트를 고치는 PR이 자기 게이트를 검증하지 못한다**는 것 —
+머지된 뒤부터 적용된다. 그 PR에서 게이트 잡이 빨간불인 것은 정상이다.
+
 ### CI에 이미 물려 있는 것
 
 고치기 전에 이유를 읽어라. 셋 다 **실패해도 빨간불이 안 뜨는** 종류의 함정이다.
@@ -152,6 +189,11 @@ git config core.hooksPath scripts/githooks
 
 판정이 Blocked여도 잡은 통과한다. 머지 여부는 사람이 정한다. 잡이 빨간불인 것은
 리뷰가 **돌지 못했다**는 뜻이므로 재실행하라.
+
+- 리포 설정 **"Allow GitHub Actions to create and approve pull requests"가 켜져 있어야 한다**
+  (`gh api repos/{owner}/{repo}/actions/permissions/workflow` → `can_approve_pull_request_reviews`).
+  꺼져 있으면 `gate` 잡의 승인이 422로 거절된다. 리포 밖에 있는 설정이라 코드를 아무리 읽어도
+  안 보이고, 리포를 새로 만들면 꺼진 채로 시작한다.
 
 필요한 리포 시크릿은 `CLAUDE_CODE_OAUTH_TOKEN` 하나다 (`claude setup-token`으로 발급).
 fork PR에는 GitHub이 시크릿을 주지 않으므로 잡이 아예 뜨지 않게 걸러 둔다.

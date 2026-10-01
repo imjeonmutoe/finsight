@@ -30,6 +30,9 @@ jobs:
       contents: read
       pull-requests: write # /review-code 3단계가 gh api로 리뷰를 올린다
       id-token: write # claude-code-action의 GitHub App 인증에 필요하다
+    outputs:
+      # gate 잡이 "이번 실행이 올린 리뷰"만 골라 읽기 위한 기준선.
+      started_at: ${{ steps.start.outputs.started_at }}
 
     steps:
       # ref: head.ref — 커밋 SHA로 체크아웃하면 detached HEAD가 되고, 그러면 `gh pr view`가
@@ -50,7 +53,11 @@ jobs:
       # 아래 검증 스텝이 "이번 실행이 올린 리뷰"만 세기 위한 기준선. 재실행했을 때
       # 이전 실행이 남긴 리뷰를 이번 것으로 착각하지 않게 한다.
       - name: 시작 시각 기록
-        run: echo "REVIEW_STARTED_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_ENV"
+        id: start
+        run: |
+          now=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+          echo "REVIEW_STARTED_AT=$now" >> "$GITHUB_ENV"
+          echo "started_at=$now" >> "$GITHUB_OUTPUT"
 
       - uses: anthropics/claude-code-action@v1
         env:
@@ -111,5 +118,98 @@ jobs:
             exit 1
           fi
 
-      # 판정이 Blocked여도 잡은 통과시킨다. 리뷰는 PR 코멘트로 남고, 머지할지는 사람이 정한다.
-      # 잡이 빨간불이 되는 경우는 리뷰가 **돌지 못했을 때**뿐이다.
+      # 판정이 Blocked여도 잡은 통과시킨다. 리뷰는 PR 코멘트로 남고, 머지할지는 아래 gate 잡과
+      # 사람이 정한다. 잡이 빨간불이 되는 경우는 리뷰가 **돌지 못했을 때**뿐이다.
+
+  # 리뷰 결과에 따라 승인·머지한다. **리뷰 잡과 분리한 이유가 전부다.**
+  #
+  # 리뷰 잡의 에이전트는 신뢰할 수 없는 입력(남의 diff·주석)을 읽는다. 거기에 contents:write를
+  # 주면 PR 주석에 심긴 지시문 하나로 머지·푸시 권한이 샌다. 이 잡은 LLM을 전혀 띄우지 않고
+  # 결정론적 스크립트만 돌리므로, 쓰기 권한을 여기에 몰아 두면 에이전트와 토큰이 영영 만나지 않는다.
+  #
+  # needs: review — 리뷰 잡이 빨간불이면(= 리뷰가 올라오지 않았으면) 이 잡은 건너뛴다.
+  # draft·fork PR도 리뷰 잡의 if에서 걸러져 여기까지 오지 않는다. **draft로 여는 것이
+  # 자동 머지를 막는 탈출구다** — 따로 라벨을 만들지 않았다.
+  gate:
+    needs: review
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write # 머지
+      pull-requests: write # 승인
+
+    steps:
+      # **main의 스크립트를 쓴다.** 액션이 `.claude/`를 origin/main 것으로 되돌리기 때문에
+      # 마커를 **찍는 쪽**(`.claude/workflows/review-code.js`)은 CI에서 언제나 main 것이 돈다.
+      # 읽는 쪽만 PR head로 두면 마커 형식을 바꾸는 PR에서 **새 파서가 옛 마커를 읽는** 버전
+      # 엇갈림이 생긴다. 계약의 양쪽을 같은 ref에 묶는다.
+      #
+      # 대가: 게이트를 고치는 PR은 자기 게이트를 검증하지 못한다. 머지된 뒤부터 적용된다.
+      # (PR #6에서 실측했다 — 마커를 찍는 코드가 PR head에만 있어 게이트가 exit 3으로 죽었다.
+      # 조용히 승인하지 않고 빨간불을 낸 것이 설계대로 동작한 것이다.)
+      - uses: actions/checkout@v6
+        with:
+          ref: main
+
+      # 리뷰 본문의 한국어를 파싱하지 않는다. 워크플로우 스크립트가 코드로 계산한 판정을
+      # HTML 주석 마커로 찍어 두고, 그 숫자만 읽는다. 요약 문구가 바뀌어도 게이트는 그대로 돈다.
+      - name: 리뷰 판정 읽기
+        id: gate
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          PR: ${{ github.event.pull_request.number }}
+          SINCE: ${{ needs.review.outputs.started_at }}
+        run: |
+          set -euo pipefail
+          # 리뷰(본문)와 이슈 코멘트(422 fallback) 양쪽을 본다. 커맨드가 어느 경로로 올렸든 읽는다.
+          gh api "repos/$REPO/pulls/$PR/reviews" --paginate \
+            --jq '.[] | {login: .user.login, at: .submitted_at, body: .body} | @json' > events.jsonl
+          gh api "repos/$REPO/issues/$PR/comments" --paginate \
+            --jq '.[] | {login: .user.login, at: .created_at, body: .body} | @json' >> events.jsonl
+          # 마커를 못 읽으면 여기서 exit 3 → 스텝 실패. 리뷰는 올라왔는데 판정을 못 읽는 것은
+          # 우리 파이프라인이 깨진 것이다. 조용히 넘기면 그때부터 게이트가 없는 것과 같다.
+          python3 scripts/merge_gate.py --events events.jsonl --since "$SINCE" \
+            --actor "github-actions[bot]" > gate.json
+          {
+            echo "action=$(jq -r .action gate.json)"
+            echo "reason=$(jq -r .reason gate.json)"
+          } >> "$GITHUB_OUTPUT"
+
+      # critical·major가 0이고 세 차원이 모두 돌았을 때만 여기 온다.
+      # 리포 설정 "Allow GitHub Actions to create and approve pull requests"가 켜져 있어야 한다.
+      # 꺼져 있으면 422로 거절당한다 — 조용히 넘기지 않고 스텝을 실패시킨다.
+      - name: 자동 승인
+        if: steps.gate.outputs.action == 'approve' || steps.gate.outputs.action == 'merge'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          PR: ${{ github.event.pull_request.number }}
+          # ${{ }}를 셸 문자열에 직접 박지 않는다. 값은 우리 스크립트가 만든 것이지만,
+          # 워크플로우에서 그 습관을 깨면 다음 사람이 신뢰할 수 없는 값에도 같은 짓을 한다.
+          REASON: ${{ steps.gate.outputs.reason }}
+        run: |
+          set -euo pipefail
+          gh api "repos/$REPO/pulls/$PR/reviews" --method POST \
+            -f event=APPROVE \
+            -f body="✅ 자동 승인 — $REASON"
+
+      - name: 자동 머지
+        if: steps.gate.outputs.action == 'merge'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+          # merge commit. 리포 이력과 맞춘다. 브랜치는 지우지 않는다(리포 설정과 동일).
+          if ! gh pr merge "$PR" --repo "$REPO" --merge; then
+            echo "::error::자동 머지 실패 — 충돌이거나 머지할 수 없는 상태다. 사람이 처리해야 한다."
+            exit 1
+          fi
+
+      - name: 보류 사유 기록
+        if: steps.gate.outputs.action == 'none'
+        env:
+          REASON: ${{ steps.gate.outputs.reason }}
+        run: echo "::notice::자동 승인·머지 보류 — $REASON"

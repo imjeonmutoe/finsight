@@ -80,6 +80,9 @@ Workflow({
 반환값에 `summaryMd`(Layer 2), `inlineMd`(Layer 1), `markdown`(둘을 합친 것), `findings`가 들어 있다.
 심각도 집계와 판정은 스크립트가 코드로 계산한 값이다. **네가 다시 세거나 판정을 바꾸지 마라.**
 
+`summaryMd` 끝에는 `<!-- finsight-review {...} -->` 마커가 붙어 있다. **지우거나 본문을 다시 쓰지 마라.**
+CI의 자동 승인·머지 게이트(`gate` 잡)가 읽는 유일한 입력이고, 이게 없으면 게이트가 exit 3으로 죽는다.
+
 먼저 열린 PR이 있는지 본다.
 
 ```bash
@@ -134,6 +137,10 @@ gh api "repos/{owner}/{repo}/pulls/<번호>/reviews" --method POST --input "$PAC
 | Changes Requested | critical 0, major ≥ 1 |
 | Incomplete | 위 둘이 아니고 **안 돌아간 차원이 있다** |
 | Approve | critical 0, major 0, 세 차원 모두 실행됨 |
+
+CI에서는 이 판정에 따라 `gate` 잡이 자동으로 움직인다 — nit만 남으면 승인+머지, minor가 있으면
+승인만, critical·major가 있거나 `Incomplete`면 아무것도 하지 않는다. 자세한 것은 CLAUDE.md의
+`### 자동 승인·머지 게이트`.
 
 `Incomplete`는 '깨끗하다'가 아니라 **'모르겠다'**는 뜻이다. 차원 하나가 죽으면 그 차원은 한 번도
 보지 않은 것이고, 그걸 Approve로 내보내면 보안 리뷰가 빠진 PR에 초록불이 붙는다.

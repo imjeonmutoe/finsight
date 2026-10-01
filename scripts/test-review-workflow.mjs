@@ -304,6 +304,58 @@ test('packDir이 없으면 즉시 멈춘다', async () => {
   ok(threw, 'args.packDir 없이 돌면 안 된다')
 })
 
+// ── 게이트 마커: 자동 승인·머지 잡이 읽는 유일한 입력 ──────────────────────
+//
+// scripts/merge_gate.py가 PR 본문에서 이 마커를 뽑아 행동을 고른다. 한국어 본문을 파싱하지
+// 않는 이유가 여기 있다 — 요약 문구가 바뀌어도 게이트는 그대로 돈다.
+// 정규식은 merge_gate.py의 MARKER_RE와 같은 모양이어야 한다.
+
+const MARKER = /<!--\s*finsight-review\s+(\{[\s\S]*?\})\s*-->/
+
+test('요약 본문에 판정·집계를 머신 리더블 마커로 남긴다', async () => {
+  const out = await run({
+    'review:correctness': { findings: [finding({ severity: 'nit' })] },
+    'review:security': { findings: [] },
+    'review:architecture': { findings: [] },
+    'verify:correctness': { verdicts: [verdict(0)] },
+    summary: SUMMARY,
+  })
+  const m = out.summaryMd.match(MARKER)
+  ok(m, '마커가 요약 본문에 있어야 한다')
+  const parsed = JSON.parse(m[1])
+  eq(parsed.decision, out.decision, '마커의 판정이 반환값과 같아야 한다')
+  eq(parsed.counts, out.counts, '마커의 집계가 반환값과 같아야 한다')
+  eq(parsed.stats.failed, out.stats.failed, '마커의 미실행 차원 수')
+  ok(!m[1].includes('-->'), '마커 JSON 안에 -->가 들어가면 파싱이 잘린다')
+})
+
+test('미실행 차원이 있으면 마커에도 드러난다', async () => {
+  // 지적은 0건인데 차원이 안 돌았다. 마커에 failed가 없으면 게이트가 '깨끗하다'로 읽고 머지한다.
+  const out = await run({
+    // correctness 없음 → null
+    'review:security': { findings: [] },
+    'review:architecture': { findings: [] },
+    summary: SUMMARY,
+  })
+  const parsed = JSON.parse(out.summaryMd.match(MARKER)[1])
+  eq(parsed.counts, { critical: 0, major: 0, minor: 0, nit: 0 }, '지적은 0건이지만')
+  ok(parsed.stats.failed > 0, '미실행 차원이 마커에 남아야 한다')
+  ok(parsed.decision !== 'Approve', '판정도 Approve가 아니어야 한다')
+})
+
+test('마커는 PR 본문 경로와 콘솔 경로 양쪽에 실린다', async () => {
+  // PR이 있으면 pr_review_payload.py가 summaryMd를, 없거나 422면 markdown을 올린다.
+  // 둘 중 하나에만 있으면 그 경로에서 게이트가 판정을 못 읽는다.
+  const out = await run({
+    'review:correctness': { findings: [] },
+    'review:security': { findings: [] },
+    'review:architecture': { findings: [] },
+    summary: SUMMARY,
+  })
+  ok(MARKER.test(out.summaryMd), 'summaryMd에 마커')
+  ok(MARKER.test(out.markdown), 'markdown에 마커')
+})
+
 // ── 실행 ──────────────────────────────────────────────────────────────────
 
 for (const [name, fn] of tests) {
