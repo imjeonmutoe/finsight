@@ -152,10 +152,11 @@ git config core.hooksPath scripts/githooks
 **자동 머지를 막는 탈출구는 draft PR이다.** draft는 리뷰 잡의 `if`에서 걸러지므로 게이트도
 돌지 않는다. 라벨 같은 별도 장치를 만들지 마라.
 
-게이트 잡은 PR head의 `scripts/merge_gate.py`를 쓴다. 액션이 `.claude/`·CLAUDE.md를 main 것으로
-되돌리는 것과 다른데, 그쪽은 **LLM이 읽는 지시문**을 PR이 못 바꾸게 하려는 것이고 게이트에는
-LLM이 없다. 워크플로우 YAML 자체가 이미 PR head 것으로 도는 이상 스크립트만 main에 고정해도
-막히는 것은 없고, 게이트를 고치는 PR이 자기 게이트를 검증하지 못하게 될 뿐이다.
+**게이트 잡은 `main`을 체크아웃한다.** 액션이 `.claude/`를 origin/main 것으로 되돌리므로 마커를
+**찍는 쪽**은 CI에서 언제나 main 것이 돈다. 읽는 쪽(`scripts/merge_gate.py`)만 PR head로 두면
+마커 형식을 바꾸는 PR에서 새 파서가 옛 마커를 읽는 **버전 엇갈림**이 생긴다. 계약의 양쪽을
+같은 ref에 묶어 둔 것이다. 대가는 **게이트를 고치는 PR이 자기 게이트를 검증하지 못한다**는 것 —
+머지된 뒤부터 적용된다. 그 PR에서 게이트 잡이 빨간불인 것은 정상이다.
 
 ### CI에 이미 물려 있는 것
 
