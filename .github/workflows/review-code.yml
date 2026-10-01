@@ -31,8 +31,6 @@ jobs:
     permissions:
       contents: read
       pull-requests: write # /review-code 3단계가 gh api로 리뷰를 올린다
-      # id-token: write는 두지 않는다. 아래에서 github_token을 넘기므로 OIDC 교환이 일어나지 않고,
-      # 권한이 있으면 에이전트가 Bash로 OIDC 토큰을 발급받을 수 있다(App 설치 시 쓰기 토큰으로 교환 가능).
     outputs:
       # gate 잡이 "이번 실행이 올린 리뷰"만 골라 읽기 위한 기준선.
       started_at: ${{ steps.start.outputs.started_at }}
@@ -62,43 +60,76 @@ jobs:
           echo "REVIEW_STARTED_AT=$now" >> "$GITHUB_ENV"
           echo "started_at=$now" >> "$GITHUB_OUTPUT"
 
-      - uses: anthropics/claude-code-action@12dd8d74c712f5f3669365b2369b558c495b1104 # v1
+      # PR head는 신뢰하지 않는다. `claude -p`는 작업 디렉터리의 `.claude/settings.json` 훅·env·
+      # apiKeyHelper와 `.mcp.json`을 **권한 확인보다 먼저** 실행한다. 되돌리지 않으면 PR에 훅 하나를
+      # 심는 것으로 GH_TOKEN(pull-requests: write)을 쥔 이 잡에서 임의 코드가 돈다.
+      # 경로 목록은 claude-code-action(12dd8d7)의 restore-config.ts SENSITIVE_PATHS 그대로다 —
+      # 액션을 쓸 때는 액션이 해 주던 일이다. base에 없는 경로는 지운 채로 둔다(안전한 쪽).
+      # fetch는 하지 않는다. 위에서 받은 main ref를 쓴다 — `--depth`로 다시 받으면 클론이 얕아져
+      # merge-base가 실패하고 리뷰 0건에 초록불이 붙는다.
+      - name: 신뢰할 수 없는 설정을 base 브랜치 것으로 되돌리기
         env:
+          BASE_REF: ${{ github.event.pull_request.base.ref }}
+        run: |
+          set -euo pipefail
+          [ "$BASE_REF" = main ] || { echo "::error::base가 main이 아니다($BASE_REF) — 신뢰할 설정 기준이 없다."; exit 1; }
+          paths=(.claude .mcp.json .claude.json .gitmodules .ripgreprc CLAUDE.md CLAUDE.local.md .husky)
+          rm -r -f -- "${paths[@]}"
+          for p in "${paths[@]}"; do git checkout main -- "$p" 2> /dev/null || true; done
+          # checkout은 스테이지에 올린다. 리뷰 팩의 `git diff HEAD`에 섞이지 않게 내린다.
+          git reset -q -- "${paths[@]}" 2> /dev/null || true
+          echo "되돌린 경로: ${paths[*]}"
+
+      # claude-code-action을 쓰지 않는다. 액션은 SDK의 첫 `result` 메시지에서 루프를 끊는다
+      # (base-action/src/run-claude-sdk.ts). 리뷰 워크플로우가 몇 분 걸리는 동안 에이전트가 그것을
+      # 백그라운드로 넘기고 턴을 끝내면 그 자리에서 세션이 정리돼 리뷰가 통째로 사라진다 —
+      # PR #11·#12가 4턴·수 초 만에 "success"로 끝나고 리뷰 0건이었다. `claude -p`는 백그라운드
+      # subagent·workflow가 끝날 때까지 기다린다(docs: headless#background-tasks-at-exit).
+      # owasp-scan.yml이 같은 이유로 먼저 바꿨다. 버전·설치 방식은 그쪽과 같게 고정한다.
+      - name: Claude Code 설치
+        run: |
+          set -o pipefail
+          curl -fsSL https://claude.ai/install.sh | bash -s -- 2.1.286
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      # 커맨드 파일에도 같은 지시가 있지만 여기에 또 적는다. 위 스텝이 `.claude/`와 CLAUDE.md를
+      # main 것으로 되돌리므로 이 PR에서 고친 커맨드는 머지 전까지 CI에 반영되지 않는다.
+      # 워크플로우 파일은 PR head 것을 그대로 쓰므로 여기 적은 것만 이번 실행에 효력이 있다.
+      #
+      # GitHub 토큰은 GH_TOKEN 하나뿐이다. permissions 블록 그대로 contents:read·pull-requests:write이고,
+      # 액션 때처럼 OIDC로 Claude GitHub App 토큰(contents:write)을 받는 경로 자체가 없다.
+      #
+      # allowedTools는 보안 경계가 아니다 — Bash가 열려 있는 이상 무엇이든 할 수 있다.
+      # 에이전트가 리뷰 밖으로 새는 것을 막는 울타리일 뿐이다. 실제 권한 제한은
+      # `.claude/agents/review-*.md`의 `tools: Read, Grep, Glob`가 건다.
+      #
+      # 대화는 로그에 찍지 않는다(공개 리포). 리뷰 본문은 PR에 올라가고, 로그에는 결과 메타데이터만 남긴다.
+      - name: /review-code 실행
+        timeout-minutes: 25
+        env:
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           # /review-code 3단계의 `gh pr view` · `gh api .../reviews` 가 쓴다.
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
-          # 이걸 빼면 액션이 OIDC를 Anthropic에 보내 Claude GitHub App 토큰으로 바꾸려 하고,
-          # App이 설치돼 있지 않으면 거기서 죽는다("Claude Code is not installed on this
-          # repository"). 값을 주면 `setupGitHubToken()`이 OVERRIDE_GITHUB_TOKEN을 보고
-          # 교환 자체를 건너뛴다(action.yml: github_token → OVERRIDE_GITHUB_TOKEN).
-          #
-          # App 경로보다 **권한이 좁다**: App 토큰의 기본값은 contents:write·issues:write·
-          # pull_requests:write지만, 이 토큰은 위 permissions 블록 그대로 contents:read다.
-          # 읽기 전용이어야 할 리뷰 잡에 쓰기 권한을 줄 이유가 없다.
-          #
-          # 대가: App 경로에 붙는 Anthropic 측 워크플로우 검증(워크플로우가 default branch에
-          # 있는지 확인해 PR이 워크플로우를 고쳐 토큰을 빼가는 것을 막는 장치)을 건너뛴다.
-          # fork PR은 위 `if`에서 이미 걸렀고, 같은 리포에 PR을 여는 사람은 write 권한자다.
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          # 커맨드 파일에도 같은 지시가 있지만 여기에 또 적는다. 액션이 `.claude/`와
-          # CLAUDE.md를 origin/main 것으로 되돌리기 때문에(PR head는 신뢰하지 않음),
-          # 이 PR에서 고친 커맨드는 머지 전까지 CI에 반영되지 않는다. 워크플로우 파일은
-          # PR head 것을 그대로 쓰므로 여기 적은 것만 이번 실행에 효력이 있다.
-          prompt: |
+          # 마지막 턴 이후 백그라운드 작업을 기다리는 idle 상한. 스텝 타임아웃보다 짧게 둬서
+          # 멈춘 리뷰어가 있으면 스텝이 강제 종료되지 않고 Claude가 스스로 끝내게 한다.
+          CLAUDE_CODE_PRINT_BG_WAIT_CEILING_MS: "1200000"
+          PROMPT: |
             /review-code
 
+            비대화형 CI 실행이다. 물어볼 사람이 없다.
             워크플로우를 띄운 뒤 **완료 알림을 기다렸다가 3단계(PR에 리뷰 게시)까지 끝내라.**
-            "백그라운드로 시작했습니다"라는 보고만 남기고 턴을 끝내면, 비대화형 실행이라
-            그 턴이 세션의 마지막이 되어 아무도 결과를 올리지 않는다.
-          # allowedTools는 보안 경계가 아니다 — Bash가 열려 있는 이상 무엇이든 할 수 있다.
-          # 에이전트가 리뷰 밖으로 새는 것을 막는 울타리일 뿐이다. 실제 권한 제한은
-          # `.claude/agents/review-*.md`의 `tools: Read, Grep, Glob`가 건다.
-          claude_args: |
-            --allowedTools "Bash,Read,Grep,Glob,Workflow"
-            --max-turns 30
+            "백그라운드로 시작했습니다"라는 보고만 남기고 턴을 끝내면 아무도 결과를 올리지 않는다.
+        run: |
+          set -o pipefail
+          out="$RUNNER_TEMP/claude-result.json"
+          status=0
+          claude -p "$PROMPT" --output-format json --max-turns 30 \
+            --allowedTools "Bash,Read,Grep,Glob,Workflow" > "$out" 2> /dev/null || status=$?
+          jq -c '{subtype, is_error, num_turns, duration_ms, total_cost_usd}' "$out" 2> /dev/null \
+            || echo "결과 JSON을 읽지 못했습니다."
+          exit "$status"
 
-      # 액션이 초록불이어도 리뷰가 PR에 안 붙을 수 있다. 실제로 첫 성공 실행이 워크플로우를
+      # Claude가 0으로 끝나도 리뷰가 PR에 안 붙을 수 있다. 실제로 첫 성공 실행이 워크플로우를
       # 띄우자마자 "백그라운드로 시작했습니다"로 턴을 끝냈고, 잡은 success인데 PR에는 리뷰도
       # 코멘트도 0건이었다. **리뷰 없는 초록불은 리뷰가 통과한 것처럼 보인다** — 이 잡이
       # 막으려는 것 중 제일 위험한 실패라서, 결과가 실제로 올라왔는지 여기서 확인한다.
@@ -142,7 +173,7 @@ jobs:
       pull-requests: write # 승인
 
     steps:
-      # **main의 스크립트를 쓴다.** 액션이 `.claude/`를 origin/main 것으로 되돌리기 때문에
+      # **main의 스크립트를 쓴다.** 리뷰 잡이 `.claude/`를 main 것으로 되돌리기 때문에
       # 마커를 **찍는 쪽**(`.claude/workflows/review-code.js`)은 CI에서 언제나 main 것이 돈다.
       # 읽는 쪽만 PR head로 두면 마커 형식을 바꾸는 PR에서 **새 파서가 옛 마커를 읽는** 버전
       # 엇갈림이 생긴다. 계약의 양쪽을 같은 ref에 묶는다.
