@@ -63,8 +63,12 @@ jobs:
       # PR head는 신뢰하지 않는다. `claude -p`는 작업 디렉터리의 `.claude/settings.json` 훅·env·
       # apiKeyHelper와 `.mcp.json`을 **권한 확인보다 먼저** 실행한다. 되돌리지 않으면 PR에 훅 하나를
       # 심는 것으로 GH_TOKEN(pull-requests: write)을 쥔 이 잡에서 임의 코드가 돈다.
-      # 경로 목록은 claude-code-action(12dd8d7)의 restore-config.ts SENSITIVE_PATHS 그대로다 —
-      # 액션을 쓸 때는 액션이 해 주던 일이다. base에 없는 경로는 지운 채로 둔다(안전한 쪽).
+      # 경로 목록은 claude-code-action(12dd8d7)의 restore-config.ts SENSITIVE_PATHS에 `scripts`를 더한
+      # 것이다 — 액션을 쓸 때는 액션이 해 주던 일이다. base에 없는 경로는 지운 채로 둔다(안전한 쪽).
+      # `scripts`: 되돌린 main 설정이 실행하는 코드가 여기 있다(settings.json 훅의 scripts/hooks/,
+      # /review-code 3단계의 scripts/pr_review_payload.py — 리뷰 본문과 게이트 마커를 만든다).
+      # 설정만 되돌리고 그 설정이 부르는 스크립트는 PR head 것을 두면 되돌린 의미가 없다.
+      # 대가: scripts/를 고친 PR에서 리뷰어가 파일을 열면 main 것을 본다(diff는 PR 것이다).
       # fetch는 하지 않는다. 위에서 받은 main ref를 쓴다 — `--depth`로 다시 받으면 클론이 얕아져
       # merge-base가 실패하고 리뷰 0건에 초록불이 붙는다.
       - name: 신뢰할 수 없는 설정을 base 브랜치 것으로 되돌리기
@@ -73,7 +77,7 @@ jobs:
         run: |
           set -euo pipefail
           [ "$BASE_REF" = main ] || { echo "::error::base가 main이 아니다($BASE_REF) — 신뢰할 설정 기준이 없다."; exit 1; }
-          paths=(.claude .mcp.json .claude.json .gitmodules .ripgreprc CLAUDE.md CLAUDE.local.md .husky)
+          paths=(.claude .mcp.json .claude.json .gitmodules .ripgreprc CLAUDE.md CLAUDE.local.md .husky scripts)
           rm -r -f -- "${paths[@]}"
           for p in "${paths[@]}"; do git checkout main -- "$p" 2> /dev/null || true; done
           # checkout은 스테이지에 올린다. 리뷰 팩의 `git diff HEAD`에 섞이지 않게 내린다.
@@ -86,10 +90,24 @@ jobs:
       # PR #11·#12가 4턴·수 초 만에 "success"로 끝나고 리뷰 0건이었다. `claude -p`는 백그라운드
       # subagent·workflow가 끝날 때까지 기다린다(docs: headless#background-tasks-at-exit).
       # owasp-scan.yml이 같은 이유로 먼저 바꿨다. 버전·설치 방식은 그쪽과 같게 고정한다.
+      #
+      # install.sh를 받아 바로 실행하지 않는다. install.sh와 그것이 받는 manifest는 고정할 수 없어,
+      # 배포 경로가 오염되면 바뀐 스크립트가 토큰을 쥔 이 잡에서 돈다. 바이너리를 직접 받아 고정한
+      # sha256과 대조한 뒤 install.sh가 하던 마지막 단계(`claude install <버전>`)만 한다.
+      # 버전을 올릴 때는 downloads.claude.ai/claude-code-releases/<버전>/manifest.json의
+      # platforms.linux-x64.checksum으로 CLAUDE_SHA256을 함께 바꾼다(두 워크플로우 모두).
       - name: Claude Code 설치
+        env:
+          CLAUDE_VERSION: 2.1.286
+          CLAUDE_SHA256: fe503f65c6289d59c23e5b21ae44f03583f997dd33a2cbfc75ab4f96fb8fc73f
         run: |
-          set -o pipefail
-          curl -fsSL https://claude.ai/install.sh | bash -s -- 2.1.286
+          set -euo pipefail
+          bin="$RUNNER_TEMP/claude"
+          curl -fsSL -o "$bin" "https://downloads.claude.ai/claude-code-releases/$CLAUDE_VERSION/linux-x64/claude"
+          echo "$CLAUDE_SHA256  $bin" | sha256sum -c -
+          chmod +x "$bin"
+          "$bin" install "$CLAUDE_VERSION"
+          rm -f "$bin"
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
 
       # 커맨드 파일에도 같은 지시가 있지만 여기에 또 적는다. 위 스텝이 `.claude/`와 CLAUDE.md를

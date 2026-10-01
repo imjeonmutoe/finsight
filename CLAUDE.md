@@ -182,13 +182,19 @@ git config core.hooksPath scripts/githooks
 - **바로 앞 스텝이 `.claude/`·`.mcp.json`·`CLAUDE.md` 등을 main 것으로 되돌린다**(PR head는
   신뢰하지 않는다). `claude -p`는 작업 디렉터리의 `settings.json` 훅·env·`.mcp.json`을 권한 확인보다
   먼저 실행하므로, 이 스텝 없이 돌리면 PR에 훅 하나를 심는 것으로 GH_TOKEN을 쥔 잡에서 임의 코드가
-  돈다. 액션을 쓸 때는 액션이 해 주던 일이다(경로 목록도 액션의 `SENSITIVE_PATHS` 그대로).
+  돈다. 액션을 쓸 때는 액션이 해 주던 일이다(경로 목록은 액션의 `SENSITIVE_PATHS`에 `scripts`를 더한 것).
+  `scripts/`도 되돌리는 이유: 되돌린 main 설정이 부르는 코드(훅의 `scripts/hooks/`, 리뷰 본문과
+  게이트 마커를 만드는 `scripts/pr_review_payload.py`)가 거기 있다. 설정만 되돌리면 의미가 없다.
   이 스텝은 fetch하지 않는다 — `--depth`로 다시 받으면 위의 얕은 클론 함정에 그대로 빠진다.
   즉 PR에서 고친 커맨드·에이전트·훅 설정은 **머지된 뒤부터** CI에 적용된다.
   워크플로우 파일(`.github/workflows/`)만 PR head 것이 쓰인다. 그래서 정말 중요한 지시는
   워크플로우의 `PROMPT`에도 한 번 더 적어 둔다.
   되돌린 파일은 작업트리에 남으므로, `/review-code` 1단계는 CI에서 작업트리·untracked diff를 빼고
   `merge-base..HEAD`만 팩에 담는다. 안 빼면 되돌림이 "PR이 자기 변경을 되돌린다"는 가짜 hunk로 섞인다.
+- Claude Code는 `install.sh`를 파이프로 실행하지 않고, 바이너리를 받아 **고정한 sha256**과 대조한 뒤
+  `claude install <버전>`만 한다(두 워크플로우 모두). install.sh와 그것이 읽는 manifest는 고정할 수
+  없어서다. 버전을 올리면 `CLAUDE_SHA256`도 그 버전 manifest의 `linux-x64` checksum으로 함께 바꿔라 —
+  안 바꾸면 설치 스텝이 `sha256sum -c`에서 빨간불로 멈춘다(그게 설계대로다).
 - GitHub 토큰은 `GH_TOKEN`(`secrets.GITHUB_TOKEN`) 하나다. 워크플로우의 `permissions` 그대로
   `contents:read`·`pull-requests:write`이고, 액션처럼 OIDC로 Claude GitHub App 토큰(`contents:write`)을
   받는 경로가 없다. 그래서 `id-token: write`도 두지 않는다.
