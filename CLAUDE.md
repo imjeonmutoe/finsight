@@ -187,6 +187,8 @@ git config core.hooksPath scripts/githooks
   즉 PR에서 고친 커맨드·에이전트·훅 설정은 **머지된 뒤부터** CI에 적용된다.
   워크플로우 파일(`.github/workflows/`)만 PR head 것이 쓰인다. 그래서 정말 중요한 지시는
   워크플로우의 `PROMPT`에도 한 번 더 적어 둔다.
+  되돌린 파일은 작업트리에 남으므로, `/review-code` 1단계는 CI에서 작업트리·untracked diff를 빼고
+  `merge-base..HEAD`만 팩에 담는다. 안 빼면 되돌림이 "PR이 자기 변경을 되돌린다"는 가짜 hunk로 섞인다.
 - GitHub 토큰은 `GH_TOKEN`(`secrets.GITHUB_TOKEN`) 하나다. 워크플로우의 `permissions` 그대로
   `contents:read`·`pull-requests:write`이고, 액션처럼 OIDC로 Claude GitHub App 토큰(`contents:write`)을
   받는 경로가 없다. 그래서 `id-token: write`도 두지 않는다.
