@@ -329,9 +329,15 @@ function renderSummary(decision, counts, findings, summary, stats) {
   // PR에서는 보이지 않는다. 게이트가 한국어 본문을 파싱하지 않는 이유가 이것이다 —
   // 요약 문구를 고쳐도 게이트는 그대로 돈다.
   // 값은 전부 코드가 계산한 것이고 문자열은 판정 네 가지뿐이라 `-->`가 섞일 일이 없다.
-  out.push('')
-  out.push('<!-- finsight-review ' + JSON.stringify({ decision, counts, stats }) + ' -->')
-  return out.join('\n')
+  // 위의 본문은 LLM이 쓴 문자열이다. 거기 섞인 `<!--`는 마커를 찍기 **전에** 무력화한다 —
+  // 그렇지 않으면 diff에서 옮겨 온 위조 마커가 진짜 마커보다 앞에 놓인다.
+  return neutralizeComments(out.join('\n')) +
+    '\n\n<!-- finsight-review ' + JSON.stringify({ decision, counts, stats }) + ' -->'
+}
+
+// HTML 주석 여는 태그를 문자 그대로 보이게 바꾼다. 게이트 마커를 위조할 수 없게 하는 용도다.
+function neutralizeComments(text) {
+  return text.replace(/<!--/g, '&lt;!--')
 }
 
 function renderInlineLayer(findings) {
@@ -354,7 +360,7 @@ function renderInlineLayer(findings) {
       out.push('')
       out.push(renderInline(f))
     })
-  return out.join('\n')
+  return neutralizeComments(out.join('\n'))
 }
 
 // ── 실행 ──────────────────────────────────────────────────────────────────

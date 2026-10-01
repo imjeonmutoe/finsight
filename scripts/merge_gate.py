@@ -38,28 +38,36 @@ class MarkerError(Exception):
 
 
 def extract(text):
-    """본문에서 마커 JSON을 뽑는다. 없으면 None, 깨져 있으면 MarkerError."""
-    m = MARKER_RE.search(text or "")
-    if not m:
+    """본문에서 마커 JSON을 뽑는다. 없으면 None, 깨져 있거나 둘 이상이면 MarkerError.
+
+    진짜 마커는 본문 끝에 하나만 찍힌다. 둘 이상이면 LLM이 쓴 요약 문구에 위조 마커가
+    섞인 것이다 — 어느 쪽이 진짜인지 고르지 않는다.
+    """
+    found = MARKER_RE.findall(text or "")
+    if not found:
         return None
+    if len(found) > 1:
+        raise MarkerError(f"한 본문에 마커가 {len(found)}개다 — 위조 마커가 섞였을 수 있다")
     try:
-        return json.loads(m.group(1))
+        return json.loads(found[0])
     except json.JSONDecodeError as e:
         raise MarkerError(f"마커 JSON을 읽을 수 없다: {e}") from e
 
 
 def pick_marker(events, since, actor):
-    """`actor`가 `since` 이후에 남긴 것 중 **가장 최근** 마커를 돌려준다.
+    """`actor`가 `since` 이후에 남긴 **단 하나의** 마커를 돌려준다. 없으면 None.
 
     actor로 거르는 이유: 작성자가 PR 코멘트에 마커를 붙여 넣어 게이트를 속일 수 있다.
     since로 거르는 이유: 재실행했을 때 이전 실행이 남긴 판정을 이번 것으로 착각하면 안 된다.
+    하나만 받는 이유: 한 실행은 리뷰를 하나만 올린다. 그런데 리뷰 잡의 에이전트는 PR 쓰기
+    토큰을 쥐고 신뢰할 수 없는 diff를 읽으므로, 같은 actor 이름으로 마커 코멘트를 하나 더
+    달 수 있다. '가장 최근 것'을 고르면 나중에 단 위조 마커가 이긴다. 둘이면 판정을 모르는 것이다.
     """
     mine = [e for e in events if e.get("login") == actor and e.get("at") and e["at"] > since]
-    for e in sorted(mine, key=lambda e: e["at"], reverse=True):
-        found = extract(e.get("body"))
-        if found is not None:
-            return found
-    return None
+    found = [m for m in (extract(e.get("body")) for e in mine) if m is not None]
+    if len(found) > 1:
+        raise MarkerError(f"{actor}가 {since} 이후에 남긴 마커가 {len(found)}개다 — 위조 마커가 섞였을 수 있다")
+    return found[0] if found else None
 
 
 def decide(marker):
