@@ -208,8 +208,10 @@ export async function POST(request: Request) {
     && (profile.data.plan_expires_at === null || Date.parse(profile.data.plan_expires_at) > now.getTime());
   if (!pro) {
     // 카운터 테이블을 두지 않습니다. uploads를 KST 캘린더 월로 직접 셉니다.
+    // status로 거르지 않습니다. 추론을 일부러 실패시킨 업로드(failed)를 빼고 세면 그런 파일을
+    // 여러 개 쌓아 두고 confirm하는 것으로 한도가 풀립니다. created_at은 클라이언트가 쓸 수 없습니다(0004).
     const { count } = await supabase.from("uploads").select("id", { count: "exact", head: true })
-      .eq("user_id", userId).in("status", ["mapped", "parsed"]).gte("created_at", kstMonthStart(now));
+      .eq("user_id", userId).neq("id", uploadId).gte("created_at", kstMonthStart(now));
     if ((count ?? 0) >= 1) {
       // 모델을 호출하기 전에 되돌립니다. 한도 초과가 호출 비용을 쓰지 않습니다.
       await supabase.storage.from(BUCKET).remove([storagePath]);

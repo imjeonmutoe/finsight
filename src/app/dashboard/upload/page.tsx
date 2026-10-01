@@ -98,7 +98,7 @@ export default async function UploadPage({ searchParams }: {
 
   // 라우트와 같은 기준으로 셉니다. 카운터 테이블을 두지 않습니다(ADR-005).
   const { count } = await supabase.from("uploads").select("id", { count: "exact", head: true })
-    .eq("user_id", userId).in("status", ["mapped", "parsed"]).gte("created_at", kstMonthStart(now));
+    .eq("user_id", userId).gte("created_at", kstMonthStart(now));
   const limitReached = !pro && (count ?? 0) >= 1;
 
   // 집계는 step 6의 queries.ts만 씁니다. 여기서 다시 구현하지 않습니다.

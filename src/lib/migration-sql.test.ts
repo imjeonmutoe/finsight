@@ -265,3 +265,48 @@ describe("업로드 승인 트랜잭션", () => {
     expect(rawConfirmSql).not.toMatch(/llm_usage|lease/i);
   });
 });
+
+const grantsSql = readFileSync(
+  new URL("../../supabase/migrations/0004_upload_column_grants.sql", import.meta.url),
+  "utf8",
+).replace(/--[^\n]*/g, "").replace(/\s+/g, " ").trim();
+
+function grantedColumns(privilege: "insert" | "update"): string[] {
+  const list = grantsSql.match(new RegExp(
+    `grant ${privilege} \\(([^)]+)\\) on table public\\.uploads to authenticated;`, "i",
+  ))?.[1];
+  if (!list) throw new Error(`uploads의 ${privilege} 컬럼 권한을 찾을 수 없습니다.`);
+  return list.split(",").map((column) => column.trim()).sort();
+}
+
+describe("uploads 컬럼 단위 쓰기 권한", () => {
+  // 한도는 이번 달 created_at으로 셉니다. 클라이언트가 created_at을 과거로 쓰거나
+  // 지우면 Free 월 1회가 풀립니다. 서버 라우트도 사용자 세션으로 쓰므로 표 단위로 열면
+  // 브라우저에서 PostgREST를 직접 불러 똑같이 쓸 수 있습니다.
+  it("표 단위 INSERT·UPDATE를 회수합니다", () => {
+    expect(grantsSql).toContain("revoke insert, update on table public.uploads from authenticated;");
+  });
+
+  it.each(["insert", "update"] as const)("%s로 id·created_at을 쓸 수 없습니다", (privilege) => {
+    expect(grantedColumns(privilege)).not.toContain("created_at");
+    expect(grantedColumns(privilege)).not.toContain("id");
+  });
+
+  it("UPDATE로 소유자·출처·파일 식별자를 바꿀 수 없습니다", () => {
+    for (const column of ["user_id", "source_id", "file_hash", "storage_path"]) {
+      expect(grantedColumns("update")).not.toContain(column);
+    }
+  });
+
+  it("라우트와 confirm_upload가 쓰는 컬럼은 모두 열려 있습니다", () => {
+    // POST /api/uploads의 insert·update 레코드와 confirm_upload의 update set 목록입니다.
+    expect(grantedColumns("insert")).toEqual([
+      "byte_size", "encoding", "error_message", "file_hash", "filename", "import_context",
+      "row_count", "source_id", "status", "storage_path", "user_id",
+    ]);
+    expect(grantedColumns("update")).toEqual([
+      "byte_size", "column_mapping", "duplicate_count", "encoding", "error_message", "filename",
+      "import_context", "inserted_count", "mapping_confidence", "row_count", "status", "unclassified_count",
+    ]);
+  });
+});

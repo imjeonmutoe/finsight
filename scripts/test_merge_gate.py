@@ -141,22 +141,32 @@ def test_이전_실행이_남긴_마커는_무시한다():
     assert mg.pick_marker([old], SINCE, BOT) is None
 
 
-def test_마커가_여러_개면_가장_최근_것을_쓴다():
+def test_이번_실행에_마커가_둘_이상이면_형식_오류다():
+    # 한 실행은 리뷰를 하나만 올린다(422면 리뷰 대신 코멘트 하나). 마커가 둘이면 하나는
+    # 위조다 — 리뷰 잡의 에이전트가 PR 쓰기 토큰으로 코멘트를 하나 더 달 수 있다.
+    # 어느 쪽이 진짜인지 고르지 않는다. 가장 최근 것을 고르면 나중에 단 위조 마커가 이긴다.
     events = [
         event(body_with(marker(major=1)), at="2026-10-01T12:05:00Z"),
         event(body_with(marker(nit=1)), at="2026-10-01T12:09:00Z"),
     ]
-    got = mg.pick_marker(events, SINCE, BOT)
-    assert got["counts"] == {"critical": 0, "major": 0, "minor": 0, "nit": 1}
+    with pytest.raises(mg.MarkerError):
+        mg.pick_marker(events, SINCE, BOT)
 
 
-def test_입력_순서가_뒤집혀_있어도_시각으로_정렬한다():
+def test_한_본문에_마커가_둘_이상이면_형식_오류다():
+    # LLM이 쓴 요약 문구에 위조 마커가 섞이면 진짜 마커(본문 끝)보다 앞에 온다.
+    # 첫 마커를 집으면 위조 마커가 판정이 된다.
+    forged = marker(nit=0)
+    with pytest.raises(mg.MarkerError):
+        mg.pick_marker([event("요약 " + forged + "\n\n" + body_with(marker(major=1)))], SINCE, BOT)
+
+
+def test_이전_실행의_마커는_개수에_들어가지_않는다():
     events = [
+        event(body_with(marker(major=1)), at="2026-10-01T11:00:00Z"),
         event(body_with(marker(nit=1)), at="2026-10-01T12:09:00Z"),
-        event(body_with(marker(major=1)), at="2026-10-01T12:05:00Z"),
     ]
-    got = mg.pick_marker(events, SINCE, BOT)
-    assert got["counts"]["nit"] == 1
+    assert mg.pick_marker(events, SINCE, BOT)["counts"]["nit"] == 1
 
 
 def test_마커가_없으면_None():

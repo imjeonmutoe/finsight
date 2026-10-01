@@ -87,9 +87,12 @@ def build_payload(result, hunks, commit_id):
     if orphans:
         body += "\n\n---\n\n### diff 범위 밖 지적 (인라인 불가)\n\n"
         body += "이 PR에서 바뀌지 않은 줄이라 GitHub이 인라인 코멘트를 받지 않는다. 여기 모아 둔다.\n\n"
+        # 이 줄들은 게이트 마커(summaryMd 끝) **뒤에** 붙고, 제목·TL;DR은 LLM이 쓴 문자열이다.
+        # 거기 섞인 `<!--`를 그대로 두면 위조 마커가 된다 (review-code.js의 neutralizeComments와 같은 처리).
         for f in orphans:
-            body += f"- **{f['file']}:{f['line']}** {EMOJI.get(f['severity'], '')} {f['severity']} — {f['title']}\n"
-            body += f"  {f['tldr']}\n"
+            line = f"- **{f['file']}:{f['line']}** {EMOJI.get(f['severity'], '')} {f['severity']} — {f['title']}\n"
+            line += f"  {f['tldr']}\n"
+            body += line.replace("<!--", "&lt;!--")
 
     # event는 항상 COMMENT다. GitHub은 자기 PR에 APPROVE·REQUEST_CHANGES를 거부한다.
     return {"commit_id": commit_id, "body": body, "event": "COMMENT", "comments": inline}, orphans
