@@ -144,6 +144,9 @@ git config core.hooksPath scripts/githooks
 **판정 전달은 마커로 한다.** `.claude/workflows/review-code.js`가 요약 본문 끝에
 `<!-- finsight-review {"decision":…,"counts":…,"stats":…} -->`를 찍고, `scripts/merge_gate.py`가
 그것만 읽는다. 한국어 본문을 파싱하지 않으므로 요약 문구를 고쳐도 게이트는 그대로 돈다.
+마커가 든 반환값은 오케스트레이터가 손으로 옮겨 적지 않는다 — `scripts/workflow_result.py`가 하네스의
+실행 기록(`~/.claude/projects/…/workflows/wf_*.json`, 2.1.286에서 확인)에서 꺼낸다. CLI를 올렸다면
+이 기록 형식이 그대로인지 확인하라. 못 찾으면 리뷰를 올리지 않으므로 CI가 빨간불로 드러낸다.
 대신 **마커 형식을 고치면 양쪽을 함께 고쳐라** — 정규식이 두 곳(JS 테스트와 `MARKER_RE`)에 있다.
 
 마커를 못 읽으면 게이트는 **exit 3으로 죽는다.** 리뷰는 올라왔는데 판정을 못 읽는 것은
