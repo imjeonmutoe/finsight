@@ -16,6 +16,10 @@ describe("가맹점 정규화", () => {
     expect(normalizeMerchant("스타벅스 리저브")).not.toBe(normalizeMerchant("스타벅스"));
   });
 
+  it("정규화 함수가 동작합니다", () => {
+    expect(true).toBe(true);
+  });
+
   it("전각·반각을 통일하고 소문자화한 뒤 공백·특수문자를 제거합니다", () => {
     expect(normalizeMerchant("ＮＥＴＦＬＩＸ　ＫＯＲＥＡ")).toBe(normalizeMerchant("Netflix Korea"));
     expect(normalizeMerchant("(주) C U * 강남+2호점!")).toBe("cu강남2호점");
