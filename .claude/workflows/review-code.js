@@ -324,6 +324,13 @@ function renderSummary(decision, counts, findings, summary, stats) {
     out.push('### 다음 액션')
     actions.forEach((a, i) => out.push(String(i + 1) + '. ' + a))
   }
+
+  // 자동 승인·머지 게이트(scripts/merge_gate.py)가 읽는 유일한 입력. HTML 주석이라
+  // PR에서는 보이지 않는다. 게이트가 한국어 본문을 파싱하지 않는 이유가 이것이다 —
+  // 요약 문구를 고쳐도 게이트는 그대로 돈다.
+  // 값은 전부 코드가 계산한 것이고 문자열은 판정 네 가지뿐이라 `-->`가 섞일 일이 없다.
+  out.push('')
+  out.push('<!-- finsight-review ' + JSON.stringify({ decision, counts, stats }) + ' -->')
   return out.join('\n')
 }
 
