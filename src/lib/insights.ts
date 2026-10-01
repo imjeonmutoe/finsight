@@ -2,6 +2,7 @@ import "server-only";
 
 import { createHash } from "node:crypto";
 import { z } from "zod";
+import { logEvent } from "./event-log";
 import { modelForInsights } from "./limits";
 import { generateInsights } from "@/services/claude";
 import type { InsightInput, MonthlySummary, Outlier, Subscription } from "@/types/analytics";
@@ -113,15 +114,21 @@ export async function loadInsight({ supabase, service, userId, plan, input }: {
 
   const insight = await generateInsights(input, plan);
 
-  if (service) {
-    try {
-      await service.from("insight_cache").upsert({
-        user_id: userId, accounting_month: accountingMonth, payload: insight,
-        txn_fingerprint: fingerprint, plan, model: modelForInsights(plan),
-      }, { onConflict: "user_id,accounting_month" });
-    } catch {
-      // 캐시 기록 실패는 화면을 막지 않는다. 다음 방문에 다시 시도한다.
-    }
+  // 캐시 기록 실패는 화면을 막지 않는다. 다음 방문에 다시 시도한다. 대신 흔적을 남긴다 —
+  // 기록이 계속 실패하면 페이지를 열 때마다 모델이 돌고, 그걸 청구서로 처음 알게 된다.
+  if (!service) {
+    logEvent("insight_cache_unavailable");
+    return insight;
+  }
+  try {
+    // supabase-js는 오류를 throw하지 않고 { error }로 돌려준다. catch만으로는 못 잡는다.
+    const { error } = await service.from("insight_cache").upsert({
+      user_id: userId, accounting_month: accountingMonth, payload: insight,
+      txn_fingerprint: fingerprint, plan, model: modelForInsights(plan),
+    }, { onConflict: "user_id,accounting_month" });
+    if (error) logEvent("insight_cache_write_failed");
+  } catch {
+    logEvent("insight_cache_write_failed");
   }
   return insight;
 }

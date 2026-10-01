@@ -6,8 +6,10 @@ import type { Transaction } from "@/types/transaction";
 
 vi.mock("server-only", () => ({}));
 vi.mock("@/services/claude", () => ({ generateInsights: vi.fn() }));
+vi.mock("./event-log", () => ({ logEvent: vi.fn() }));
 
 const { generateInsights } = await import("@/services/claude");
+const { logEvent } = await import("./event-log");
 const { buildInsightInput, insightFingerprint, loadInsight } = await import("./insights");
 
 const summary: MonthlySummary = {
@@ -169,10 +171,26 @@ describe("인사이트 캐시", () => {
     expect(service.upsert).not.toHaveBeenCalled();
   });
 
-  it("캐시를 기록할 수 없어도 요약은 보여 줍니다", async () => {
+  it("캐시를 기록할 수 없어도 요약은 보여 주되 흔적을 남깁니다", async () => {
     // service role 키가 없는 환경(로컬·프리뷰)에서도 대시보드가 막히지 않아야 합니다.
+    // 다만 프로덕션에서 키가 빠지면 페이지를 열 때마다 모델이 돌므로 로그로 드러나야 합니다.
     expect(await loadInsight({ supabase: reader(null), service: null, userId: "사용자", plan: "free", input }))
       .toEqual(payload);
+    expect(logEvent).toHaveBeenCalledExactlyOnceWith("insight_cache_unavailable");
+  });
+
+  it("캐시 기록이 오류를 돌려주면 요약은 보여 주되 흔적을 남깁니다", async () => {
+    // supabase-js는 오류를 throw하지 않고 { error }로 돌려줍니다. catch만으로는 못 잡습니다.
+    const service = writer();
+    service.upsert.mockResolvedValue({ error: { message: "permission denied" } });
+
+    expect(await loadInsight({ supabase: reader(null), service, userId: "사용자", plan: "free", input })).toEqual(payload);
+    expect(logEvent).toHaveBeenCalledExactlyOnceWith("insight_cache_write_failed");
+  });
+
+  it("캐시 기록이 성공하면 아무것도 남기지 않습니다", async () => {
+    await loadInsight({ supabase: reader(null), service: writer(), userId: "사용자", plan: "free", input });
+    expect(logEvent).not.toHaveBeenCalled();
   });
 
   it("캐시 조회가 실패해도 생성으로 이어갑니다", async () => {
