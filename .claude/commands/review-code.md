@@ -16,20 +16,28 @@ description: 변경분을 3개 차원 서브에이전트로 병렬 리뷰하고 
 코드가 통째로 리뷰에서 빠지는데도 다른 변경 덕에 팩은 비어 보이지 않아 판정이 Approve로 난다.
 untracked 파일을 `--no-index`로 따로 떠서 붙인다 (gitignore된 것은 `--exclude-standard`가 걸러 준다).
 
+CI(`$GITHUB_ACTIONS`)에서는 작업트리 쪽을 빼고 커밋된 diff만 본다. 리뷰 잡이 `claude -p` 앞에서
+`.claude/`·`CLAUDE.md` 등을 main 것으로 되돌려 두기 때문에, 작업트리를 포함하면 그 되돌림이
+"PR이 자기 변경을 되돌린다"는 가짜 hunk로 팩에 섞인다. CI 체크아웃에는 커밋 안 된 변경이 원래 없다.
+
 ```bash
 BASE=$(git merge-base main HEAD)
 PACK=$(mktemp -d)
 {
   git diff "$BASE" HEAD
-  git diff HEAD
-  git ls-files --others --exclude-standard | while IFS= read -r f; do
-    git diff --no-index /dev/null "$f" || true
-  done
+  if [ -z "${GITHUB_ACTIONS:-}" ]; then
+    git diff HEAD
+    git ls-files --others --exclude-standard | while IFS= read -r f; do
+      git diff --no-index /dev/null "$f" || true
+    done
+  fi
 } > "$PACK/diff.patch"
 {
   git diff --name-only "$BASE" HEAD
-  git diff --name-only HEAD
-  git ls-files --others --exclude-standard
+  if [ -z "${GITHUB_ACTIONS:-}" ]; then
+    git diff --name-only HEAD
+    git ls-files --others --exclude-standard
+  fi
 } | sort -u > "$PACK/files.txt"
 echo "PACK=$PACK  BASE=$BASE  lines=$(wc -l < "$PACK/diff.patch")  files=$(wc -l < "$PACK/files.txt")"
 ```
