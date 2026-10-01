@@ -16,6 +16,8 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # 액션은 커밋 SHA로 고정한다. 태그는 옮길 수 있어, 액션 저장소가 탈취되면 같은 태그로 악성 코드가
+  # 시크릿을 쥔 잡에서 돈다. 올릴 때는 태그가 가리키는 커밋을 확인해 SHA와 주석을 함께 바꾼다.
   review:
     # 드래프트는 아직 리뷰받을 상태가 아니다.
     # fork PR에는 GitHub이 시크릿을 주지 않아 인증이 반드시 실패한다. 빨간불만 남기느니
@@ -29,7 +31,8 @@ jobs:
     permissions:
       contents: read
       pull-requests: write # /review-code 3단계가 gh api로 리뷰를 올린다
-      id-token: write # claude-code-action의 GitHub App 인증에 필요하다
+      # id-token: write는 두지 않는다. 아래에서 github_token을 넘기므로 OIDC 교환이 일어나지 않고,
+      # 권한이 있으면 에이전트가 Bash로 OIDC 토큰을 발급받을 수 있다(App 설치 시 쓰기 토큰으로 교환 가능).
     outputs:
       # gate 잡이 "이번 실행이 올린 리뷰"만 골라 읽기 위한 기준선.
       started_at: ${{ steps.start.outputs.started_at }}
@@ -41,7 +44,7 @@ jobs:
       # fetch-depth: 0 — 1단계가 `git merge-base main HEAD`를 쓴다. 얕은 클론이면
       #   merge-base가 실패해 팩이 비고, 커맨드는 "리뷰할 변경이 없다"며 **정상 종료**한다.
       #   리뷰 0건에 초록불이 붙는 게 제일 위험한 실패다.
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           ref: ${{ github.event.pull_request.head.ref }}
           fetch-depth: 0
@@ -59,7 +62,7 @@ jobs:
           echo "REVIEW_STARTED_AT=$now" >> "$GITHUB_ENV"
           echo "started_at=$now" >> "$GITHUB_OUTPUT"
 
-      - uses: anthropics/claude-code-action@v1
+      - uses: anthropics/claude-code-action@12dd8d74c712f5f3669365b2369b558c495b1104 # v1
         env:
           # /review-code 3단계의 `gh pr view` · `gh api .../reviews` 가 쓴다.
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -147,7 +150,7 @@ jobs:
       # 대가: 게이트를 고치는 PR은 자기 게이트를 검증하지 못한다. 머지된 뒤부터 적용된다.
       # (PR #6에서 실측했다 — 마커를 찍는 코드가 PR head에만 있어 게이트가 exit 3으로 죽었다.
       # 조용히 승인하지 않고 빨간불을 낸 것이 설계대로 동작한 것이다.)
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           ref: main
 
