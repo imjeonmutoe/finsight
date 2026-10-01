@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { errorResponse, jsonResponse } from "@/lib/api";
 import { verifyWebhookSignature } from "@/services/polar";
-import { createServiceSupabase } from "@/services/supabase";
+import { createServiceSupabase } from "@/services/supabase-service";
 import type { Plan } from "@/types/billing";
 
 // 상태가 active·trialing이면 Pro로 올리는 이벤트들입니다. `subscription.canceled`도 여기 있습니다 —

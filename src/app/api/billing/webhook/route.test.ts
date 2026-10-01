@@ -10,7 +10,7 @@ const { from, createServiceSupabase } = vi.hoisted(() => {
   return { from: fromFn, createServiceSupabase: vi.fn(() => ({ from: fromFn })) };
 });
 vi.mock("server-only", () => ({}));
-vi.mock("@/services/supabase", () => ({ createServiceSupabase }));
+vi.mock("@/services/supabase-service", () => ({ createServiceSupabase }));
 
 const original = { ...process.env };
 const SECRET = `whsec_${Buffer.from("polar-sandbox-secret").toString("base64")}`;
