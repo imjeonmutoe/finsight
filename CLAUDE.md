@@ -152,7 +152,7 @@ git config core.hooksPath scripts/githooks
 **자동 머지를 막는 탈출구는 draft PR이다.** draft는 리뷰 잡의 `if`에서 걸러지므로 게이트도
 돌지 않는다. 라벨 같은 별도 장치를 만들지 마라.
 
-**게이트 잡은 `main`을 체크아웃한다.** 액션이 `.claude/`를 origin/main 것으로 되돌리므로 마커를
+**게이트 잡은 `main`을 체크아웃한다.** 리뷰 잡이 `.claude/`를 main 것으로 되돌리므로 마커를
 **찍는 쪽**은 CI에서 언제나 main 것이 돈다. 읽는 쪽(`scripts/merge_gate.py`)만 PR head로 두면
 마커 형식을 바꾸는 PR에서 새 파서가 옛 마커를 읽는 **버전 엇갈림**이 생긴다. 계약의 양쪽을
 같은 ref에 묶어 둔 것이다. 대가는 **게이트를 고치는 PR이 자기 게이트를 검증하지 못한다**는 것 —
@@ -170,17 +170,21 @@ git config core.hooksPath scripts/githooks
   `/review-code`는 "리뷰할 변경이 없다"며 **정상 종료**한다. 리뷰 0건에 초록불이 붙는다.
 - `ref: head.ref` (커밋 SHA 아님). SHA로 체크아웃하면 detached HEAD가 되어 `gh pr view`가
   PR을 못 찾고, 리뷰가 PR이 아니라 워크플로우 로그로만 간다.
-- `github_token: ${{ secrets.GITHUB_TOKEN }}`. 이걸 빼면 액션이 OIDC를 Anthropic에 보내
-  Claude GitHub App 토큰으로 바꾸려 하고, App 미설치면 거기서 죽는다. 값을 주면 교환 자체를
-  건너뛴다. App 경로보다 **권한이 좁다** — App 토큰 기본값은 `contents:write`·`issues:write`인데
-  이 토큰은 워크플로우의 `permissions` 그대로 `contents:read`다. 읽기 전용이어야 할 리뷰 잡에
-  쓰기 권한을 줄 이유가 없다. 대가는 Anthropic 측 워크플로우 검증(워크플로우가 default branch에
-  있는지 확인)을 건너뛴다는 것인데, fork PR은 잡 조건에서 이미 걸렀다.
-  App을 나중에 설치해도 이 워크플로우 동작은 그대로다 — `github_token`이 항상 이긴다.
-- 액션이 `.claude/`·`.mcp.json`·`CLAUDE.md`를 **`origin/main` 것으로 되돌린다**(PR head는
-  신뢰하지 않는다). 즉 PR에서 고친 커맨드·에이전트·훅 설정은 **머지된 뒤부터** CI에 적용된다.
+- 리뷰는 `claude-code-action`이 아니라 **`claude -p`로 직접** 돌린다. 액션은 SDK의 첫 `result`
+  메시지에서 루프를 끊어, 에이전트가 리뷰 워크플로우를 백그라운드로 넘기고 턴을 끝내면 세션이
+  그 자리에서 정리된다(PR #11·#12가 4턴·수 초 만에 success, 리뷰 0건). `claude -p`는 백그라운드
+  작업이 끝날 때까지 기다린다. `owasp-scan.yml`도 같은 방식이다. 액션으로 되돌리지 마라.
+- **바로 앞 스텝이 `.claude/`·`.mcp.json`·`CLAUDE.md` 등을 main 것으로 되돌린다**(PR head는
+  신뢰하지 않는다). `claude -p`는 작업 디렉터리의 `settings.json` 훅·env·`.mcp.json`을 권한 확인보다
+  먼저 실행하므로, 이 스텝 없이 돌리면 PR에 훅 하나를 심는 것으로 GH_TOKEN을 쥔 잡에서 임의 코드가
+  돈다. 액션을 쓸 때는 액션이 해 주던 일이다(경로 목록도 액션의 `SENSITIVE_PATHS` 그대로).
+  이 스텝은 fetch하지 않는다 — `--depth`로 다시 받으면 위의 얕은 클론 함정에 그대로 빠진다.
+  즉 PR에서 고친 커맨드·에이전트·훅 설정은 **머지된 뒤부터** CI에 적용된다.
   워크플로우 파일(`.github/workflows/`)만 PR head 것이 쓰인다. 그래서 정말 중요한 지시는
-  워크플로우의 `prompt`에도 한 번 더 적어 둔다.
+  워크플로우의 `PROMPT`에도 한 번 더 적어 둔다.
+- GitHub 토큰은 `GH_TOKEN`(`secrets.GITHUB_TOKEN`) 하나다. 워크플로우의 `permissions` 그대로
+  `contents:read`·`pull-requests:write`이고, 액션처럼 OIDC로 Claude GitHub App 토큰(`contents:write`)을
+  받는 경로가 없다. 그래서 `id-token: write`도 두지 않는다.
 - 워크플로우를 띄우자마자 "백그라운드로 시작했습니다"로 턴을 끝내면 **리뷰 0건에 초록불**이
   붙는다. 실제로 CI 첫 성공 실행이 그랬다(잡 success, PR 리뷰·코멘트 0건). 두 겹으로 막는다 —
   커맨드 2단계의 "완료 알림 전에 턴을 끝내지 마라"와, 잡 마지막의 `리뷰가 PR에 실제로
