@@ -535,6 +535,20 @@ describe("POST /api/uploads Free 업로드 한도", () => {
     expect(inferColumnMapping).not.toHaveBeenCalled();
   });
 
+  it("한도를 세는 쿼리가 실패하면 허용하지 않고 500과 함께 정리합니다", async () => {
+    // count가 null이면 0으로 보고 통과시키던 fail-open이었습니다. DB가 흔들리는 동안 Free 한도가 꺼집니다.
+    happyPath({ plan: "free" });
+    queues.get("uploads:select")?.splice(-1, 1, { count: undefined, error: { message: "timeout" } });
+    enqueue("uploads:delete", { data: null });
+
+    const response = await post(await multipart({ sourceId: SOURCE_ID, file: csvFile(CSV) }));
+
+    expect(response.status).toBe(500);
+    await expect(response.json()).resolves.toMatchObject({ code: "LIMIT_CHECK_FAILED" });
+    expect(inferColumnMapping).not.toHaveBeenCalled();
+    expect(remove).toHaveBeenCalledWith([upload.mock.calls[0]?.[0]]);
+  });
+
   it("Pro는 한도를 세지 않습니다", async () => {
     happyPath({ plan: "pro" });
 
