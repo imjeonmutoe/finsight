@@ -9,6 +9,7 @@ import { computeFileHash } from "@/lib/dedupe";
 import { decodeCsv, detectEncoding } from "@/lib/encoding";
 import { MAX_CSV_ROWS, MAX_FILE_BYTES, MAX_MULTIPART_BODY_BYTES } from "@/lib/limits";
 import { buildSanitizedMappingInput } from "@/lib/sanitize";
+import { ownsStoragePath } from "@/lib/storage-path";
 import { inferColumnMapping } from "@/services/claude";
 import { createServerSupabase } from "@/services/supabase";
 import type { MappingResponse } from "@/types/api";
@@ -157,6 +158,10 @@ export async function POST(request: Request) {
     // 같은 행·파일을 재사용합니다. 실패한 업로드가 이력에 중복으로 쌓이지 않습니다.
     uploadId = existing.data.id;
     storagePath = existing.data.storage_path;
+    // storage_path는 클라이언트가 직접 INSERT할 수 있는 컬럼이다(0004). 남의 폴더에 덮어쓰지 않는다.
+    if (!ownsStoragePath(userId, storagePath)) {
+      return errorResponse(500, "UPLOAD_FAILED", "업로드를 준비하지 못했습니다. 잠시 후 다시 시도해 주세요.");
+    }
     const { error } = await supabase.from("uploads").update(record).eq("id", uploadId).eq("user_id", userId);
     if (error) return errorResponse(500, "UPLOAD_FAILED", "업로드를 준비하지 못했습니다. 잠시 후 다시 시도해 주세요.");
   } else {

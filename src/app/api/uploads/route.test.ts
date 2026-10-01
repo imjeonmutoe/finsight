@@ -413,6 +413,26 @@ describe("POST /api/uploads 저장과 매핑", () => {
     }
   });
 
+  it("재사용할 행의 storage_path가 남의 폴더면 그 경로에 쓰지 않습니다", async () => {
+    // storage_path는 클라이언트가 PostgREST로 직접 INSERT할 수 있는 컬럼입니다(0004).
+    vi.useFakeTimers().setSystemTime(new Date("2026-08-05T00:06:00.000Z"));
+    enqueue("financial_sources:select", { data: { id: SOURCE_ID, kind: "card" } });
+    enqueue("uploads:select", {
+      data: {
+        id: UPLOAD_ID, status: "failed", storage_path: `00000000-0000-4000-8000-000000000009/${UPLOAD_ID}.csv`,
+        column_mapping: null, mapping_confidence: null, encoding: "utf-8",
+        created_at: "2026-08-05T00:00:00.000Z",
+      },
+    });
+
+    const response = await post(await multipart({ sourceId: SOURCE_ID, file: csvFile(CSV) }));
+
+    expect(response.status).toBe(500);
+    expect(upload).not.toHaveBeenCalled();
+    expect(argsOf("uploads:update", "update")).toEqual([]);
+    expect(inferColumnMapping).not.toHaveBeenCalled();
+  });
+
   it("매핑 추론이 실패하면 failed로 기록하고 파일 경로를 남깁니다", async () => {
     happyPath();
     inferColumnMapping.mockRejectedValue(new Error("분석 요청을 처리하지 못했습니다."));
