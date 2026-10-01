@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { errorResponse, jsonResponse } from "@/lib/api";
+import { logEvent } from "@/lib/event-log";
 import { verifyWebhookSignature } from "@/services/polar";
 import { createServiceSupabase } from "@/services/supabase-service";
 import type { Plan } from "@/types/billing";
@@ -59,6 +60,8 @@ export async function POST(request: Request) {
 
   const payload = await request.text();
   if (!verifyWebhookSignature({ secret, headers: request.headers, payload, now: new Date() })) {
+    // 위조 시도와 시크릿 불일치(정상 웹훅이 전부 거절됨)를 로그로 구분할 수 있어야 합니다.
+    logEvent("webhook_signature_invalid");
     return errorResponse(401, "INVALID_SIGNATURE", "서명을 확인하지 못했습니다.");
   }
 
@@ -112,6 +115,7 @@ export async function POST(request: Request) {
   }).eq("id", userId.data).lt("plan_updated_at", eventAt).select("id");
 
   if (error) {
+    logEvent("webhook_plan_update_failed");
     return errorResponse(500, "PLAN_UPDATE_FAILED", "구독 상태를 갱신하지 못했습니다.");
   }
 

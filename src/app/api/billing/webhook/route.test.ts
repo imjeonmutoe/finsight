@@ -9,8 +9,10 @@ const { from, createServiceSupabase } = vi.hoisted(() => {
   const fromFn = vi.fn();
   return { from: fromFn, createServiceSupabase: vi.fn(() => ({ from: fromFn })) };
 });
+const { logEvent } = vi.hoisted(() => ({ logEvent: vi.fn() }));
 vi.mock("server-only", () => ({}));
 vi.mock("@/services/supabase-service", () => ({ createServiceSupabase }));
+vi.mock("@/lib/event-log", () => ({ logEvent }));
 
 const original = { ...process.env };
 const SECRET = `whsec_${Buffer.from("polar-sandbox-secret").toString("base64")}`;
@@ -94,6 +96,8 @@ describe("서명 검증", () => {
 
     expect(response.status).toBe(401);
     expect(from).not.toHaveBeenCalled();
+    // 위조 이벤트를 반복해 보내거나 시크릿이 어긋나 정상 웹훅이 전부 거절돼도 흔적이 남아야 합니다.
+    expect(logEvent).toHaveBeenCalledExactlyOnceWith("webhook_signature_invalid");
   });
 
   it("본문이 바뀐 재전송은 401입니다", async () => {
@@ -336,6 +340,7 @@ describe("잘못된 요청", () => {
     const response = await POST(request(event()));
 
     expect(response.status).toBe(500);
+    expect(logEvent).toHaveBeenCalledExactlyOnceWith("webhook_plan_update_failed");
   });
 
   it("service role 키가 없으면 503입니다", async () => {
