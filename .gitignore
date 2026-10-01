@@ -29,3 +29,6 @@ scripts/__pycache__/
 .claude/worktrees/
 .vercel
 .env*
+
+# OWASP 스캔 리포트 (공개 리포 — 미수정 취약점 목록을 커밋하지 않는다)
+.owasp/
