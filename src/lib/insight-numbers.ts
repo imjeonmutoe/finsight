@@ -3,8 +3,8 @@
  * 화면은 "숫자는 모두 코드로 계산한 값"이라고 안내하므로, 모델이 지어내거나 입력의 가맹점명에
  * 섞인 지시를 따라 만든 숫자를 그 안내와 함께 내보내면 안 된다.
  *
- * 금액 표기(₩·원·만 원)와 퍼센트만 본다. 입력에는 비율이 없으므로(모델에게 계산시키지 않는다)
- * 퍼센트는 계산값에 같은 수가 있어야만 통과한다.
+ * 금액 표기(₩·원·만 원·천 원, 만·천 앞의 소수 포함)와 퍼센트만 본다. 입력에는 비율이 없으므로
+ * (모델에게 계산시키지 않는다) 퍼센트는 계산값에 같은 수가 있어야만 통과한다.
  */
 
 /** 입력의 **숫자 필드**만 모은다. 문자열(가맹점명 등)은 CSV에서 온 값이라 근거가 될 수 없다. */
@@ -21,9 +21,17 @@ export function knownNumbers(input: unknown): Set<number> {
 
 const digits = (raw: string) => Number(raw.replaceAll(",", ""));
 
+/** '4.5만'처럼 소수로 적은 단위 금액. 원 아래로 떨어지면 계산값일 수 없으므로 NaN(어떤 값과도 안 맞음). */
+const scaled = (raw: string, unit: number) => {
+  const v = digits(raw) * unit;
+  const won = Math.round(v);
+  return Math.abs(v - won) < 1e-6 ? won : NaN;
+};
+
 const PATTERNS: { re: RegExp; value: (m: RegExpMatchArray) => number }[] = [
   { re: /₩\s?(\d[\d,]*)/g, value: (m) => digits(m[1] ?? "") },
-  { re: /(\d[\d,]*)\s?만\s?원/g, value: (m) => digits(m[1] ?? "") * 10_000 },
+  { re: /(\d[\d,]*(?:\.\d+)?)\s?만\s?원/g, value: (m) => scaled(m[1] ?? "", 10_000) },
+  { re: /(\d[\d,]*(?:\.\d+)?)\s?천\s?원/g, value: (m) => scaled(m[1] ?? "", 1_000) },
   { re: /(\d[\d,]*)\s?원/g, value: (m) => digits(m[1] ?? "") },
   { re: /(\d+(?:\.\d+)?)\s?%/g, value: (m) => Number(m[1]) },
 ];
