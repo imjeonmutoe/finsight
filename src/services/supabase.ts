@@ -1,5 +1,4 @@
 import { createBrowserClient, createServerClient, type CookieOptions } from "@supabase/ssr";
-import { createClient } from "@supabase/supabase-js";
 
 // 이 모듈은 `next/headers`를 불러오지 않습니다. Client Component가 createBrowserSupabase를
 // 쓰려면 이 모듈을 함께 불러오는데, next/headers가 들어 있으면 그 번들이 통째로 빌드에
@@ -13,7 +12,7 @@ type CookieStore = {
 // 환경변수는 반드시 `process.env.NEXT_PUBLIC_*` 리터럴로 읽습니다. Next는 이 형태의 정적
 // 표현식만 클라이언트 번들에 인라인하므로, 변수 키로 감싸 읽으면 브라우저에서 값이 사라집니다.
 // 그래서 이름과 값을 따로 받습니다.
-function required(name: string, value: string | undefined): string {
+export function required(name: string, value: string | undefined): string {
   if (!value) {
     throw new Error(`${name} 환경변수가 없습니다. .env.local을 확인해 주세요.`);
   }
@@ -58,15 +57,5 @@ export function createServerSupabase(cookieStore: CookieStore) {
   });
 }
 
-/**
- * service role. 웹훅·인증된 계정 삭제·인사이트 캐시 기록에만 씁니다.
- * RLS를 우회하므로 사용자 요청 경로에서 쓰지 않습니다.
- */
-export function createServiceSupabase() {
-  const { url } = publicSupabaseCredentials();
-  const serviceKey = required("SUPABASE_SERVICE_ROLE_KEY", process.env.SUPABASE_SERVICE_ROLE_KEY);
-
-  return createClient(url, serviceKey, {
-    auth: { persistSession: false, autoRefreshToken: false },
-  });
-}
+// service role 팩토리는 `./supabase-service`에 있다. `server-only`를 걸기 위해 나눴다 —
+// 이 모듈은 Client Component도 불러오므로 여기 두면 브라우저 번들 경계를 빌드가 못 지킨다.

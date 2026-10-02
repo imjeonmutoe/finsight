@@ -110,15 +110,18 @@ GitHub이 리뷰 전체를 422로 거절해서 멀쩡한 인라인까지 같이 
 untracked 파일이 섞여 있고, 그것들은 PR에 존재하지 않아 어차피 인라인을 달 수 없다.
 
 ```bash
-# 워크플로우 반환값을 파일로 남긴다 (findings·summaryMd가 들어 있는 객체 그대로)
-cat > "$PACK/result.json" <<'JSON'
-<워크플로우 반환값 JSON>
-JSON
+# 워크플로우 반환값을 하네스의 실행 기록에서 코드로 꺼낸다. 손으로 옮겨 적지 마라.
+python3 scripts/workflow_result.py "$PACK" > "$PACK/result.json"
 
 gh pr diff <번호> > "$PACK/pr.diff"
 python3 scripts/pr_review_payload.py "$PACK/result.json" "$PACK/pr.diff" <headRefOid> > "$PACK/payload.json"
 gh api "repos/{owner}/{repo}/pulls/<번호>/reviews" --method POST --input "$PACK/payload.json"
 ```
+
+**`result.json`을 heredoc으로 직접 쓰지 마라.** summaryMd 끝의 판정 마커를 자동 머지 게이트가 그대로
+믿는다. 옮겨 적다 생긴 오기 하나, diff에 섞인 지시문 하나로 마커가 바뀌어도 게이트는 모른다.
+`workflow_result.py`가 기록을 못 찾아 exit 1이면 **리뷰를 올리지 말고** 그 메시지를 사용자에게
+그대로 알려라 — 손으로 채우는 대체 경로가 이 스크립트가 없애려는 경로다.
 
 스크립트가 stderr로 `인라인 N건 / 범위 밖 M건은 본문으로`를 찍는다. **M이 0이 아니면 그 사실을
 사용자에게 말해라.** 어떤 지적이 인라인으로 안 붙었는지 알아야 한다.
@@ -126,8 +129,9 @@ gh api "repos/{owner}/{repo}/pulls/<번호>/reviews" --method POST --input "$PAC
 `event`는 항상 `COMMENT`다. 이유: GitHub은 자기 PR에 `APPROVE`·`REQUEST_CHANGES`를 거부한다.
 판정은 본문 안에 이미 적혀 있다.
 
-**그래도 422가 나면 조용히 넘어가지 마라.** `gh pr comment`로 `markdown` 전체를 코멘트 하나로
-올리고, 인라인이 불발됐다는 사실과 API가 돌려준 메시지를 사용자에게 말해라.
+**그래도 422가 나면 조용히 넘어가지 마라.** `markdown` 전체를 코멘트 하나로 올리되, 이것도 손으로
+옮기지 말고 `jq -r .markdown "$PACK/result.json" | gh pr comment <번호> --body-file -`로 올리고,
+인라인이 불발됐다는 사실과 API가 돌려준 메시지를 사용자에게 말해라.
 
 ### PR이 없으면
 

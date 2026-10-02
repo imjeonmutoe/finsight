@@ -25,7 +25,8 @@ const {
   };
 });
 vi.mock("server-only", () => ({}));
-vi.mock("@/services/supabase", () => ({ createServerSupabase, createServiceSupabase }));
+vi.mock("@/services/supabase", () => ({ createServerSupabase }));
+vi.mock("@/services/supabase-service", () => ({ createServiceSupabase }));
 vi.mock("next/headers", () => ({ cookies: vi.fn(async () => ({ getAll: () => [], set: () => {} })) }));
 
 const queues = new Map<string, Result[]>();

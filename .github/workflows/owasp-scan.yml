@@ -72,10 +72,23 @@ jobs:
       # (docs: headless#background-tasks-at-exit).
       #
       # 버전·설치 방식은 액션(@v1, 12dd8d7)이 쓰던 것과 같게 고정한다.
+      # install.sh를 받아 바로 실행하지 않는다. install.sh와 그것이 받는 manifest는 고정할 수 없어,
+      # 배포 경로가 오염되면 바뀐 스크립트가 토큰을 쥔 이 잡에서 돈다. 바이너리를 직접 받아 고정한
+      # sha256과 대조한 뒤 install.sh가 하던 마지막 단계(`claude install <버전>`)만 한다.
+      # 버전을 올릴 때는 downloads.claude.ai/claude-code-releases/<버전>/manifest.json의
+      # platforms.linux-x64.checksum으로 CLAUDE_SHA256을 함께 바꾼다(두 워크플로우 모두).
       - name: Claude Code 설치
+        env:
+          CLAUDE_VERSION: 2.1.286
+          CLAUDE_SHA256: fe503f65c6289d59c23e5b21ae44f03583f997dd33a2cbfc75ab4f96fb8fc73f
         run: |
-          set -o pipefail
-          curl -fsSL https://claude.ai/install.sh | bash -s -- 2.1.286
+          set -euo pipefail
+          bin="$RUNNER_TEMP/claude"
+          curl -fsSL -o "$bin" "https://downloads.claude.ai/claude-code-releases/$CLAUDE_VERSION/linux-x64/claude"
+          echo "$CLAUDE_SHA256  $bin" | sha256sum -c -
+          chmod +x "$bin"
+          "$bin" install "$CLAUDE_VERSION"
+          rm -f "$bin"
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
 
       - name: /owasp-scan 실행

@@ -5,6 +5,7 @@ import { buildTransactions } from "@/lib/csv";
 import { parseStatementRows } from "@/lib/statement";
 import { decodeCsv } from "@/lib/encoding";
 import { MAX_CSV_ROWS } from "@/lib/limits";
+import { ownsStoragePath } from "@/lib/storage-path";
 import { classifyByRule } from "@/lib/merchant-rules";
 import { createServerSupabase } from "@/services/supabase";
 import type { ConfirmResponse, ImportReviewResponse } from "@/types/api";
@@ -77,7 +78,8 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   const found = uploadSchema.safeParse((await supabase.from("uploads")
     .select("id,source_id,file_hash,storage_path,status,inserted_count,duplicate_count,unclassified_count")
     .eq("id", uploadId).eq("user_id", userId).maybeSingle()).data);
-  if (!found.success) {
+  // storage_path는 클라이언트가 직접 INSERT할 수 있는 컬럼이다(0004). 남의 폴더면 없는 업로드로 본다.
+  if (!found.success || !ownsStoragePath(userId, found.data.storage_path)) {
     return errorResponse(404, "UPLOAD_NOT_FOUND", "업로드를 찾지 못했습니다. 업로드 이력에서 다시 선택해 주세요.");
   }
   const upload = found.data;

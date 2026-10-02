@@ -5,6 +5,7 @@ import { UploadFlow } from "@/components/UploadFlow";
 import { columnMappingSchema, kstMonthStart, nextKstMonthStart, requireUserId } from "@/lib/api";
 import { parseStatementRows } from "@/lib/statement";
 import { decodeCsv } from "@/lib/encoding";
+import { ownsStoragePath } from "@/lib/storage-path";
 import { getMonthlyTrend } from "@/lib/queries";
 import { createServerSupabase } from "@/services/supabase";
 import type { MappingResponse } from "@/types/api";
@@ -52,6 +53,9 @@ async function loadResume(
 
   const mapping = columnMappingSchema.safeParse(found.data.column_mapping);
   if (!mapping.success) return null;
+
+  // storage_path는 클라이언트가 직접 INSERT할 수 있는 컬럼이다(0004). 남의 폴더면 이어 하지 않는다.
+  if (!ownsStoragePath(userId, found.data.storage_path)) return null;
 
   const encoding = found.data.encoding ?? "utf-8";
   const stored = await supabase.storage.from(BUCKET).download(found.data.storage_path);

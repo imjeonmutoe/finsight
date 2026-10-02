@@ -1,7 +1,8 @@
 import { cookies } from "next/headers";
 import { z } from "zod";
 import { errorResponse, jsonResponse, requireUserId } from "@/lib/api";
-import { createServerSupabase, createServiceSupabase } from "@/services/supabase";
+import { createServerSupabase } from "@/services/supabase";
+import { createServiceSupabase } from "@/services/supabase-service";
 
 const BUCKET = "statements";
 // 화면에서 사용자가 그대로 입력해야 하는 문구입니다.

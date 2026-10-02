@@ -167,4 +167,14 @@ describe("DELETE /api/uploads/[id]", () => {
     expect((await call("DELETE")).status).toBe(404);
     expect(remove).not.toHaveBeenCalled();
   });
+
+  it("행의 storage_path가 남의 폴더면 404이며 그 경로를 지우지 않습니다", async () => {
+    // storage_path는 클라이언트가 PostgREST로 직접 INSERT할 수 있는 컬럼입니다(0004).
+    enqueue("uploads:select", uploadRow({ storage_path: `00000000-0000-4000-8000-000000000009/${UPLOAD_ID}.csv` }));
+    enqueue("transactions:select", { count: 0 });
+
+    expect((await call("DELETE")).status).toBe(404);
+    expect(remove).not.toHaveBeenCalled();
+    expect(argsOf("uploads:delete", "delete")).toEqual([]);
+  });
 });

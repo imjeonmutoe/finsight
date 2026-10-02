@@ -4,20 +4,16 @@ import { readFile } from "node:fs/promises";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { CookieMethodsServer } from "@supabase/ssr";
 
-const { createBrowserClient, createServerClient, createClient } = vi.hoisted(() => ({
+const { createBrowserClient, createServerClient } = vi.hoisted(() => ({
   createBrowserClient: vi.fn(() => ({ kind: "browser" })),
   createServerClient: vi.fn(() => ({ kind: "server" })),
-  createClient: vi.fn(() => ({ kind: "service" })),
 }));
 vi.mock("@supabase/ssr", () => ({ createBrowserClient, createServerClient }));
-vi.mock("@supabase/supabase-js", () => ({ createClient }));
 
 const URL_KEY = "NEXT_PUBLIC_SUPABASE_URL";
 const ANON_KEY = "NEXT_PUBLIC_SUPABASE_ANON_KEY";
-const SERVICE_KEY = "SUPABASE_SERVICE_ROLE_KEY";
 const url = "https://project.supabase.co";
 const anonKey = "anon-key";
-const serviceKey = "service-role-key";
 
 // 각 테스트가 환경변수를 지웠다 되돌릴 수 있도록 원본을 보관합니다.
 const original = { ...process.env };
@@ -39,7 +35,6 @@ beforeEach(() => {
   vi.resetModules();
   process.env[URL_KEY] = url;
   process.env[ANON_KEY] = anonKey;
-  process.env[SERVICE_KEY] = serviceKey;
 });
 
 afterEach(() => {
@@ -52,7 +47,6 @@ it("모듈을 불러오는 것만으로는 클라이언트를 만들지 않습�
 
   expect(createBrowserClient).not.toHaveBeenCalled();
   expect(createServerClient).not.toHaveBeenCalled();
-  expect(createClient).not.toHaveBeenCalled();
 });
 
 it("next/headers를 불러오지 않습니다", async () => {
@@ -113,26 +107,6 @@ describe("createServerSupabase", () => {
 
     // 세션 갱신은 미들웨어가 담당하므로 Server Component의 쓰기 실패는 정상 경로입니다.
     expect(() => adapter.setAll?.([{ name: "sb-token", value: "새 값", options: {} }], {})).not.toThrow();
-  });
-});
-
-describe("createServiceSupabase", () => {
-  it("service role 키로 만들고 세션을 저장하지 않습니다", async () => {
-    const { createServiceSupabase } = await import("./supabase");
-
-    expect(createServiceSupabase()).toEqual({ kind: "service" });
-    expect(createClient).toHaveBeenCalledWith(url, serviceKey, {
-      auth: { persistSession: false, autoRefreshToken: false },
-    });
-  });
-
-  it("service role 키는 NEXT_PUBLIC_ 접두사 없는 변수에서만 읽습니다", async () => {
-    delete process.env[SERVICE_KEY];
-    process.env["NEXT_PUBLIC_SUPABASE_SERVICE_ROLE_KEY"] = "유출된 키";
-    const { createServiceSupabase } = await import("./supabase");
-
-    expect(() => createServiceSupabase()).toThrow(SERVICE_KEY);
-    expect(createClient).not.toHaveBeenCalled();
   });
 });
 

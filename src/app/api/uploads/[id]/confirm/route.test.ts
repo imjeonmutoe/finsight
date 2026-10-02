@@ -107,6 +107,18 @@ beforeEach(() => {
 });
 
 describe("POST /api/uploads/[id]/confirm 검증", () => {
+  it("행의 storage_path가 남의 폴더면 404이며 그 경로를 내려받지 않습니다", async () => {
+    // storage_path는 클라이언트가 PostgREST로 직접 INSERT할 수 있는 컬럼입니다(0004).
+    // Storage 정책 하나에만 기대지 않습니다.
+    stage({ upload: uploadRow({ storage_path: `00000000-0000-4000-8000-000000000009/${UPLOAD_ID}.csv` }) });
+
+    const response = await confirm();
+
+    expect(response.status).toBe(404);
+    expect(download).not.toHaveBeenCalled();
+    expect(rpc).not.toHaveBeenCalled();
+  });
+
   it("미인증 요청은 401이며 원본을 읽지 않습니다", async () => {
     getClaims.mockResolvedValue({ data: null, error: null });
 

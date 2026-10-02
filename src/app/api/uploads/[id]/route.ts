@@ -1,6 +1,7 @@
 import { cookies } from "next/headers";
 import { z } from "zod";
 import { errorResponse, jsonResponse, requireUserId } from "@/lib/api";
+import { ownsStoragePath } from "@/lib/storage-path";
 import { createServerSupabase } from "@/services/supabase";
 
 const BUCKET = "statements";
@@ -24,6 +25,10 @@ async function load(id: string) {
   const found = uploadSchema.safeParse((await supabase.from("uploads").select(COLUMNS)
     .eq("id", id).eq("user_id", userId).maybeSingle()).data);
   if (!found.success) return { response: errorResponse(404, "UPLOAD_NOT_FOUND", NOT_FOUND) };
+  // storage_path는 클라이언트가 직접 INSERT할 수 있는 컬럼이다(0004). 남의 폴더면 없는 업로드로 본다.
+  if (!ownsStoragePath(userId, found.data.storage_path)) {
+    return { response: errorResponse(404, "UPLOAD_NOT_FOUND", NOT_FOUND) };
+  }
 
   // 삭제 확인 화면이 "함께 삭제됩니다"를 고지할 수 있게 건수를 함께 돌려줍니다(ADR-008).
   const { count } = await supabase.from("transactions").select("id", { count: "exact", head: true })

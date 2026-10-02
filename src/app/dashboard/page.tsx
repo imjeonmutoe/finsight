@@ -13,7 +13,8 @@ import { TrendChart } from "@/components/TrendChart";
 import { requireUserId } from "@/lib/api";
 import { loadDashboard } from "@/lib/dashboard";
 import { buildInsightInput, loadInsight, type Insight } from "@/lib/insights";
-import { createServerSupabase, createServiceSupabase } from "@/services/supabase";
+import { createServerSupabase } from "@/services/supabase";
+import { createServiceSupabase } from "@/services/supabase-service";
 import type { Plan } from "@/types/billing";
 
 export const metadata: Metadata = {
