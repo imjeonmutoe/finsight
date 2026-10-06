@@ -32,7 +32,9 @@ description: Supabase MCP의 get_advisors로 FinSight 원격 DB의 보안·성�
 한 메시지에서 병렬로:
 
 - `get_advisors` × 2 (`security`, `performance`)
-- `list_projects` → `get_organization` — **요금제**. 플랜 제약 지적을 가르는 데 쓴다
+- **요금제** — 플랜 제약 지적(C)을 가르는 데 쓴다. `.mcp.json`이 `project_ref`로 고정돼 있어
+  계정 단위 도구(`list_projects`·`get_organization`)는 보이지 않는다. 그러면 사용자에게 묻는다.
+  추측해서 C로 분류하지 마라 — 유료로 올린 뒤에도 계속 '못 켠다'고 보고하게 된다.
 - `list_migrations` — 원격 이력. `supabase/migrations/` 파일 수와 다르면 **드리프트**다.
   드리프트가 있으면 멈추고 사용자에게 알린다. 그 위에 마이그레이션을 쌓으면 리포와 DB가 더 벌어진다.
 - `execute_sql`로 `references/playbook.md`의 **사각지대 쿼리** — advisor는 `public`만 보므로
