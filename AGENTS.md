@@ -45,6 +45,7 @@ Next 16은 학습 데이터와 관례가 다르다. Next API·파일 규칙(미�
 - CRITICAL: 금융 데이터를 로그에 남기지 마라. 거래 내용·가맹점명·금액을 `console.log`하지 않는다. 에러 로그에는 행 내용 대신 **행 번호**만 남긴다. Vercel 함수 로그도 유출 경로다.
 - CRITICAL: `dangerouslySetInnerHTML`을 쓰지 마라. LLM 출력에는 사용자가 올린 CSV에서 온 임의 문자열이 섞일 수 있다. React 기본 이스케이프가 유일한 XSS 방어선이다.
 - CRITICAL: RLS를 믿되 라우트 핸들러 쿼리에도 `user_id` 조건을 명시하라. RLS 정책을 나중에 잘못 고쳐도 한 겹이 남는다.
+- CRITICAL: 에이전트는 프로덕션 DB에 쓰지 않는다. Supabase MCP는 `.mcp.json`의 `read_only=true`로만 연결하고(읽기 전용 Postgres 역할로 SQL이 돈다), 마이그레이션·배포·브랜치 도구는 `.claude/settings.json`의 `permissions.deny`가 막는다. 마이그레이션은 사람이 CLI나 대시보드로 적용한다. `read_only`를 빼거나 deny를 지우지 마라. 이유: 에이전트는 신뢰할 수 없는 입력(CSV·diff·문서)을 읽으므로, 거기 심긴 지시 하나로 실제 사용자 데이터가 지워질 수 있다. 앱의 쓰기 경로(`src/services/`의 anon·service role 클라이언트)는 MCP와 무관하다.
 - 디렉토리: 페이지·API는 `src/app/`, UI는 `src/components/`, 타입은 `src/types/`, 순수 유틸과 집계 쿼리는 `src/lib/`(집계 쿼리만 I/O 예외이며 Supabase 클라이언트를 주입받아 쓰고 모듈 안에서 생성하지 않는다), 외부 API 래퍼는 `src/services/`.
 
 ## 개발 프로세스
