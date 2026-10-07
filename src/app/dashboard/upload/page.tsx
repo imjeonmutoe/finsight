@@ -5,6 +5,7 @@ import { UploadFlow } from "@/components/UploadFlow";
 import { columnMappingSchema, kstMonthStart, nextKstMonthStart, requireUserId } from "@/lib/api";
 import { parseStatementRows } from "@/lib/statement";
 import { decodeCsv } from "@/lib/encoding";
+import { MAX_FILE_BYTES } from "@/lib/limits";
 import { ownsStoragePath } from "@/lib/storage-path";
 import { getMonthlyTrend } from "@/lib/queries";
 import { createServerSupabase } from "@/services/supabase";
@@ -59,7 +60,8 @@ async function loadResume(
 
   const encoding = found.data.encoding ?? "utf-8";
   const stored = await supabase.storage.from(BUCKET).download(found.data.storage_path);
-  if (stored.error || !stored.data) return null;
+  // confirm 라우트와 같은 상한. Storage API로 덮어쓴 큰 파일을 서버 렌더에서 파싱하지 않는다.
+  if (stored.error || !stored.data || stored.data.size > MAX_FILE_BYTES) return null;
 
   let rows: string[][];
   try {

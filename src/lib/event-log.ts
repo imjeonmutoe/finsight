@@ -7,6 +7,7 @@ export type EventCode =
   | "webhook_signature_invalid"
   | "webhook_plan_update_failed"
   | "insight_cache_unavailable"
+  | "insight_cache_read_failed"
   | "insight_cache_write_failed";
 
 export function logEvent(event: EventCode): void {

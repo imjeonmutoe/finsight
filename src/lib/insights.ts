@@ -102,9 +102,13 @@ export async function loadInsight({ supabase, service, userId, plan, input }: {
   let cached: unknown;
   try {
     const filter = supabase.from("insight_cache").select("payload,txn_fingerprint,plan") as CacheFilter;
-    cached = (await filter.eq("user_id", userId).eq("accounting_month", accountingMonth).maybeSingle()).data;
+    const result = await filter.eq("user_id", userId).eq("accounting_month", accountingMonth).maybeSingle();
+    // 기록 쪽과 같은 이유로 흔적을 남긴다. 조회가 계속 실패하면 페이지를 열 때마다 모델이 돈다.
+    if (result.error) logEvent("insight_cache_read_failed");
+    cached = result.data;
   } catch {
     // 캐시를 읽지 못한 것은 미스와 같다. 여기서 멈추면 요약을 아예 못 본다.
+    logEvent("insight_cache_read_failed");
     cached = null;
   }
   const row = cacheRowSchema.safeParse(cached);

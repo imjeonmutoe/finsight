@@ -193,6 +193,28 @@ describe("인사이트 캐시", () => {
     expect(logEvent).not.toHaveBeenCalled();
   });
 
+  it("캐시 조회가 오류를 돌려주면 생성으로 이어가되 흔적을 남깁니다", async () => {
+    // 조회가 계속 실패하면 페이지를 열 때마다 모델이 돕니다. 기록 쪽과 같이 로그로 드러나야 합니다.
+    const supabase = reader(null);
+    supabase.filter.maybeSingle.mockResolvedValue({ data: null, error: { message: "permission denied" } });
+
+    expect(await loadInsight({ supabase, service: writer(), userId: "사용자", plan: "free", input })).toEqual(payload);
+    expect(logEvent).toHaveBeenCalledExactlyOnceWith("insight_cache_read_failed");
+  });
+
+  it("캐시 조회가 던져도 흔적을 남깁니다", async () => {
+    const supabase = reader(null);
+    supabase.filter.maybeSingle.mockRejectedValue(new Error("DB 내부 오류"));
+
+    await loadInsight({ supabase, service: writer(), userId: "사용자", plan: "free", input });
+    expect(logEvent).toHaveBeenCalledExactlyOnceWith("insight_cache_read_failed");
+  });
+
+  it("캐시 미스(행 없음)는 실패가 아니므로 남기지 않습니다", async () => {
+    await loadInsight({ supabase: reader(null), service: writer(), userId: "사용자", plan: "free", input });
+    expect(logEvent).not.toHaveBeenCalled();
+  });
+
   it("캐시 조회가 실패해도 생성으로 이어갑니다", async () => {
     const supabase = reader(null);
     supabase.filter.maybeSingle.mockRejectedValue(new Error("DB 내부 오류"));
