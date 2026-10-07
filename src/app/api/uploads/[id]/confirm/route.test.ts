@@ -265,6 +265,28 @@ describe("POST /api/uploads/[id]/confirm 검증", () => {
     expect(body.message).not.toContain("38400");
   });
 
+  it("저장된 원본이 4MB를 넘으면 파싱하지 않고 413입니다", async () => {
+    // 상한은 POST /api/uploads에서만 검사합니다. 사용자는 Storage API로 자기 경로의 파일을 덮어쓸 수 있습니다.
+    stage();
+    download.mockResolvedValue({ data: new Blob([new Uint8Array(4_000_001)]), error: null });
+
+    const response = await confirm();
+
+    expect(response.status).toBe(413);
+    expect((await response.json()).code).toBe("FILE_TOO_LARGE");
+    expect(rpc).not.toHaveBeenCalled();
+  });
+
+  it("원본이 정확히 4MB면 크기로 막지 않습니다", async () => {
+    stage();
+    const csv = new TextEncoder().encode(CSV);
+    download.mockResolvedValue({ data: new Blob([csv, new Uint8Array(4_000_000 - csv.byteLength).fill(0x0a)]), error: null });
+
+    const response = await confirm();
+
+    expect(response.status).not.toBe(413);
+  });
+
   it("DB가 월 한도로 거절하면 403과 초기화 시각을 돌려줍니다", async () => {
     // confirm_upload가 한도를 다시 확인합니다(0007). 업로드 행을 직접 넣어 POST의 검사를 피한 경우입니다.
     stage();

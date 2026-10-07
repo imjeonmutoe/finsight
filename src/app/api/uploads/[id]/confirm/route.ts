@@ -4,7 +4,7 @@ import { columnMappingSchema, errorResponse, jsonResponse, nextKstMonthStart, re
 import { buildTransactions } from "@/lib/csv";
 import { parseStatementRows } from "@/lib/statement";
 import { decodeCsv } from "@/lib/encoding";
-import { MAX_CSV_ROWS } from "@/lib/limits";
+import { MAX_CSV_ROWS, MAX_FILE_BYTES } from "@/lib/limits";
 import { ownsStoragePath } from "@/lib/storage-path";
 import { classifyByRule } from "@/lib/merchant-rules";
 import { createServerSupabase } from "@/services/supabase";
@@ -116,6 +116,10 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   const stored = await supabase.storage.from(BUCKET).download(upload.storage_path);
   if (stored.error || !stored.data) {
     return errorResponse(500, "STORAGE_FAILED", "원본 파일을 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.");
+  }
+  // 4MB 상한은 POST /api/uploads에서 검사했지만, 사용자는 Storage API로 자기 경로의 파일을 덮어쓸 수 있다.
+  if (stored.data.size > MAX_FILE_BYTES) {
+    return errorResponse(413, "FILE_TOO_LARGE", "파일이 4MB를 넘습니다. 기간을 나눠 다시 올려 주세요.");
   }
 
   let parsed: ParsedTransaction[];
