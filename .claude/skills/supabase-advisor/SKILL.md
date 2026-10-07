@@ -1,6 +1,6 @@
 ---
 name: supabase-advisor
-description: Supabase MCP의 get_advisors로 FinSight 원격 DB의 보안·성능 지적을 받아, 지적마다 고칠 방법을 제안하고 사용자와 고를 것을 정한 뒤, 고칠 수 있는 것은 마이그레이션 파일·PR로 고치고 승인을 받아 원격에 적용·재검사까지 한다. "DB 보안 점검", "DB 성능 점검", "supabase advisor", "get_advisors", "린터 돌려줘", "RLS 성능", "인덱스 빠진 거"에 쓴다. 코드 전체 보안은 owasp-scan, 브랜치 변경분은 /review-code가 본다.
+description: Supabase MCP의 get_advisors로 FinSight 원격 DB의 보안·성능 지적을 받아, 지적마다 고칠 방법을 제안하고 사용자와 고를 것을 정한 뒤, 고칠 수 있는 것은 마이그레이션 파일·PR로 고치고, 사람이 원격에 적용하면 재검사까지 한다. "DB 보안 점검", "DB 성능 점검", "supabase advisor", "get_advisors", "린터 돌려줘", "RLS 성능", "인덱스 빠진 거"에 쓴다. 코드 전체 보안은 owasp-scan, 브랜치 변경분은 /review-code가 본다.
 ---
 
 # Supabase 어드바이저 점검·수정
@@ -9,10 +9,11 @@ description: Supabase MCP의 get_advisors로 FinSight 원격 DB의 보안·성�
 
 **이 DB에는 실제 금융 데이터가 있다.** 그래서 이 스킬은 두 번 멈춘다.
 1. 무엇을 고칠지 — 사용자가 고른다 (3단계)
-2. 원격에 적용할지 — 사용자가 SQL을 보고 승인한다 (6단계)
+2. 원격에 적용 — **사람이** 대시보드 SQL Editor에서 실행한다 (6단계)
 
-승인 없이 `apply_migration`·`execute_sql`로 원격을 바꾸지 마라. 읽기(`get_advisors`·`list_*`·
-`SELECT`)는 언제든 해도 된다.
+에이전트는 원격을 바꿀 수 없다. Supabase MCP는 `read_only=true`라 SQL이 읽기 전용 역할로 돌고,
+`apply_migration`은 `.claude/settings.json`의 `permissions.deny`가 막는다(CLAUDE.md CRITICAL).
+쓰기가 거부됐다고 이 설정을 풀지 마라. 읽기(`get_advisors`·`list_*`·`SELECT`)는 언제든 해도 된다.
 
 ## 결과물
 
@@ -83,16 +84,21 @@ B·C·D는 고를 대상이 아니다. 안내와 보류 사유만 보여준다.
 - `fix(db): …` (conventional commits). 본문에 고친 lint 이름과 원리를 쓴다.
 - PR 본문에는 이 PR이 고치는 지적만 쓴다. 그리고 **원격 미적용**이라고 명시한다.
 
-### 6. 승인 게이트 — 원격 적용
+### 6. 원격 적용 — 사람이 한다
 
 멈추고 사용자에게 보여준다:
-- 적용할 SQL 전문
+- **실행할 SQL 전문** — 마이그레이션 파일 내용 그대로, 그 뒤에 이력 한 줄을 붙인다:
+  ```sql
+  insert into supabase_migrations.schema_migrations (version, name)
+  values ('<지금 UTC YYYYMMDDHHMMSS>', '<파일명에서 번호·확장자를 뺀 것>');
+  ```
+  SQL Editor는 이력을 남기지 않는다. 이 줄이 없으면 다음 실행의 1단계가 드리프트로 멈춘다.
+  마이그레이션이 실패하면 그 뒤 문장은 실행되지 않으므로 이력만 남는 일은 없다.
 - 대상 테이블 행 수와 예상 잠금
 - 되돌리는 SQL (정책이면 원래 식으로 `alter policy`, 인덱스면 `drop index`)
+- 실행 위치: 대시보드 → SQL Editor → 새 쿼리에 붙여 넣고 Run
 
-`AskUserQuestion`으로 승인을 받는다. 거절하면 PR만 남기고 끝낸다 — 그것도 정상 종료다.
-
-승인되면 `apply_migration`(name = 파일명에서 번호를 뺀 것, query = 파일 내용 그대로).
+사용자가 "적용했다"고 하면 7단계로 간다. 적용하지 않기로 하면 PR만 남기고 끝낸다 — 그것도 정상 종료다.
 
 ### 7. 재검사
 
@@ -111,7 +117,7 @@ B·C·D는 고를 대상이 아니다. 안내와 보류 사유만 보여준다.
 
 ## 하지 말 것
 
-- **승인 없이 원격 변경** — 읽기 외의 모든 원격 호출은 6단계에서만.
+- **원격 변경 시도·우회** — 에이전트는 읽기만 한다. `read_only`를 빼거나 deny를 지우거나 다른 자격증명(service role 키 등)으로 쓰려 하지 마라.
 - **advisor가 조용하다고 끝내기** — 1단계 사각지대 쿼리를 건너뛰지 마라.
 - **RLS를 끄거나 정책을 넓혀서 성능 지적을 없애기** — CLAUDE.md CRITICAL 위반이다.
 - **`profiles`·`insight_cache`에 쓰기 정책·권한 추가** — 클라이언트가 플랜을 바꿀 수 있게 된다.
