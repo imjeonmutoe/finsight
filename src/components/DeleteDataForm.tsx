@@ -63,10 +63,10 @@ export function DeleteDataForm() {
       <p className="text-sm leading-relaxed text-text-body">
         Anthropic에 이미 전송된 데이터는 회수할 수 없습니다.
       </p>
-      {/* 업로드 한도는 업로드 이력으로 셉니다(ADR-005, 카운터 테이블 금지). 이력이 사라지면
-          이번 달 횟수도 함께 초기화됩니다. 사용자가 겪게 될 상태 변화라 미리 말합니다. */}
+      {/* 이력을 지워도 이번 달에 쓴 업로드는 한 번으로 남습니다(0008, ADR-005). 다시 올리려다
+          막히기 전에 말합니다. */}
       <p className="text-sm leading-relaxed text-muted">
-        이번 달 업로드 횟수는 업로드 이력으로 세므로, 이력이 사라지면 이번 달 횟수도 함께 초기화됩니다.
+        무료 플랜은 데이터를 지워도 이번 달 업로드 횟수가 돌아오지 않습니다.
       </p>
 
       <div className="space-y-3">

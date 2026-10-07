@@ -91,13 +91,15 @@ async function post(request: Request): Promise<Response> {
 }
 
 /** 출처 확인 → 기존 업로드 조회까지의 기본 응답을 채웁니다. */
-function happyPath(options: { existing?: Result; plan?: string; monthCount?: number } = {}) {
+function happyPath(options: { existing?: Result; plan?: string; monthCount?: number; deletedAt?: string } = {}) {
   enqueue("financial_sources:select", { data: { id: SOURCE_ID, kind: "card" } });
   enqueue("uploads:select", options.existing ?? { data: null });
   enqueue("uploads:insert", { data: { id: UPLOAD_ID } });
   upload.mockResolvedValue({ error: null });
   enqueue("uploads:select", { data: { status: "pending", column_mapping: null, mapping_confidence: null } });
-  enqueue("profiles:select", { data: { plan: options.plan ?? "pro", plan_expires_at: null } });
+  enqueue("profiles:select", {
+    data: { plan: options.plan ?? "pro", plan_expires_at: null, last_deleted_upload_at: options.deletedAt ?? null },
+  });
   enqueue("uploads:select", { count: options.monthCount ?? 0 });
   enqueue("uploads:update", { data: null });
 }
@@ -553,6 +555,27 @@ describe("POST /api/uploads Free 업로드 한도", () => {
 
     expect(response.status).toBe(403);
     expect(inferColumnMapping).not.toHaveBeenCalled();
+  });
+
+  it("이번 달에 만든 업로드를 지웠으면 남은 행이 없어도 한도에 들어갑니다", async () => {
+    // 지우고 다시 올리는 것으로 횟수가 돌아오면 매핑·분류 호출을 계속 쓸 수 있습니다(0008).
+    vi.useFakeTimers().setSystemTime(new Date("2026-09-16T06:17:00.000Z"));
+    happyPath({ plan: "free", monthCount: 0, deletedAt: "2026-08-31T15:00:00.000Z" });
+    enqueue("uploads:delete", { data: null });
+
+    const response = await post(await multipart({ sourceId: SOURCE_ID, file: csvFile(CSV) }));
+
+    expect(response.status).toBe(403);
+    await expect(response.json()).resolves.toMatchObject({ code: "UPLOAD_LIMIT_REACHED" });
+    expect(inferColumnMapping).not.toHaveBeenCalled();
+    expect(argsOf("profiles:select", "select")[0]?.[0]).toContain("last_deleted_upload_at");
+  });
+
+  it("지난달에 만든 업로드를 지운 것은 이번 달 한도에 들어가지 않습니다", async () => {
+    vi.useFakeTimers().setSystemTime(new Date("2026-09-16T06:17:00.000Z"));
+    happyPath({ plan: "free", monthCount: 0, deletedAt: "2026-08-31T14:59:59.000Z" });
+
+    expect((await post(await multipart({ sourceId: SOURCE_ID, file: csvFile(CSV) }))).status).toBe(200);
   });
 
   it("한도를 세는 쿼리가 실패하면 허용하지 않고 500과 함께 정리합니다", async () => {

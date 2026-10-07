@@ -379,3 +379,60 @@ describe("클라이언트 직접 쓰기로 분류 비용을 늘리는 경로", (
     expect(rawCostSql).not.toMatch(/llm_usage|lease/i);
   });
 });
+
+const rawDeletedSql = readFileSync(
+  new URL("../../supabase/migrations/0008_keep_count_after_upload_delete.sql", import.meta.url),
+  "utf8",
+);
+const deletedSql = rawDeletedSql.replace(/--[^\n]*/g, "").replace(/\s+/g, " ").trim();
+const KST_MONTH = "date_trunc('month', now() at time zone 'Asia/Seoul') at time zone 'Asia/Seoul'";
+const DELETED_THIS_MONTH = `(select p.last_deleted_upload_at from public.profiles p where p.id = v_user) >= ${KST_MONTH}`;
+
+function confirmFunction(source: string): string {
+  const body = source.match(/create or replace function public\.confirm_upload\(.*?\$\$;/)?.[0];
+  if (!body) throw new Error("confirm_upload 정의를 찾을 수 없습니다.");
+  return body;
+}
+
+describe("업로드를 지워도 Free 월 한도가 돌아오지 않습니다", () => {
+  // 한도는 uploads 행으로 셉니다. 행을 지우면(라우트·PostgREST 직접·전체 삭제 모두) 횟수가 0으로
+  // 돌아가 매핑·분류 호출을 다시 쓸 수 있었습니다. 삭제 사실은 클라이언트가 못 쓰는 곳에 남깁니다.
+  it("삭제 표시는 클라이언트가 쓸 수 없는 profiles에 남깁니다", () => {
+    expect(deletedSql).toContain("alter table public.profiles add column last_deleted_upload_at timestamptz;");
+  });
+
+  it("업로드 행이 지워지는 모든 경로에서 트리거가 돕니다", () => {
+    expect(deletedSql).toMatch(
+      /create trigger \w+ after delete on public\.uploads for each row execute function public\.remember_deleted_upload\(\);/,
+    );
+  });
+
+  it("트리거 함수는 definer·빈 search_path로 지워진 행 주인의 프로필만 갱신합니다", () => {
+    const fn = deletedSql.match(/create function public\.remember_deleted_upload\(\)(.*?)\$\$;/)?.[1];
+    expect(fn).toBeDefined();
+    expect(fn).toContain("security definer");
+    expect(fn).toContain("set search_path = ''");
+    expect(fn).toContain(
+      "update public.profiles set last_deleted_upload_at = greatest(last_deleted_upload_at, old.created_at) where id = old.user_id;",
+    );
+  });
+
+  it("트리거 함수를 RPC로 부를 수 없습니다", () => {
+    expect(deletedSql).toContain(
+      "revoke all on function public.remember_deleted_upload() from public, anon, authenticated, service_role;",
+    );
+  });
+
+  it("confirm_upload는 0007 본문에 '이번 달 지운 업로드' 검사만 더합니다", () => {
+    // definer 함수의 v_user 스코프·행 수 상한·잠금은 0007 테스트가 본 그대로여야 합니다.
+    const restored = confirmFunction(deletedSql)
+      .replace(") and ( exists (", ") and exists (")
+      .replace(` ) or ${DELETED_THIS_MONTH} ) then`, " ) then");
+    expect(confirmFunction(deletedSql)).toContain(DELETED_THIS_MONTH);
+    expect(restored).toBe(confirmFunction(costSql));
+  });
+
+  it("사용량 테이블과 lease 개념을 도입하지 않습니다", () => {
+    expect(rawDeletedSql).not.toMatch(/llm_usage|lease/i);
+  });
+});

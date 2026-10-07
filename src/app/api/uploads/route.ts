@@ -45,7 +45,10 @@ const mappedSchema = z.object({
   column_mapping: z.unknown(),
   mapping_confidence: z.number().nullable().default(null),
 });
-const profileSchema = z.object({ plan: z.enum(["free", "pro"]), plan_expires_at: z.string().nullable().default(null) });
+const profileSchema = z.object({
+  plan: z.enum(["free", "pro"]), plan_expires_at: z.string().nullable().default(null),
+  last_deleted_upload_at: z.string().nullable().default(null),
+});
 
 const MAPPING_ERROR = "컬럼 매핑을 추론하지 못했습니다. 매핑 확인 화면에서 컬럼을 직접 선택해 주세요. 이번 업로드는 한 달 횟수를 소비하지 않았습니다.";
 
@@ -206,7 +209,7 @@ export async function POST(request: Request) {
     return reuseResponse({ id: uploadId, ...cached.data });
   }
 
-  const profile = profileSchema.safeParse((await supabase.from("profiles").select("plan,plan_expires_at")
+  const profile = profileSchema.safeParse((await supabase.from("profiles").select("plan,plan_expires_at,last_deleted_upload_at")
     .eq("id", userId).maybeSingle()).data);
   const now = new Date();
   const pro = profile.success && profile.data.plan === "pro"
@@ -219,7 +222,10 @@ export async function POST(request: Request) {
       .eq("user_id", userId).neq("id", uploadId).gte("created_at", kstMonthStart(now));
     // 세지 못했으면 허용하지 않습니다. null을 0으로 보면 DB가 흔들리는 동안 한도가 꺼집니다.
     const counted = !countError && count !== null && count !== undefined;
-    if (!counted || count >= 1) {
+    // 이번 달에 만든 업로드를 지웠어도 한 번으로 셉니다. 표시는 삭제 트리거가 profiles에 남깁니다(0008).
+    const deletedThisMonth = profile.success && profile.data.last_deleted_upload_at !== null
+      && Date.parse(profile.data.last_deleted_upload_at) >= Date.parse(kstMonthStart(now));
+    if (!counted || count >= 1 || deletedThisMonth) {
       // 모델을 호출하기 전에 되돌립니다. 한도 초과가 호출 비용을 쓰지 않습니다.
       await supabase.storage.from(BUCKET).remove([storagePath]);
       if (existing.success) await markFailed(MAPPING_ERROR);

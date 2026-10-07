@@ -183,6 +183,10 @@ export function UploadHistory({ uploads, staleBefore }: {
                 <p className="text-sm leading-relaxed text-text-body">
                   다른 파일에도 있던 거래라면 그 파일을 다시 올려야 복구됩니다.
                 </p>
+                {/* 지워도 이번 달에 쓴 업로드는 한 번으로 남습니다(0008, ADR-005). */}
+                <p className="text-sm leading-relaxed text-muted">
+                  무료 플랜은 업로드를 지워도 이번 달 업로드 횟수가 돌아오지 않습니다.
+                </p>
                 {error && <p role="alert" className="text-sm leading-relaxed text-up">{error}</p>}
                 <div className="flex flex-wrap gap-3">
                   <button

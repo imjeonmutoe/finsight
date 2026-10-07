@@ -37,6 +37,11 @@ describe("금융 데이터 삭제", () => {
     expect(screen.getByText(/계정 삭제는 개인정보처리방침의 문의 경로로 접수합니다/)).toBeVisible();
   });
 
+  it("지워도 이번 달 업로드 횟수가 돌아오지 않는다고 알립니다", () => {
+    expect(screen.getByText("무료 플랜은 데이터를 지워도 이번 달 업로드 횟수가 돌아오지 않습니다.")).toBeVisible();
+    expect(screen.queryByText(/초기화됩니다/)).toBeNull();
+  });
+
   it("확인 문구를 정확히 입력해야 실행할 수 있습니다", () => {
     const button = screen.getByRole("button", { name: "금융 데이터 삭제하기" });
     expect(button).toBeDisabled();

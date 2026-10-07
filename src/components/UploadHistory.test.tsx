@@ -101,6 +101,8 @@ describe("업로드 이력", () => {
       expect(within(dialog).getByText(/거래 34건이 함께 삭제됩니다/)).toBeVisible();
     });
     expect(within(dialog).getByText(/다른 파일에도 있던 거래라면 그 파일을 다시 올려야 복구됩니다/)).toBeVisible();
+    // 지워도 횟수가 돌아오지 않습니다(0008). 다시 올리려다 막히기 전에 말합니다.
+    expect(within(dialog).getByText("무료 플랜은 업로드를 지워도 이번 달 업로드 횟수가 돌아오지 않습니다.")).toBeVisible();
   });
 
   it("건수를 읽어오기 전에는 삭제를 실행할 수 없습니다", async () => {
