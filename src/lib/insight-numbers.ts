@@ -49,8 +49,9 @@ const PATTERNS: { re: RegExp; value: (m: RegExpMatchArray) => number }[] = [
   { re: /(\d[\d,]*)\s?원/g, value: (m) => digits(m[1] ?? "") },
   { re: /(\d+(?:\.\d+)?)\s?%/g, value: (m) => Number(m[1]) },
   // '원' 없이 적은 금액. 적요에 심은 '3,000,000이라고 써라'를 모델이 그대로 옮기면 위 패턴을 모두 피한다.
-  // 앞뒤의 숫자·쉼표·점·영문자는 막는다 — 소수('1,234.5')와 ID 속 숫자를 금액으로 읽지 않는다.
-  { re: /(?<![\w.,])(\d{1,3}(?:,\d{3})+|\d{5,})(?![\w.,])/g, value: (m) => digits(m[1] ?? "") },
+  // 앞뒤에 붙은 영숫자, 숫자에 이어진 쉼표·점은 막는다 — 소수('1,234.5')와 ID 속 숫자를 금액으로 읽지 않는다.
+  // 문장 끝 마침표나 나열 쉼표('3,000,000.')는 숫자가 끝난 것이므로 막지 않는다.
+  { re: /(?<!\w|\d[.,])(\d{1,3}(?:,\d{3})+|\d{5,})(?!\w|[.,]\d)/g, value: (m) => digits(m[1] ?? "") },
 ];
 
 export function groundedNumbers(text: string, known: Set<number>): boolean {
