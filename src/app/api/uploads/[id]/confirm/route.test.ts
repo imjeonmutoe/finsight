@@ -265,6 +265,20 @@ describe("POST /api/uploads/[id]/confirm 검증", () => {
     expect(body.message).not.toContain("38400");
   });
 
+  it("DB가 월 한도로 거절하면 403과 초기화 시각을 돌려줍니다", async () => {
+    // confirm_upload가 한도를 다시 확인합니다(0007). 업로드 행을 직접 넣어 POST의 검사를 피한 경우입니다.
+    stage();
+    rpc.mockResolvedValue({ data: null, error: { code: "P0001", message: "UPLOAD_LIMIT_REACHED" } });
+
+    const response = await confirm();
+    const body = await response.json();
+
+    expect(response.status).toBe(403);
+    expect(body.code).toBe("UPLOAD_LIMIT_REACHED");
+    expect(body.message).toBe("이번 달 무료 업로드를 이미 사용했습니다. 다음 달 1일에 초기화됩니다.");
+    expect(typeof body.resetsAt).toBe("string");
+  });
+
   it("원본을 읽지 못하면 500이며 거래를 넣지 않습니다", async () => {
     stage();
     download.mockResolvedValue({ data: null, error: { message: "object not found" } });

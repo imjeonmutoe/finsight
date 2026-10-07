@@ -1,6 +1,6 @@
 import { cookies } from "next/headers";
 import { z } from "zod";
-import { columnMappingSchema, errorResponse, jsonResponse, requireUserId } from "@/lib/api";
+import { columnMappingSchema, errorResponse, jsonResponse, nextKstMonthStart, requireUserId } from "@/lib/api";
 import { buildTransactions } from "@/lib/csv";
 import { parseStatementRows } from "@/lib/statement";
 import { decodeCsv } from "@/lib/encoding";
@@ -224,6 +224,12 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     p_import_context: context,
   });
   if (result.error) {
+    // confirm_upload가 월 한도를 다시 확인합니다(0007). 업로드 행을 직접 넣어 POST의 검사를 피한 경우입니다.
+    if (result.error.message === "UPLOAD_LIMIT_REACHED") {
+      return errorResponse(403, "UPLOAD_LIMIT_REACHED",
+        "이번 달 무료 업로드를 이미 사용했습니다. 다음 달 1일에 초기화됩니다.",
+        { resetsAt: nextKstMonthStart(new Date()) });
+    }
     return errorResponse(500, "CONFIRM_FAILED", "거래를 저장하지 못했습니다. 잠시 후 다시 시도해 주세요.");
   }
 

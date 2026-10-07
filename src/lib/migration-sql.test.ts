@@ -2,6 +2,7 @@
 
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
+import { MAX_CSV_ROWS } from "@/lib/limits";
 import { CATEGORIES } from "@/types/category";
 
 const rawSql = readFileSync(
@@ -308,5 +309,73 @@ describe("uploads 컬럼 단위 쓰기 권한", () => {
       "byte_size", "column_mapping", "duplicate_count", "encoding", "error_message", "filename",
       "import_context", "inserted_count", "mapping_confidence", "row_count", "status", "unclassified_count",
     ]);
+  });
+});
+
+const rawCostSql = readFileSync(
+  new URL("../../supabase/migrations/0007_close_client_cost_paths.sql", import.meta.url),
+  "utf8",
+);
+const costSql = rawCostSql.replace(/--[^\n]*/g, "").replace(/\s+/g, " ").trim();
+
+describe("클라이언트 직접 쓰기로 분류 비용을 늘리는 경로", () => {
+  // 분류 비용은 '들어간 거래 수'로 상한이 잡힌다는 것이 ADR-012의 전제입니다. 거래를 넣는 길이
+  // confirm_upload 하나뿐이어야 그 전제가 성립합니다.
+  it("거래 테이블에 클라이언트 INSERT를 허용하지 않습니다", () => {
+    expect(costSql).toContain("revoke insert on table public.transactions from authenticated;");
+  });
+
+  it("confirm_upload는 표 권한 없이 넣을 수 있도록 definer로 돌고 search_path를 비웁니다", () => {
+    const header = costSql.match(/create or replace function public\.confirm_upload\((.*?) as \$\$/)?.[1];
+    expect(header).toBeDefined();
+    expect(header).toContain("security definer");
+    expect(header).not.toContain("security invoker");
+    expect(header).toContain("set search_path = ''");
+  });
+
+  it("definer는 RLS를 우회하므로 모든 조회·쓰기를 세션 UID로 다시 묶습니다", () => {
+    for (const statement of [
+      "v_user uuid := (select auth.uid())",
+      "raise exception 'AUTH_REQUIRED'",
+      "where id = p_upload_id and user_id = v_user for update",
+      "perform 1 from public.financial_sources where user_id = v_user and id = v_upload.source_id for update",
+      "on t.user_id = v_user and t.source_id = v_upload.source_id",
+      "where t.id = d.\"transactionId\" and t.user_id = v_user and t.source_id = v_upload.source_id",
+      "select v_user, v_upload.source_id, p_upload_id,",
+      "where id = p_upload_id and user_id = v_user; return jsonb_build_object(",
+    ]) expect(costSql).toContain(statement);
+  });
+
+  it("함수를 직접 불러도 행 수 상한을 넘길 수 없습니다", () => {
+    // RPC는 PostgREST로 직접 부를 수 있습니다. 라우트의 10,000행 검사를 거치지 않습니다.
+    expect(costSql).toContain(`if jsonb_array_length(p_rows) > ${MAX_CSV_ROWS} then raise exception 'TOO_MANY_ROWS';`);
+  });
+
+  it("Free 월 1회 한도를 거래가 들어가는 지점에서 다시 확인합니다", () => {
+    // 업로드 행은 클라이언트가 직접 INSERT할 수 있으므로(0004) POST /api/uploads의 검사만으로는 부족합니다.
+    expect(costSql).toContain("perform 1 from public.profiles where id = v_user for update");
+    expect(costSql).toContain("p.plan = 'pro' and (p.plan_expires_at is null or p.plan_expires_at > now())");
+    expect(costSql).toContain("u.user_id = v_user and u.id <> p_upload_id and u.status = 'parsed'");
+    expect(costSql).toContain("u.created_at >= date_trunc('month', now() at time zone 'Asia/Seoul') at time zone 'Asia/Seoul'");
+    expect(costSql).toContain("raise exception 'UPLOAD_LIMIT_REACHED'");
+  });
+
+  it("한도 검사는 재승인 반환 뒤, 거래 insert 앞에 있습니다", () => {
+    const limit = costSql.indexOf("raise exception 'UPLOAD_LIMIT_REACHED'");
+    expect(costSql.indexOf("if v_upload.status = 'parsed' then")).toBeLessThan(limit);
+    expect(limit).toBeLessThan(costSql.indexOf("insert into public.transactions"));
+  });
+
+  it("분류된 카테고리를 NULL로 되돌려 다시 분류시킬 수 없습니다", () => {
+    expect(costSql).toContain("if old.category is not null and new.category is null then raise exception 'CATEGORY_RESET_FORBIDDEN';");
+    expect(costSql).toMatch(/create trigger \w+ before update of category on public\.transactions for each row execute function public\.\w+\(\);/);
+  });
+
+  it("함수 실행 권한은 그대로 authenticated뿐입니다", () => {
+    expect(costSql).not.toMatch(/grant execute on function public\.confirm_upload[^;]* to (public|anon)/);
+  });
+
+  it("사용량 테이블과 lease 개념을 도입하지 않습니다", () => {
+    expect(rawCostSql).not.toMatch(/llm_usage|lease/i);
   });
 });
