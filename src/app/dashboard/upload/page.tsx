@@ -26,6 +26,7 @@ const sourcesSchema = z.array(z.object({
 const profileSchema = z.object({
   plan: z.enum(["free", "pro"]),
   plan_expires_at: z.string().nullable().default(null),
+  last_deleted_upload_at: z.string().nullable().default(null),
 });
 const resumeSchema = z.object({
   id: z.string(), source_id: z.string(), filename: z.string(), storage_path: z.string(),
@@ -96,7 +97,7 @@ export default async function UploadPage({ searchParams }: {
     .select("id,label,kind").eq("user_id", userId).order("created_at", { ascending: true })).data);
 
   const profile = profileSchema.safeParse((await supabase.from("profiles")
-    .select("plan,plan_expires_at").eq("id", userId).maybeSingle()).data);
+    .select("plan,plan_expires_at,last_deleted_upload_at").eq("id", userId).maybeSingle()).data);
   const now = new Date();
   const pro = profile.success && profile.data.plan === "pro"
     && (profile.data.plan_expires_at === null || Date.parse(profile.data.plan_expires_at) > now.getTime());
@@ -105,7 +106,10 @@ export default async function UploadPage({ searchParams }: {
   // 라우트와 같은 기준으로 셉니다. 카운터 테이블을 두지 않습니다(ADR-005).
   const { count } = await supabase.from("uploads").select("id", { count: "exact", head: true })
     .eq("user_id", userId).gte("created_at", kstMonthStart(now));
-  const limitReached = !pro && (count ?? 0) >= 1;
+  // 이번 달에 만든 업로드를 지운 것도 한 번입니다(0008).
+  const deletedThisMonth = profile.success && profile.data.last_deleted_upload_at !== null
+    && Date.parse(profile.data.last_deleted_upload_at) >= Date.parse(kstMonthStart(now));
+  const limitReached = !pro && ((count ?? 0) >= 1 || deletedThisMonth);
 
   // 집계는 step 6의 queries.ts만 씁니다. 여기서 다시 구현하지 않습니다.
   let monthsHeld = 0;

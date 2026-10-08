@@ -45,7 +45,10 @@ const mappedSchema = z.object({
   column_mapping: z.unknown(),
   mapping_confidence: z.number().nullable().default(null),
 });
-const profileSchema = z.object({ plan: z.enum(["free", "pro"]), plan_expires_at: z.string().nullable().default(null) });
+const profileSchema = z.object({
+  plan: z.enum(["free", "pro"]), plan_expires_at: z.string().nullable().default(null),
+  last_deleted_upload_at: z.string().nullable().default(null),
+});
 
 const MAPPING_ERROR = "컬럼 매핑을 추론하지 못했습니다. 매핑 확인 화면에서 컬럼을 직접 선택해 주세요. 이번 업로드는 한 달 횟수를 소비하지 않았습니다.";
 
@@ -152,16 +155,48 @@ export async function POST(request: Request) {
     filename: file.name, import_context: importContext, status: "pending" as const, error_message: null,
   };
 
+  // storage_path는 클라이언트가 직접 INSERT할 수 있는 컬럼이다(0004). 남의 폴더에 덮어쓰지 않는다.
+  if (existing.success && !ownsStoragePath(userId, existing.data.storage_path)) {
+    return errorResponse(500, "UPLOAD_FAILED", "업로드를 준비하지 못했습니다. 잠시 후 다시 시도해 주세요.");
+  }
+
+  // 한도는 행·파일을 만들기 전에 봅니다. 만든 뒤 되돌려 지우면 그 삭제가 0008 트리거를 타서
+  // 한 번도 올리지 못한 사용자의 이번 달이 소진됩니다. 모델 호출 비용도 쓰지 않습니다.
+  const profile = profileSchema.safeParse((await supabase.from("profiles").select("plan,plan_expires_at,last_deleted_upload_at")
+    .eq("id", userId).maybeSingle()).data);
+  const now = new Date();
+  const pro = profile.success && profile.data.plan === "pro"
+    && (profile.data.plan_expires_at === null || Date.parse(profile.data.plan_expires_at) > now.getTime());
+  if (!pro) {
+    // 카운터 테이블을 두지 않습니다. uploads를 KST 캘린더 월로 직접 셉니다.
+    // status로 거르지 않습니다. 추론을 일부러 실패시킨 업로드(failed)를 빼고 세면 그런 파일을
+    // 여러 개 쌓아 두고 confirm하는 것으로 한도가 풀립니다. created_at은 클라이언트가 쓸 수 없습니다(0004).
+    let monthUploads = supabase.from("uploads").select("id", { count: "exact", head: true })
+      .eq("user_id", userId).gte("created_at", kstMonthStart(now));
+    // 같은 파일의 기존 행을 다시 쓰는 경우 그 행은 빼고 셉니다(ADR-005 완화 ②).
+    if (existing.success) monthUploads = monthUploads.neq("id", existing.data.id);
+    const { count, error: countError } = await monthUploads;
+    // 세지 못했으면 허용하지 않습니다. null을 0으로 보면 DB가 흔들리는 동안 한도가 꺼집니다.
+    const counted = !countError && count !== null && count !== undefined;
+    if (!counted) {
+      return errorResponse(500, "LIMIT_CHECK_FAILED", "업로드 한도를 확인하지 못했습니다. 잠시 후 다시 시도해 주세요.");
+    }
+    // 이번 달에 만든 업로드를 지웠어도 한 번으로 셉니다. 표시는 삭제 트리거가 profiles에 남깁니다(0008).
+    const deletedThisMonth = profile.success && profile.data.last_deleted_upload_at !== null
+      && Date.parse(profile.data.last_deleted_upload_at) >= Date.parse(kstMonthStart(now));
+    if (count >= 1 || deletedThisMonth) {
+      return errorResponse(403, "UPLOAD_LIMIT_REACHED",
+        "이번 달 무료 업로드를 이미 사용했습니다. 다음 달 1일에 초기화됩니다.",
+        { resetsAt: nextKstMonthStart(now) });
+    }
+  }
+
   let uploadId: string;
   let storagePath: string;
   if (existing.success) {
     // 같은 행·파일을 재사용합니다. 실패한 업로드가 이력에 중복으로 쌓이지 않습니다.
     uploadId = existing.data.id;
     storagePath = existing.data.storage_path;
-    // storage_path는 클라이언트가 직접 INSERT할 수 있는 컬럼이다(0004). 남의 폴더에 덮어쓰지 않는다.
-    if (!ownsStoragePath(userId, storagePath)) {
-      return errorResponse(500, "UPLOAD_FAILED", "업로드를 준비하지 못했습니다. 잠시 후 다시 시도해 주세요.");
-    }
     const { error } = await supabase.from("uploads").update(record).eq("id", uploadId).eq("user_id", userId);
     if (error) return errorResponse(500, "UPLOAD_FAILED", "업로드를 준비하지 못했습니다. 잠시 후 다시 시도해 주세요.");
   } else {
@@ -204,33 +239,6 @@ export async function POST(request: Request) {
     .select("status,column_mapping,mapping_confidence").eq("id", uploadId).eq("user_id", userId).maybeSingle()).data);
   if (cached.success && cached.data.status !== "pending" && storedMapping(cached.data.column_mapping)) {
     return reuseResponse({ id: uploadId, ...cached.data });
-  }
-
-  const profile = profileSchema.safeParse((await supabase.from("profiles").select("plan,plan_expires_at")
-    .eq("id", userId).maybeSingle()).data);
-  const now = new Date();
-  const pro = profile.success && profile.data.plan === "pro"
-    && (profile.data.plan_expires_at === null || Date.parse(profile.data.plan_expires_at) > now.getTime());
-  if (!pro) {
-    // 카운터 테이블을 두지 않습니다. uploads를 KST 캘린더 월로 직접 셉니다.
-    // status로 거르지 않습니다. 추론을 일부러 실패시킨 업로드(failed)를 빼고 세면 그런 파일을
-    // 여러 개 쌓아 두고 confirm하는 것으로 한도가 풀립니다. created_at은 클라이언트가 쓸 수 없습니다(0004).
-    const { count, error: countError } = await supabase.from("uploads").select("id", { count: "exact", head: true })
-      .eq("user_id", userId).neq("id", uploadId).gte("created_at", kstMonthStart(now));
-    // 세지 못했으면 허용하지 않습니다. null을 0으로 보면 DB가 흔들리는 동안 한도가 꺼집니다.
-    const counted = !countError && count !== null && count !== undefined;
-    if (!counted || count >= 1) {
-      // 모델을 호출하기 전에 되돌립니다. 한도 초과가 호출 비용을 쓰지 않습니다.
-      await supabase.storage.from(BUCKET).remove([storagePath]);
-      if (existing.success) await markFailed(MAPPING_ERROR);
-      else await supabase.from("uploads").delete().eq("id", uploadId).eq("user_id", userId);
-      if (!counted) {
-        return errorResponse(500, "LIMIT_CHECK_FAILED", "업로드 한도를 확인하지 못했습니다. 잠시 후 다시 시도해 주세요.");
-      }
-      return errorResponse(403, "UPLOAD_LIMIT_REACHED",
-        "이번 달 무료 업로드를 이미 사용했습니다. 다음 달 1일에 초기화됩니다.",
-        { resetsAt: nextKstMonthStart(now) });
-    }
   }
 
   const headers = rows[headerRowIndex] ?? [];

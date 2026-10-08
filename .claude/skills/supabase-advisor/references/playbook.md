@@ -21,6 +21,7 @@
 | `auth_leaked_password_protection` | 보안 | C (Free) / B (Pro+) | 아래 절 참고 |
 | `auth_otp_long_expiry` | 보안 | B | Auth → Providers → Email에서 OTP 만료를 1시간 이하로 |
 | `auth_insufficient_mfa_options` | 보안 | B | MFA 도입은 제품 결정이다. 사용자에게 묻는다 |
+| `authenticated_security_definer_function_executable` | 보안 | D 또는 A | `confirm_upload`면 의도됨. 그 밖의 함수면 아래 절 참고 |
 
 ## A 레시피
 
@@ -84,6 +85,17 @@ HaveIBeenPwned 대조로 유출된 비밀번호를 거절한다. 문서
 
 RLS를 켜고 정책을 안 둔 것은 "authenticated는 아무것도 못 한다"는 뜻이다. service_role 전용
 테이블이면 의도된 것이다. 정책을 추가하기 전에 그 테이블을 클라이언트가 읽어야 하는지 `src/`에서 확인한다.
+
+### `authenticated_security_definer_function_executable`
+
+`confirm_upload`는 0007에서 일부러 definer로 바꿨다. `transactions` INSERT를 클라이언트에게서 회수했으므로
+거래를 넣는 유일한 길이 이 함수이고, 사용자 세션(authenticated)이 RPC로 불러야 한다. 함수 안의 모든 조회·쓰기는
+`v_user`(세션 UID)로 묶여 있고 `search_path = ''`다 — `src/lib/migration-sql.test.ts`가 지킨다. 보류 사유:
+"거래 insert 단일 경로, v_user 스코프 테스트로 고정".
+
+다른 함수가 이 lint에 걸리면 A다. 트리거 전용 함수는 EXECUTE 권한 없이도 트리거로 돌므로
+`revoke all on function … from public, anon, authenticated, service_role`로 닫는다(`handle_new_user`·
+`remember_deleted_upload`가 그렇게 한다). RPC로 불러야 하는 함수면 invoker로 되돌릴 수 있는지 먼저 본다.
 
 ## 쿼리
 

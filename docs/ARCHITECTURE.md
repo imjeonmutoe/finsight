@@ -125,6 +125,7 @@ step 파일은 담당 화면을 이 ID로 지칭한다. 독립 세션끼리 같�
 profiles(id PK → auth.users, email,    -- authenticated는 자기 행 SELECT만
          plan 'free'|'pro',
          plan_expires_at timestamptz NULL,   -- Polar이 만료일만 주는 경우 사용
+         last_deleted_upload_at timestamptz NULL,  -- 지운 업로드 중 가장 늦은 created_at (삭제 트리거만 쓴다)
          polar_customer_id, polar_subscription_id,
          plan_updated_at timestamptz, created_at)
 
@@ -263,6 +264,10 @@ Free는 **KST(Asia/Seoul) 캘린더 월 기준 1회**, Pro는 무제한이다(AD
     and created_at >= (date_trunc('month', now() at time zone 'Asia/Seoul')) at time zone 'Asia/Seoul'
   ```
   이유: 별도 카운터는 삭제·실패·재시도와 어긋나 드리프트가 생긴다. `uploads`가 이미 단일 진실 공급원이다.
+- **지운 업로드도 그 달의 1회로 남는다.** `uploads` AFTER DELETE 트리거가 지워진 행의 `created_at`을
+  `profiles.last_deleted_upload_at`에 남기고(`greatest`), 그 값이 이번 KST 달이면 한도에 도달한 것으로 본다(0008).
+  `profiles`는 클라이언트가 쓸 수 없어 지워도 되돌릴 수 없다. 개별 업로드 삭제·PostgREST 직접 DELETE·
+  금융 데이터 전체 삭제 모두 같은 트리거를 탄다. 카운터가 아니라 시각 하나라 드리프트가 생기지 않는다.
 - **`status='failed'`는 세지 않는다.** 매핑 추론이 실패한 업로드로 사용자의 이번 달 기회를 소진시키지 않는다. 단 실패도 호출 한도는 소비하므로 무한 재시도는 `## LLM 사용량 제한`이 막는다.
 - **동일 파일 재업로드는 횟수를 소비하지 않는다.** `(user_id, source_id, file_hash)` UNIQUE로 기존 업로드를 반환하는 경로에서는 새 행이 생기지 않으므로 카운트가 늘지 않는다.
 - **동시 업로드 경쟁은 막지 않는다.** 서로 다른 파일 2개를 동시에 올리면 무료 사용자가 월 1회를 한 번 초과할 수 있다. 이를 막으려면 사용자 행 잠금이나 lease 인프라가 필요한데, ADR-012에서 그걸 걷어냈다. **최악의 결과가 '무료 업로드 1회 초과'이므로 감수한다.** 락을 새로 만들지 마라.
