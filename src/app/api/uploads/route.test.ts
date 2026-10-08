@@ -94,13 +94,16 @@ async function post(request: Request): Promise<Response> {
 function happyPath(options: { existing?: Result; plan?: string; monthCount?: number; deletedAt?: string } = {}) {
   enqueue("financial_sources:select", { data: { id: SOURCE_ID, kind: "card" } });
   enqueue("uploads:select", options.existing ?? { data: null });
-  enqueue("uploads:insert", { data: { id: UPLOAD_ID } });
-  upload.mockResolvedValue({ error: null });
-  enqueue("uploads:select", { data: { status: "pending", column_mapping: null, mapping_confidence: null } });
   enqueue("profiles:select", {
     data: { plan: options.plan ?? "pro", plan_expires_at: null, last_deleted_upload_at: options.deletedAt ?? null },
   });
-  enqueue("uploads:select", { count: options.monthCount ?? 0 });
+  // 한도는 행·파일을 만들기 전에 셉니다. Pro는 세지 않으므로 카운트 응답을 넣지 않습니다.
+  if (options.plan === "free" || options.monthCount !== undefined) {
+    enqueue("uploads:select", { count: options.monthCount ?? 0 });
+  }
+  enqueue("uploads:insert", { data: { id: UPLOAD_ID } });
+  upload.mockResolvedValue({ error: null });
+  enqueue("uploads:select", { data: { status: "pending", column_mapping: null, mapping_confidence: null } });
   enqueue("uploads:update", { data: null });
 }
 
@@ -348,6 +351,7 @@ describe("POST /api/uploads 저장과 매핑", () => {
   it("동시 업로드가 UNIQUE에 부딪히면 기존 행을 재조회해 하나의 업로드만 남깁니다", async () => {
     enqueue("financial_sources:select", { data: { id: SOURCE_ID, kind: "card" } });
     enqueue("uploads:select", { data: null });
+    enqueue("profiles:select", { data: { plan: "pro", plan_expires_at: null } });
     enqueue("uploads:insert", { error: { code: "23505" } });
     enqueue("uploads:select", {
       data: {
@@ -499,6 +503,7 @@ describe("POST /api/uploads 저장과 매핑", () => {
   it("경쟁 요청이 이미 매핑을 만들어 두면 그 결과를 재사용합니다", async () => {
     enqueue("financial_sources:select", { data: { id: SOURCE_ID, kind: "card" } });
     enqueue("uploads:select", { data: null });
+    enqueue("profiles:select", { data: { plan: "pro", plan_expires_at: null } });
     enqueue("uploads:insert", { data: { id: UPLOAD_ID } });
     upload.mockResolvedValue({ error: null });
     enqueue("uploads:select", { data: { status: "mapped", column_mapping: MAPPING, mapping_confidence: 0.8 } });
@@ -511,10 +516,9 @@ describe("POST /api/uploads 저장과 매핑", () => {
 });
 
 describe("POST /api/uploads Free 업로드 한도", () => {
-  it("한도 도달 시 403·초기화 시각과 함께 pending 행과 파일을 정리합니다", async () => {
+  it("한도 도달 시 행·파일을 만들기 전에 403과 초기화 시각을 돌려줍니다", async () => {
     vi.useFakeTimers().setSystemTime(new Date("2026-09-16T06:17:00.000Z"));
     happyPath({ plan: "free", monthCount: 1 });
-    enqueue("uploads:delete", { data: null });
 
     const response = await post(await multipart({ sourceId: SOURCE_ID, file: csvFile(CSV) }));
 
@@ -525,13 +529,11 @@ describe("POST /api/uploads Free 업로드 한도", () => {
       resetsAt: "2026-09-30T15:00:00.000Z",
     });
     expect(inferColumnMapping).not.toHaveBeenCalled();
-    // 지우는 대상은 방금 올린 서버 생성 경로와 같아야 합니다.
-    expect(remove).toHaveBeenCalledWith([upload.mock.calls[0]?.[0]]);
-    expect(upload.mock.calls[0]?.[0]).toMatch(/^user-1\/[0-9a-f-]{36}\.csv$/);
-    expect(argsOf("uploads:delete", "eq")).toEqual([["id", UPLOAD_ID], ["user_id", "user-1"]]);
+    expect(argsOf("uploads:insert", "insert")).toEqual([]);
+    expect(upload).not.toHaveBeenCalled();
   });
 
-  it("한도는 KST 캘린더 월에 만든 업로드를 상태와 관계없이 세고 지금 행은 뺍니다", async () => {
+  it("한도는 KST 캘린더 월에 만든 업로드를 상태와 관계없이 셉니다", async () => {
     // status로 거르면 추론을 일부러 실패시킨 업로드(failed)가 세어지지 않아, 그런 파일을 여러 개
     // 쌓아 두고 하나씩 confirm하는 것으로 한도가 무력화됩니다. status는 클라이언트가 바꿀 수도 있습니다.
     vi.useFakeTimers().setSystemTime(new Date("2026-09-16T06:17:00.000Z"));
@@ -541,15 +543,31 @@ describe("POST /api/uploads Free 업로드 한도", () => {
 
     expect(response.status).toBe(200);
     expect(argsOf("uploads:select", "in")).toEqual([]);
-    expect(argsOf("uploads:select", "neq")).toEqual([["id", UPLOAD_ID]]);
+    expect(argsOf("uploads:select", "neq")).toEqual([]);
     expect(argsOf("uploads:select", "gte")).toEqual([["created_at", "2026-08-31T15:00:00.000Z"]]);
+  });
+
+  it("같은 파일의 기존 행을 다시 쓸 때는 그 행을 빼고 셉니다", async () => {
+    // 매핑이 실패했던 파일을 다시 올리는 것은 횟수를 새로 쓰지 않습니다(ADR-005 완화 ②).
+    vi.useFakeTimers().setSystemTime(new Date("2026-09-16T06:17:00.000Z"));
+    happyPath({
+      plan: "free", monthCount: 0,
+      existing: { data: {
+        id: UPLOAD_ID, status: "failed", storage_path: `user-1/${UPLOAD_ID}.csv`,
+        column_mapping: null, mapping_confidence: null, encoding: "utf-8", created_at: "2026-09-16T06:00:00.000Z",
+      } },
+    });
+    queues.get("uploads:insert")?.splice(0);
+    enqueue("uploads:update", { data: null });
+
+    expect((await post(await multipart({ sourceId: SOURCE_ID, file: csvFile(CSV) }))).status).toBe(200);
+    expect(argsOf("uploads:select", "neq")).toEqual([["id", UPLOAD_ID]]);
   });
 
   it("같은 달의 실패한 업로드도 한도에 들어갑니다", async () => {
     vi.useFakeTimers().setSystemTime(new Date("2026-09-16T06:17:00.000Z"));
     // 카운트 쿼리가 failed 행 하나를 찾았다고 돌려줍니다.
     happyPath({ plan: "free", monthCount: 1 });
-    enqueue("uploads:delete", { data: null });
 
     const response = await post(await multipart({ sourceId: SOURCE_ID, file: csvFile(CSV) }));
 
@@ -561,7 +579,6 @@ describe("POST /api/uploads Free 업로드 한도", () => {
     // 지우고 다시 올리는 것으로 횟수가 돌아오면 매핑·분류 호출을 계속 쓸 수 있습니다(0008).
     vi.useFakeTimers().setSystemTime(new Date("2026-09-16T06:17:00.000Z"));
     happyPath({ plan: "free", monthCount: 0, deletedAt: "2026-08-31T15:00:00.000Z" });
-    enqueue("uploads:delete", { data: null });
 
     const response = await post(await multipart({ sourceId: SOURCE_ID, file: csvFile(CSV) }));
 
@@ -578,18 +595,20 @@ describe("POST /api/uploads Free 업로드 한도", () => {
     expect((await post(await multipart({ sourceId: SOURCE_ID, file: csvFile(CSV) }))).status).toBe(200);
   });
 
-  it("한도를 세는 쿼리가 실패하면 허용하지 않고 500과 함께 정리합니다", async () => {
+  it("한도를 세는 쿼리가 실패하면 허용하지 않고, 행을 만들거나 지우지 않습니다", async () => {
     // count가 null이면 0으로 보고 통과시키던 fail-open이었습니다. DB가 흔들리는 동안 Free 한도가 꺼집니다.
+    // 만든 행을 되돌려 지우면 그 삭제가 0008 트리거를 타서, 한 번도 올리지 못한 사용자의 이번 달이 소진됩니다.
     happyPath({ plan: "free" });
-    queues.get("uploads:select")?.splice(-1, 1, { count: undefined, error: { message: "timeout" } });
-    enqueue("uploads:delete", { data: null });
+    queues.get("uploads:select")?.splice(1, 1, { count: undefined, error: { message: "timeout" } });
 
     const response = await post(await multipart({ sourceId: SOURCE_ID, file: csvFile(CSV) }));
 
     expect(response.status).toBe(500);
     await expect(response.json()).resolves.toMatchObject({ code: "LIMIT_CHECK_FAILED" });
     expect(inferColumnMapping).not.toHaveBeenCalled();
-    expect(remove).toHaveBeenCalledWith([upload.mock.calls[0]?.[0]]);
+    expect(argsOf("uploads:insert", "insert")).toEqual([]);
+    expect(argsOf("uploads:delete", "delete")).toEqual([]);
+    expect(upload).not.toHaveBeenCalled();
   });
 
   it("Pro는 한도를 세지 않습니다", async () => {
@@ -603,7 +622,6 @@ describe("POST /api/uploads Free 업로드 한도", () => {
     vi.useFakeTimers().setSystemTime(new Date("2026-09-16T06:17:00.000Z"));
     happyPath({ plan: "pro", monthCount: 1 });
     queues.set("profiles:select", [{ data: { plan: "pro", plan_expires_at: "2026-08-01T00:00:00.000Z" } }]);
-    enqueue("uploads:delete", { data: null });
 
     expect((await post(await multipart({ sourceId: SOURCE_ID, file: csvFile(CSV) }))).status).toBe(403);
     expect(inferColumnMapping).not.toHaveBeenCalled();
