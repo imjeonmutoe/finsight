@@ -28,7 +28,7 @@ async function buildFromRows(rows: string[]) {
 describe("데모 데이터셋", () => {
   it("메모리 집계가 흉내 내는 SQL 규약을 함께 고정합니다", () => {
     // SQL을 고치면 이 테스트도 깨져야 한다. 한쪽만 깨지면 데모 사본이 조용히 어긋난다.
-    const sql = readFileSync(new URL("../../../supabase/migrations/0002_analytics.sql", import.meta.url), "utf8")
+    const sql = readFileSync(new URL("../../../supabase/migrations/20260916045651_analytics.sql", import.meta.url), "utf8")
       .replace(/--[^\n]*/g, "").replace(/\s+/g, " ").toLowerCase();
     expect(sql).toContain("sample_count >= 3");
     expect(sql).toContain("round(avg(amount_krw))");

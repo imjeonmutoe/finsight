@@ -69,12 +69,12 @@ B·C·D는 고를 대상이 아니다. 안내와 보류 사유만 보여준다.
 
 ### 4. 마이그레이션 작성
 
-`supabase/migrations/<다음 번호>_<snake_case>.sql`. 규칙:
+`supabase/migrations/<YYYYMMDDHHMMSS>_<snake_case>.sql`. 버전은 UTC 14자리 타임스탬프다(`supabase migration new`와 MCP `apply_migration`이 쓰는 형식). 규칙:
 
 - 파일 맨 위 주석에 **왜**를 적는다 — 어느 lint를 고치는지, 의미가 바뀌지 않는다는 근거.
 - 정책은 `drop`+`create` 대신 **`alter policy`** — 정책이 없는 틈이 생기지 않는다.
 - 식을 바꿀 때는 원래 식을 **그대로** 옮기고 바꿀 부분만 바꾼다. `using`·`with check` 둘 다 확인.
-- `begin; … commit;`으로 감싼다(`0001`과 같다). 하나라도 실패하면 전부 되돌아간다.
+- `begin; … commit;`으로 감싼다(`20260916045636_init.sql`과 같다). 하나라도 실패하면 전부 되돌아간다.
 - playbook의 각 레시피에 적힌 **하지 말 것**을 지킨다.
 
 **검증**: 파일의 대상 목록이 3단계에서 고른 항목과 1:1로 맞는다. 빠진 것도, 더 들어간 것도 없다.
