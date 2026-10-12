@@ -55,11 +55,24 @@
 - **화면에 보이는 것을 바꿔서 점수를 사지 마라.** 콘텐츠·문구·레이아웃·색을 지우거나 숨기면 점수는 오르지만
   제품이 망가진다. 고친 화면은 `bash scripts/preview-shot.sh <경로>`로 찍어 `.autoresearch/lighthouse/baseline-*.png`와
   나란히 보고, 눈에 보이는 차이가 있으면 trial을 돌리지 말고 되돌려라.
+- **첫 페인트에 필요한 리소스(폰트 선언·CSS)를 하이드레이션 뒤로 미루지 마라.** `useEffect`·동적 import로
+  Pretendard CSS를 늦게 받는 실험이 +12.5점을 받았지만 되돌렸다(1012 루프). 모든 화면이 OS 기본 서체로 먼저
+  그려졌다가 바뀌고, 서체가 바뀔 때 글자 폭이 달라져 실사용자에게 레이아웃이 밀리는데, Lighthouse는 그걸
+  "빨리 그렸다"로 채점한다. 최종 스크린샷이 같아도 **로딩 중에 보이는 것**이 바뀌면 화면을 바꾼 것이다.
 - Lighthouse 감지를 노린 분기(UA 스니핑 등)를 넣지 마라.
 - CLAUDE.md의 CRITICAL 규칙은 그대로 적용된다. 특히 테스트 먼저(TDD), 한국어 UI, `dangerouslySetInnerHTML` 금지.
 
 **단순성 기준** (autoresearch 그대로): 같은 조건이면 단순한 쪽이 낫다. 1점을 올리려고 꼼수 코드
 20줄을 붙이는 것은 손해다. 마진을 겨우 넘기는 변경이 복잡하면 다른 실험을 고려하라.
+
+**검토된 방향** (1012 루프 뒤 남은 병목. 순서는 기대 효과 순이 아니다)
+- 렌더 차단 CSS: Pretendard dynamic subset은 `@font-face` 92개로 CSS의 대부분을 차지한다. 선언을 늦추지 말고
+  **줄여라** — 예: 공개 화면에 실제로 쓰이는 굵기만 남기기, 선언을 그대로 두되 첫 화면 글자가 든 서브셋 woff2만
+  `<link rel="preload">`해서 서체 교체 시점을 앞당기기.
+- 서체 교체 시 레이아웃 밀림: fallback `@font-face`에 `size-adjust`·`ascent-override`를 줘 시스템 서체를 Pretendard
+  치수에 맞추기(next/font가 JetBrains Mono에 자동으로 해 주는 것과 같은 방식).
+- 안 쓰는 JS(약 60KB): 공개 화면 번들에 들어온 클라이언트 모듈 찾기 (`.next` 빌드 출력, Lighthouse `unused-javascript`).
+- `/`의 TTFB: 로그인 여부를 확인하려고 매 요청 Supabase를 부른다. 동작(로그인 사용자 리다이렉트)은 그대로 둬야 한다.
 
 **막혔을 때**: `.autoresearch/lighthouse/last.json`의 audit(`opportunities`·`diagnostics`)을 읽어라.
 점수를 깎는 항목이 거기 적혀 있다. 아깝게 떨어진 실험 둘을 합쳐 보는 것도 방법이다.
@@ -68,6 +81,7 @@
 
 ```bash
 python3 scripts/lighthouse_loop.py status     # 최근 10행
+python3 scripts/lighthouse_loop.py report     # .autoresearch/lighthouse/report.html (되돌린 채택은 줄 그어 표시)
 column -t -s $'\t' .autoresearch/lighthouse/results.tsv
 git log --oneline --grep '^perf(lighthouse)'
 ```

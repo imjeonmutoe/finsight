@@ -73,6 +73,11 @@ const tests = {
     const { prompts } = await runWith([v('keep'), first], { patience: 2 })
     assert.match(prompts[2], /폰트 preload/)
   },
+  async '측정하지 않은 결과(error·crash)의 0점으로 HEAD 점수를 덮어쓰지 않는다'() {
+    const skipped = { ...v('error', 0, 0), description: '건너뜀' }
+    const { prompts } = await runWith([v('keep', 89), skipped, v('crash', 0, 0)], { patience: 3 })
+    assert.match(prompts[3], /약 89\.0점/)
+  },
 }
 
 let failed = 0

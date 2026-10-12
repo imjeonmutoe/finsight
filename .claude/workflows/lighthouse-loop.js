@@ -81,7 +81,9 @@ for (let n = 1; n <= MAX_TRIALS; n++) {
     log(`#${n} 에이전트 실패 — 개선 없음으로 센다 (${stale}/${PATIENCE})`)
   } else {
     history.push(r)
-    last = r.status === 'keep' ? r.score : r.ref_score
+    // error(실험 안 함)·crash는 측정값이 0이라 HEAD 점수로 쓰면 다음 지시문에 "약 0.0점"이 찍힌다
+    if (r.status === 'keep') last = r.score
+    else if (r.status === 'discard') last = r.ref_score
     if (r.status === 'keep') {
       stale = 0
     } else {
