@@ -1,0 +1,36 @@
+{
+  "project": "FinSight",
+  "phase": "4-branching",
+  "steps": [
+    {
+      "step": 0,
+      "name": "migration-rename",
+      "status": "pending"
+    },
+    {
+      "step": 1,
+      "name": "supabase-config",
+      "status": "pending"
+    },
+    {
+      "step": 2,
+      "name": "seed-sql",
+      "status": "pending"
+    },
+    {
+      "step": 3,
+      "name": "preview-login",
+      "status": "pending"
+    },
+    {
+      "step": 4,
+      "name": "gate-db-guard",
+      "status": "pending"
+    },
+    {
+      "step": 5,
+      "name": "docs-rules",
+      "status": "pending"
+    }
+  ]
+}
