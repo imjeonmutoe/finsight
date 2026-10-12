@@ -29,6 +29,10 @@
       "dir": "4-branching",
       "status": "completed",
       "completed_at": "2026-10-12T11:23:38+0900"
+    },
+    {
+      "dir": "5-staging",
+      "status": "pending"
     }
   ]
 }

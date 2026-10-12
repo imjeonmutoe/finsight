@@ -1,0 +1,16 @@
+{
+  "project": "FinSight",
+  "phase": "5-staging",
+  "steps": [
+    {
+      "step": 0,
+      "name": "staging-workflow",
+      "status": "pending"
+    },
+    {
+      "step": 1,
+      "name": "docs-rules",
+      "status": "pending"
+    }
+  ]
+}
