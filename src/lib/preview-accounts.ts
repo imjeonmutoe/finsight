@@ -10,3 +10,9 @@ export const PREVIEW_ACCOUNTS: readonly PreviewAccount[] = [
 ];
 
 export const PREVIEW_PASSWORD: string = "finsight-preview-only";
+
+// VERCEL_ENV는 Vercel이 서버 런타임에 넣는 값이다. NODE_ENV·호스트 이름·NEXT_PUBLIC_*로 판정하지 않는다 —
+// NEXT_PUBLIC_*는 빌드 시점에 고정돼 클라이언트로 나가고, 호스트 판정은 커스텀 도메인에서 틀린다.
+export function isPreviewDeployment(env: NodeJS.ProcessEnv = process.env): boolean {
+  return env.VERCEL_ENV === "preview";
+}

@@ -29,7 +29,9 @@
     {
       "step": 3,
       "name": "preview-login",
-      "status": "pending"
+      "status": "completed",
+      "started_at": "2026-10-12T11:17:19+0900",
+      "summary": "isPreviewDeployment(env=process.env)(VERCEL_ENV==='preview'만 참)를 src/lib/preview-accounts.ts에, signInAsPreviewAccount(formData)를 src/app/login/actions.ts에 추가했다(맨 먼저 프리뷰 판정→아니면 Supabase 클라이언트 생성 없이 /login?error=preview, 폼은 accountId만 받아 PREVIEW_ACCOUNTS에 있을 때만 서버 상수 이메일·PREVIEW_PASSWORD로 signInWithPassword, 성공 /dashboard·실패 /login?error=preview, 로그·signUp 없음). /login은 프리뷰에서만 Google 버튼 아래 border-t 구분 영역 '프리뷰 전용'+보조(Secondary) 버튼 2개(hidden accountId)를 렌더하고 error=preview 전용 문구를 같은 자리에 띄운다. 기존 테스트 '이메일·비밀번호 로그인 경로를 만들지 않습니다'(export가 signInWithGoogle뿐)는 두 액션만 있음을 확인하도록 바꿨다. preview-shot.sh는 환경변수를 상속하므로 스크립트 수정 없이 VERCEL_ENV=preview를 앞에 붙여 실행했고, 라이트·다크·error=preview는 CDP(localStorage theme)로 확인했다. 빌드 후 .next/static에 비밀번호 문자열 0건"
     },
     {
       "step": 4,
