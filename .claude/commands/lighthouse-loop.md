@@ -25,5 +25,7 @@ Workflow를 이름으로 호출한다: `name: "lighthouse-loop"`, `args: {"patie
 
 - 반환값의 `stopped`(plateau / perfect / max-trials / baseline-failed), 기준선 → 최근 점수, keep된 실험 목록.
 - `column -t -s $'\t' .autoresearch/lighthouse/results.tsv`의 마지막 행들.
+- `python3 scripts/lighthouse_loop.py report`로 HTML 리포트를 만들고 Artifact로 게시해 링크를 준다
+  (점수·실험 설명뿐이라 민감 정보가 없다). 같은 세션에서 다시 돌렸으면 같은 파일 경로로 재게시한다.
 - 화면이 바뀌지 않았는지 `bash scripts/preview-shot.sh /`로 찍어 기준 스크린샷과 비교한다.
 - 이어서 할 일: 브랜치를 push하고 PR을 열지 사용자에게 묻는다.

@@ -7,6 +7,7 @@ karpathy/autoresearch의 prepare.py에 해당한다. 실험하는 에이전트�
   python3 scripts/lighthouse_loop.py trial baseline     # 변경 없는 상태로 A/A 측정 (노이즈 확인)
   python3 scripts/lighthouse_loop.py trial "<설명>"      # 가드 → A/B 측정 → keep(커밋)/discard(되돌림)/crash
   python3 scripts/lighthouse_loop.py status             # 최근 행
+  python3 scripts/lighthouse_loop.py report             # results.tsv → .autoresearch/lighthouse/report.html
 
 판정은 전부 여기서 코드로 한다. 에이전트가 점수를 옮겨 적거나 커밋 여부를 고르지 않는다.
 
@@ -16,10 +17,12 @@ karpathy/autoresearch의 prepare.py에 해당한다. 실험하는 에이전트�
 리포 안에 두면 eslint·vitest·tsc가 그 사본까지 훑는다.
 """
 
+import html
 import json
 import os
 import shutil
 import signal
+import socket
 import statistics
 import subprocess
 import sys
@@ -31,6 +34,7 @@ ROOT = Path(__file__).resolve().parent.parent
 OUT_DIR = ROOT / ".autoresearch" / "lighthouse"  # .gitignore 대상 — git clean으로 지워지지 않는다
 RESULTS = OUT_DIR / "results.tsv"
 LOG = OUT_DIR / "run.log"
+REPORT = OUT_DIR / "report.html"
 REF_DIR = Path.home() / ".cache" / "finsight-lighthouse" / "ref"
 REF_MARK = ".lighthouse-built"
 
@@ -142,7 +146,16 @@ def sync_ref(commit, log):
     mark.write_text(commit)
 
 
+def port_in_use(port):
+    with socket.socket() as s:
+        return s.connect_ex(("127.0.0.1", port)) == 0
+
+
 def start(cwd, port, log):
+    # 남아 있던 옛 next-server를 재면 지워진 빌드의 CSS가 404로 떨어져 99점이 나온다(실제로 겪었다).
+    # wait_ready는 그 서버에도 200을 받으므로 띄우기 전에 막는다.
+    if port_in_use(port):
+        raise RuntimeError(f"포트 {port}를 이미 다른 서버가 쓰고 있다. lsof -nP -iTCP:{port} -sTCP:LISTEN 으로 찾아 꺼라")
     return subprocess.Popen(["npm", "run", "start", "--", "--port", str(port)], cwd=cwd,
                             stdout=log, stderr=subprocess.STDOUT, start_new_session=True)
 
@@ -243,6 +256,118 @@ def trial(description):
             "delta": round(c["score"] - r["score"], 1), "routes": c["routes"], "log": str(LOG.relative_to(ROOT))}
 
 
+STATUS_LABEL = {"keep": "채택", "discard": "기각", "crash": "실패"}
+
+
+def delta_chart(rows):
+    """실험별 HEAD 대비 차이 막대. 기준선 행은 A/A라 뺀다."""
+    w, h, left, top, bottom = 720, 220, 40, 16, 28
+    vals = [float(r["delta"]) for r in rows]
+    lo, hi = min([-5.0, *vals]), max([10.0, MARGIN, *vals])
+    lo, hi = 5 * (lo // 5), 5 * -(-hi // 5)
+    y = lambda v: top + (hi - v) / (hi - lo) * (h - top - bottom)  # noqa: E731
+    step = (w - left - 8) / max(len(rows), 1)
+    out = [f'<svg viewBox="0 0 {w} {h}" role="img" aria-label="실험별 HEAD 대비 성능 점수 차이">']
+    v = lo
+    while v <= hi:
+        out.append(f'<line x1="{left}" x2="{w - 8}" y1="{y(v):.1f}" y2="{y(v):.1f}" class="grid"/>'
+                   f'<text x="{left - 6}" y="{y(v) + 4:.1f}" class="tick" text-anchor="end">{v:+.0f}</text>')
+        v += 5
+    out.append(f'<line x1="{left}" x2="{w - 8}" y1="{y(MARGIN):.1f}" y2="{y(MARGIN):.1f}" class="margin"/>'
+               f'<text x="{w - 10}" y="{y(MARGIN) - 5:.1f}" class="tick" text-anchor="end">채택 마진 +{MARGIN:g}</text>')
+    for i, (r, d) in enumerate(zip(rows, vals)):
+        x = left + i * step + step * 0.2
+        y0, y1 = sorted((y(0), y(d)))
+        out.append(f'<rect x="{x:.1f}" y="{y0:.1f}" width="{step * 0.6:.1f}" height="{max(y1 - y0, 1):.1f}" '
+                   f'class="bar {r["status"]}"><title>#{i + 1} {d:+.1f} {html.escape(r["description"])}</title></rect>'
+                   f'<text x="{x + step * 0.3:.1f}" y="{h - 10}" class="tick" text-anchor="middle">#{i + 1}</text>')
+    out.append("</svg>")
+    return "".join(out)
+
+
+def render_report(rows, reverted):
+    """results.tsv 행 → Artifact로 게시할 수 있는 HTML 조각(<title>부터, 문서 뼈대 없음).
+
+    reverted: 나중에 git revert된 keep 실험의 설명들. 채택됐어도 지금 브랜치에는 없다.
+    """
+    e = html.escape
+    base = next((r for r in rows if r["description"] == "baseline"), rows[0] if rows else None)
+    trials = [r for r in rows if r is not base]
+    live = [r for r in trials if r["status"] == "keep" and r["description"] not in reverted]
+    body = []
+    for i, r in enumerate(trials, 1):
+        gone = r["status"] == "keep" and r["description"] in reverted
+        pill = "되돌림" if gone else STATUS_LABEL.get(r["status"], r["status"])
+        body.append(
+            f'<tr class="{"reverted" if gone else ""}"><td class="num">#{i}</td>'
+            f'<td><span class="pill {"reverted" if gone else e(r["status"])}">{e(pill)}</span></td>'
+            f'<td class="num">{e(r["ref_score"])} → {e(r["score"])}</td><td class="num delta">{e(r["delta"])}</td>'
+            f'<td class="desc">{e(r["description"])}<div class="routes">{e(r["routes"])}</div></td>'
+            f'<td class="num commit">{e(r["commit"])}</td></tr>')
+    summary = (f'<div class="stat"><span>기준선</span><b>{e(base["score"])}</b><small>A/A 차이 {e(base["delta"])} · {e(base["commit"])}</small></div>'
+               if base else "")
+    summary += (f'<div class="stat"><span>채택</span><b>{len(live)}<i>/{len(trials)}</i></b>'
+                f'<small>되돌린 채택 {sum(1 for r in trials if r["status"] == "keep") - len(live)}건 제외</small></div>')
+    if live:
+        summary += f'<div class="stat"><span>마지막 채택 후보</span><b>{e(live[-1]["score"])}</b><small>{e(live[-1]["routes"])}</small></div>'
+    return f"""<meta charset="utf-8">
+<title>FinSight Lighthouse 기록</title>
+<style>
+/* 레이아웃: 요약 숫자 한 줄 → 차이 막대 → 실험 표. 색은 FinSight globals.css 토큰을 그대로 쓴다 */
+:root {{ --bg:#ffffff; --surface:#f7f7f5; --border:#e3e3df; --text:#1a1a19; --body:#3d3d3a; --muted:#6b6b66;
+  --good:#2f6b46; --bad:#b3261e; --accent:#2563a8; --line:#8a8a84;
+  --sans:-apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo","Malgun Gothic",sans-serif;
+  --mono:"JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,monospace; }}
+@media (prefers-color-scheme: dark) {{ :root:not([data-theme="light"]) {{ --bg:#0f0f0e; --surface:#191918; --border:#2c2c29;
+  --text:#f5f5f3; --body:#d4d4d0; --muted:#8a8a84; --good:#6fbd8e; --bad:#f2837b; --accent:#7fb0e0; --line:#6e6e69; color-scheme:dark; }} }}
+:root[data-theme="dark"] {{ --bg:#0f0f0e; --surface:#191918; --border:#2c2c29; --text:#f5f5f3; --body:#d4d4d0; --muted:#8a8a84;
+  --good:#6fbd8e; --bad:#f2837b; --accent:#7fb0e0; --line:#6e6e69; color-scheme:dark; }}
+body {{ background:var(--bg); color:var(--body); font:15px/1.6 var(--sans); word-break:keep-all; overflow-wrap:break-word; }}
+main {{ max-width:960px; margin:0 auto; padding-inline:16px; padding-block:32px 48px; display:grid; gap:28px; }}
+h1 {{ margin:0; color:var(--text); font-size:1.5rem; font-weight:600; text-wrap:balance; }}
+header p {{ margin:4px 0 0; color:var(--muted); font-size:.875rem; }}
+.stats {{ display:grid; grid-template-columns:repeat(auto-fit,minmax(200px,1fr)); gap:12px; }}
+.stat {{ background:var(--surface); border:1px solid var(--border); border-radius:6px; padding:16px; display:grid; gap:2px; min-width:0; }}
+.stat span {{ color:var(--muted); font-size:.75rem; }}
+.stat b {{ color:var(--text); font:600 1.75rem/1.2 var(--mono); font-variant-numeric:tabular-nums; }}
+.stat i {{ color:var(--muted); font-style:normal; font-size:1rem; }}
+.stat small {{ color:var(--muted); font-size:.75rem; font-family:var(--mono); }}
+figure {{ margin:0; display:grid; gap:8px; }}
+figcaption {{ color:var(--muted); font-size:.8125rem; }}
+svg {{ width:100%; height:auto; max-width:100%; }}
+.grid {{ stroke:var(--border); }} .margin {{ stroke:var(--accent); stroke-dasharray:4 4; }}
+.tick {{ fill:var(--muted); font:11px var(--mono); }}
+.bar.keep {{ fill:var(--good); }} .bar.discard {{ fill:var(--line); }} .bar.crash {{ fill:var(--bad); }}
+.scroll {{ overflow-x:auto; }}
+table {{ width:100%; border-collapse:collapse; font-size:.875rem; min-width:640px; }}
+th {{ text-align:left; color:var(--muted); font-weight:500; font-size:.75rem; padding:8px; border-bottom:1px solid var(--border); }}
+td {{ padding:10px 8px; border-bottom:1px solid var(--border); vertical-align:top; }}
+.num {{ font-family:var(--mono); font-variant-numeric:tabular-nums; white-space:nowrap; color:var(--text); }}
+.commit {{ color:var(--muted); }}
+.desc {{ color:var(--text); min-width:0; }} .routes {{ color:var(--muted); font:12px var(--mono); margin-top:2px; }}
+tr.reverted .desc, tr.reverted .delta {{ text-decoration:line-through; color:var(--muted); }}
+.pill {{ display:inline-block; padding:1px 8px; border-radius:999px; font-size:.75rem; border:1px solid currentColor; white-space:nowrap; }}
+.pill.keep {{ color:var(--good); }} .pill.discard {{ color:var(--muted); }} .pill.crash {{ color:var(--bad); }} .pill.reverted {{ color:var(--bad); }}
+</style>
+<main>
+  <header><h1>FinSight Lighthouse 기록</h1>
+    <p>공개 4개 화면(/, /login, /demo, /privacy)의 모바일 성능 점수 평균. 판정은 같은 시간대에 번갈아 잰 HEAD 대비 차이로 한다 — 절대 점수는 머신 부하에 따라 몇 점씩 흐른다.</p></header>
+  <section class="stats">{summary}</section>
+  <figure>{delta_chart(trials)}
+    <figcaption>실험별 HEAD 대비 차이. 초록은 채택, 회색은 기각, 빨강은 실패. 점선을 넘고 확인 측정도 통과해야 채택된다.</figcaption></figure>
+  <div class="scroll"><table>
+    <thead><tr><th>실험</th><th>판정</th><th>HEAD → 후보</th><th>차이</th><th>무엇을 바꿨나 · 화면별 후보 점수</th><th>커밋</th></tr></thead>
+    <tbody>{"".join(body)}</tbody></table></div>
+</main>
+"""
+
+
+def reverted_descriptions():
+    subjects = git("log", "--format=%s").splitlines()
+    prefix = 'Revert "perf(lighthouse): '
+    return {s[len(prefix):-1] for s in subjects if s.startswith(prefix)}
+
+
 def main(argv):
     if len(argv) >= 3 and argv[1] == "trial":
         out = trial(" ".join(argv[2:]))
@@ -251,6 +376,10 @@ def main(argv):
     if len(argv) == 2 and argv[1] == "status":
         rows = read_rows(RESULTS)
         print(json.dumps({"trials": len(rows), "recent": rows[-10:]}, ensure_ascii=False, indent=2))
+        return 0
+    if len(argv) == 2 and argv[1] == "report":
+        REPORT.write_text(render_report(read_rows(RESULTS), reverted_descriptions()), encoding="utf-8")
+        print(REPORT)
         return 0
     print(__doc__, file=sys.stderr)
     return 2
