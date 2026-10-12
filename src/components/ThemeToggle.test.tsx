@@ -1,4 +1,5 @@
 import { fireEvent, render, screen } from "@testing-library/react";
+import { renderToString } from "react-dom/server";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ThemeToggle } from "./ThemeToggle";
 
@@ -49,10 +50,21 @@ describe("테마 토글", () => {
     expect(await screen.findByRole("button", { name: "라이트 모드로 전환" })).toBeVisible();
   });
 
+  it("서버 렌더에서는 두 라벨을 모두 내려 CSS가 data-theme으로 하나만 보이게 합니다", () => {
+    // 하이드레이션 뒤 라벨이 '테마 전환'에서 길어지면 좁은 폭에서 내비가 줄바꿈되어 본문이 밀립니다(CLS).
+    // 인라인 스크립트가 첫 페인트 전에 data-theme을 세우므로 CSS로 고르면 첫 페인트부터 최종 폭입니다.
+    const html = renderToString(<ThemeToggle />);
+
+    expect(html).toContain("다크 모드로 전환");
+    expect(html).toContain("라이트 모드로 전환");
+    expect(html).toContain("in-data-[theme=dark]:hidden");
+    expect(html).toContain("hidden in-data-[theme=dark]:inline");
+  });
+
   it("테마가 아직 정해지지 않았으면 단정하지 않고 다크를 먼저 제안합니다", async () => {
     render(<ThemeToggle />);
 
-    fireEvent.click(screen.getByRole("button", { name: "테마 전환" }));
+    fireEvent.click(screen.getByRole("button"));
 
     expect(document.documentElement.dataset.theme).toBe("dark");
   });

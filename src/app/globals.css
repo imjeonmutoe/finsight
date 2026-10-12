@@ -6,7 +6,7 @@
      Pretendard를 쓰는 이유는 시스템 폰트만 두면 macOS(Apple SD Gothic Neo)와
      Windows(맑은 고딕)의 자소 비례·굵기가 달라 같은 화면이 OS마다 다르게 보이기
      때문이다. @font-face 선언은 layout.tsx가 import한다. */
-  --font-sans: "Pretendard Variable", -apple-system, BlinkMacSystemFont,
+  --font-sans: "FinSight Sans", -apple-system, BlinkMacSystemFont,
                "Apple SD Gothic Neo", "Malgun Gothic", "맑은 고딕", "Segoe UI",
                system-ui, sans-serif;
 

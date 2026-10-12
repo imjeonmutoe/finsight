@@ -73,3 +73,29 @@ def test_첫_측정이_discard면_확인하지_않고_그대로():
 def test_median():
     assert ll.median([3, 1, 2]) == 2
     assert ll.median([4, 1, 3, 2]) == 2.5
+
+
+def test_포트가_이미_쓰이면_True():
+    # 남아 있던 옛 서버를 재면 지워진 빌드의 CSS가 404로 떨어져 99점이 나온다(실제로 겪었다)
+    import socket
+
+    with socket.socket() as s:
+        s.bind(("127.0.0.1", 0))
+        s.listen()
+        port = s.getsockname()[1]
+        assert ll.port_in_use(port) is True
+    assert ll.port_in_use(port) is False
+
+
+def test_리포트는_행을_모두_담고_설명을_이스케이프한다(tmp_path):
+    rows = [ROW, {**ROW, "commit": "b2c3d4e", "status": "discard", "description": "<script>x</script> 폰트"}]
+    html = ll.render_report(rows, reverted=set())
+    assert "<title>" in html[:500]
+    assert "b2c3d4e" in html and "a1b2c3d" in html
+    assert "<script>x</script>" not in html
+    assert "&lt;script&gt;" in html
+
+
+def test_리포트는_되돌린_keep을_표시한다():
+    html = ll.render_report([ROW, {**ROW, "description": "폰트 지연"}], reverted={"폰트 지연"})
+    assert "되돌림" in html

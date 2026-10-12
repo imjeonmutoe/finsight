@@ -6,11 +6,14 @@ import { Analytics } from "@vercel/analytics/next";
 // 두어 브라우저가 화면에 실제로 쓰인 글자의 청크만 받는다. 통짜 variable 파일은
 // 2.0MB라 쓸 수 없다. 이 서체를 쓰는 이유는 시스템 폰트로 두면 macOS는 Apple SD
 // Gothic Neo, Windows는 맑은 고딕이 잡혀 같은 화면이 OS마다 다르게 보이기 때문이다.
-import "pretendard/dist/web/variable/pretendardvariable-dynamic-subset.css";
+// 패키지 파일을 그대로 쓰지 않고 굵기 축을 400~700으로 자른 사본을 쓴다 — 청크가 약 30%
+// 작다. OFL 예약 이름 때문에 패밀리 이름은 FinSight Sans다 (scripts/gen_pretendard.py).
+import "./fonts/pretendard.css";
 import "./globals.css";
 
-// 숫자 전용 서체. next/font가 빌드 타임에 self-host하므로 외부 요청이 없고,
-// 폰트 파일을 preload해 FOUT이 생기지 않는다. 라틴 계열만 받는다 — 한글은
+// 숫자 전용 서체. next/font가 빌드 타임에 self-host하므로 외부 요청이 없다.
+// preload하지 않는다 — 금액이 없는 화면(개인정보 처리방침 등)에서도 31KB를 첫 렌더 전에
+// CSS와 대역을 나눠 받게 되기 때문이다. 쓰는 화면에서만 받는다. 라틴 계열만 받는다 — 한글은
 // 이 서체에 닿지 않으며 globals.css의 Pretendard가 담당한다.
 //
 // 굵기를 500·600 둘로 고정한 이유: 본문 숫자는 500이지만 UI_GUIDE의 타이포그래피 표가
@@ -29,7 +32,8 @@ const jetBrainsMono = JetBrains_Mono({
   weight: ["500", "600"],
   variable: "--font-jetbrains",
   display: "swap",
-  fallback: ["Pretendard Variable"],
+  preload: false,
+  fallback: ["FinSight Sans"],
 });
 
 export const metadata: Metadata = {
