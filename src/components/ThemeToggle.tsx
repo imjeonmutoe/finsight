@@ -42,7 +42,18 @@ export function ThemeToggle() {
       onClick={toggle}
       className="rounded-md border border-border-default px-3 py-2 text-sm text-text hover:bg-surface-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
     >
-      {theme === null ? "테마 전환" : theme === "dark" ? "라이트 모드로 전환" : "다크 모드로 전환"}
+      {theme === null ? (
+        // 서버는 테마를 모르지만 인라인 스크립트가 첫 페인트 전에 data-theme을 세운다. 라벨을 CSS로
+        // 고르면 첫 페인트부터 최종 라벨 폭이라, 하이드레이션 뒤 내비가 줄바꿈되며 본문을 밀지 않는다.
+        <>
+          <span className="in-data-[theme=dark]:hidden">다크 모드로 전환</span>
+          <span className="hidden in-data-[theme=dark]:inline">라이트 모드로 전환</span>
+        </>
+      ) : theme === "dark" ? (
+        "라이트 모드로 전환"
+      ) : (
+        "다크 모드로 전환"
+      )}
     </button>
   );
 }
