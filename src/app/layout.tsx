@@ -9,8 +9,9 @@ import { Analytics } from "@vercel/analytics/next";
 import "pretendard/dist/web/variable/pretendardvariable-dynamic-subset.css";
 import "./globals.css";
 
-// 숫자 전용 서체. next/font가 빌드 타임에 self-host하므로 외부 요청이 없고,
-// 폰트 파일을 preload해 FOUT이 생기지 않는다. 라틴 계열만 받는다 — 한글은
+// 숫자 전용 서체. next/font가 빌드 타임에 self-host하므로 외부 요청이 없다.
+// preload하지 않는다 — 금액이 없는 화면(개인정보 처리방침 등)에서도 31KB를 첫 렌더 전에
+// CSS와 대역을 나눠 받게 되기 때문이다. 쓰는 화면에서만 받는다. 라틴 계열만 받는다 — 한글은
 // 이 서체에 닿지 않으며 globals.css의 Pretendard가 담당한다.
 //
 // 굵기를 500·600 둘로 고정한 이유: 본문 숫자는 500이지만 UI_GUIDE의 타이포그래피 표가
@@ -29,6 +30,7 @@ const jetBrainsMono = JetBrains_Mono({
   weight: ["500", "600"],
   variable: "--font-jetbrains",
   display: "swap",
+  preload: false,
   fallback: ["Pretendard Variable"],
 });
 
