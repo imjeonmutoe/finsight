@@ -233,6 +233,7 @@ npm run build    # 프로덕션 빌드
 npm run lint     # ESLint
 npm run test     # 테스트 (vitest run)
 bash scripts/preview-shot.sh [경로]   # 빌드 후 headless Chrome 스크린샷. PNG 경로를 출력한다
+python3 scripts/lighthouse_loop.py status   # Lighthouse autoresearch 루프 기록 (/lighthouse-loop, docs/LIGHTHOUSE_LOOP.md)
 
 # 하네스 스크립트 자체의 테스트 (pytest는 uv로 임시 설치해 돌린다)
 uv run --with pytest python -m pytest scripts/ -q
@@ -240,4 +241,5 @@ bash scripts/hooks/test-tdd-guard.sh
 bash scripts/hooks/test-tdd-backstop.sh
 bash scripts/githooks/test-pre-commit.sh   # git pre-commit 훅
 node scripts/test-review-workflow.mjs   # /review-code 워크플로우 후처리
+node scripts/test-lighthouse-workflow.mjs   # /lighthouse-loop 정지 조건
 ```

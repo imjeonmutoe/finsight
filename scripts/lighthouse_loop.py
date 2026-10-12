@@ -39,7 +39,10 @@ ROUTES = ["/", "/login", "/demo", "/privacy"]
 RUNS = 3  # 경로마다 기준·후보를 번갈아 이만큼씩 재고 각각 중앙값을 쓴다
 PORT_CAND, PORT_REF = 3220, 3221
 LIGHTHOUSE = "lighthouse@13.5.0"  # 버전이 바뀌면 점수 산식도 바뀐다. 루프 도중 올리지 않는다
-MARGIN = 1.5  # 후보가 기준보다 이만큼 이상 높아야 개선이다. A/A 측정의 차이보다 커야 한다
+# 후보가 기준보다 이만큼 이상 높아야 개선이다. 같은 코드끼리 번갈아 잰 A/A에서도 차이가 -1.8까지
+# 났다 — `/`는 동적 렌더링이라 Supabase 왕복 시간이 FCP에 그대로 실려 2.4~3.8초를 오간다.
+# 마진만으로는 부족해 keep 후보는 한 번 더 재서 두 번 모두 통과해야 채택한다(confirm).
+MARGIN = 2.0
 GUARD_TOLERANCE = 1.0  # 접근성·권장사항·SEO가 기준보다 이보다 더 떨어지면 성능이 올라도 버린다
 GUARDS = ["accessibility", "best_practices", "seo"]
 COLUMNS = ["commit", "score", "ref_score", "delta", *GUARDS, "status", "routes", "description"]
@@ -78,6 +81,15 @@ def decide(ref, cand):
     if delta >= MARGIN:
         return "keep", f"기준 {ref['score']:.1f} → 후보 {cand['score']:.1f} (+{delta:.1f})"
     return "discard", f"기준 {ref['score']:.1f} → 후보 {cand['score']:.1f} ({delta:+.1f} < +{MARGIN})"
+
+
+def confirm(first, second):
+    """첫 판정이 keep이면 확인 측정(second)도 keep이어야 keep이다. discard는 확인 없이 그대로."""
+    if first[0] != "keep":
+        return first
+    if second[0] != "keep":
+        return "discard", f"확인 측정에서 탈락: {second[1]} (첫 측정 {first[1]})"
+    return "keep", f"{first[1]} / 확인 {second[1]}"
 
 
 def run(cmd, log, cwd=ROOT):
@@ -147,11 +159,14 @@ def wait_ready(port):
     raise RuntimeError(f"서버가 뜨지 않았습니다 (포트 {port})")
 
 
-def measure_pair(log):
-    """(기준, 후보). 경로마다 순서를 바꿔 가며 번갈아 잰다."""
+def build_pair(log):
     if not run(["npm", "run", "build"], log):
         raise RuntimeError("build 실패")
     sync_ref(git("rev-parse", "HEAD"), log)
+
+
+def measure_pair(log):
+    """(기준, 후보). build_pair() 뒤에 부른다. 경로마다 순서를 바꿔 가며 번갈아 잰다."""
     servers = [start(REF_DIR, PORT_REF, log), start(ROOT, PORT_CAND, log)]
     try:
         wait_ready(PORT_REF)
@@ -194,15 +209,16 @@ def trial(description):
             for cmd in (["npm", "run", "lint"], ["npm", "run", "test"]):
                 if not run(cmd, log):
                     raise RuntimeError(f"{cmd[-1]} 실패")
+            build_pair(log)
             ref, cand = measure_pair(log)
-        except RuntimeError as e:
-            status, reason = "crash", str(e)
-        else:
             if baseline:
                 # 같은 코드끼리의 A/A 측정이다. 차이가 MARGIN에 가까우면 마진이 노이즈를 못 거른다
                 status, reason = "keep", f"A/A 차이 {cand['score'] - ref['score']:+.1f} (마진 {MARGIN})"
             else:
-                status, reason = decide(ref, cand)
+                first = decide(ref, cand)
+                status, reason = confirm(first, decide(*measure_pair(log)) if first[0] == "keep" else None)
+        except RuntimeError as e:
+            status, reason = "crash", str(e)
 
     if status == "keep" and not baseline:
         git("add", "-A")

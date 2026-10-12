@@ -8,7 +8,7 @@
 |---|---|
 | `prepare.py` (고정 평가, 수정 금지) | `scripts/lighthouse_loop.py` |
 | `train.py` (에이전트가 고치는 파일) | `src/`·`next.config.ts`·`public/` |
-| `val_bpb` (낮을수록 좋음) | 공개 4개 화면 Lighthouse 성능 점수 평균 (높을수록 좋음) |
+| `val_bpb` (낮을수록 좋음) | 공개 4개 화면 Lighthouse 성능 점수 평균 — **HEAD 대비 차이**로 판정 |
 | `program.md` | 이 문서 |
 | `results.tsv` (커밋하지 않음) | `.autoresearch/lighthouse/results.tsv` (gitignore) |
 | 무한 루프 | Workflow `lighthouse-loop` — 연속 N번 개선이 없으면 멈춘다 |
@@ -26,15 +26,21 @@
 
 ## 평가기 (고치지 마라)
 
-`python3 scripts/lighthouse_loop.py trial "<설명>"` 하나가 판정까지 다 한다.
+`python3 scripts/lighthouse_loop.py trial "<설명>"` 하나가 판정까지 다 한다. 처음 한 번은
+`trial baseline`으로 변경 없이 돌려 기준선과 A/A 노이즈를 기록한다.
 
 1. `npm run lint` → `npm run test` → `npm run build`. 하나라도 실패하면 `crash`이고 변경을 되돌린다.
-2. `next start`로 띄우고 `/`·`/login`·`/demo`·`/privacy`를 Lighthouse(모바일 기본 프리셋, `lighthouse@13.5.0`)로 화면마다 3번 재서 중앙값을 낸다.
-3. 성능 평균이 지금까지 최고점보다 **1점 이상** 오르고, 접근성·권장사항·SEO 평균이 각각 1점 넘게 떨어지지 않았으면 `keep` → `perf(lighthouse): <설명>` 커밋.
-4. 아니면 `discard` → `git restore` + `git clean -fd`로 작업트리를 되돌린다.
+2. HEAD를 리포 밖 worktree(`~/.cache/finsight-lighthouse/ref`)에 체크아웃해 빌드한다(HEAD가 같으면 재사용).
+3. 기준(HEAD)과 후보(작업트리)를 두 포트에 띄우고 `/`·`/login`·`/demo`·`/privacy`를 Lighthouse
+   (모바일 기본 프리셋, `lighthouse@13.5.0`)로 **번갈아** 화면마다 3번씩 재서 각각 중앙값을 낸다.
+4. 후보 성능 평균이 기준보다 **2점 이상** 높고 접근성·권장사항·SEO가 1점 넘게 떨어지지 않았으면,
+   **한 번 더 A/B로 재서** 다시 통과할 때만 `keep` → `perf(lighthouse): <설명>` 커밋.
+5. 아니면 `discard` → `git restore` + `git clean -fd`로 작업트리를 되돌린다.
 
-마진을 두는 이유: 같은 코드로도 로컬 Lighthouse는 ±1점 안팎이 흔들린다. 노이즈를 개선으로 채택하면
-루프는 운에 커밋을 쌓는다. 평가기·마진·경로·측정 횟수를 루프 도중에 바꾸면 이전 행들과 비교할 수 없게 된다.
+절대 점수로 판정하지 않는 이유: 개발 머신에서는 같은 코드의 평균이 측정 시각에 따라 83~89점을
+오갔다(IDE·브라우저 부하). 번갈아 재면 부하가 양쪽에 같이 걸려 상쇄된다. 그래도 A/A 차이가 -1.8까지
+났다 — `/`는 동적 렌더링이라 FCP가 2.4~3.8초를 오간다. 그래서 마진 2점에 확인 측정까지 건다.
+노이즈를 개선으로 채택하면 루프는 운에 커밋을 쌓는다. 평가기·마진·경로·측정 횟수를 루프 도중에 바꾸지 마라.
 
 ## 실험 에이전트가 지킬 것
 
@@ -61,7 +67,7 @@
 ## 결과 보기
 
 ```bash
-python3 scripts/lighthouse_loop.py status     # 최고 기록과 최근 10행
+python3 scripts/lighthouse_loop.py status     # 최근 10행
 column -t -s $'\t' .autoresearch/lighthouse/results.tsv
 git log --oneline --grep '^perf(lighthouse)'
 ```

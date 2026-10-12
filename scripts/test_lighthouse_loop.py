@@ -57,6 +57,19 @@ def test_만점끼리는_개선이_아니다():
     assert ll.decide(side(100.0), side(100.0))[0] == "discard"
 
 
+def test_확인_측정은_두_번_모두_통과해야_keep():
+    first = ll.decide(side(80.0), side(85.0))
+    assert ll.confirm(first, ll.decide(side(80.0), side(84.0)))[0] == "keep"
+    status, reason = ll.confirm(first, ll.decide(side(80.0), side(80.5)))
+    assert status == "discard"
+    assert "확인 측정" in reason
+
+
+def test_첫_측정이_discard면_확인하지_않고_그대로():
+    first = ll.decide(side(80.0), side(80.0))
+    assert ll.confirm(first, None) == first
+
+
 def test_median():
     assert ll.median([3, 1, 2]) == 2
     assert ll.median([4, 1, 3, 2]) == 2.5
