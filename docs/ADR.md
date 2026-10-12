@@ -211,3 +211,46 @@ Next.js는 반대로 **16.3.4(최신)** 를 쓴다. 생짜로 시작하는 프�
 **트레이드오프**: Free의 API 비용이 0이 아니게 된다. 업로드 월 1회 제한(ADR-005)과 인사이트 캐싱(ADR-012)이 상한을 잡지만, Free 사용자당 월 1~2회의 Sonnet 호출이 발생한다. 포트폴리오/데모 범위에서 이 비용은 "제품이 무엇인지 보여주지 못하는 것"보다 싸다.
 
 그리고 `insight_cache`에 `plan` 컬럼이 필요해진다 — 플랜이 바뀌면 이전 플랜의 인사이트를 무효화해야 한다. 안 하면 결제한 사용자가 같은 문장을 계속 본다.
+
+---
+
+### ADR-016: Supabase Branching으로 PR마다 프리뷰 DB를 띄우고, DB 변경 PR은 사람이 머지한다
+
+**결정**: Supabase 조직을 Pro로 올리고 Branching을 GitHub 연동으로 켠다. PR이 열리면 Supabase가 그 PR 전용 프리뷰 브랜치(별도 Postgres·Auth)를 만들어 `supabase/migrations/`와 `supabase/seed.sql`을 적용하고, PR이 머지되거나 닫히면 브랜치를 지운다. Supabase–Vercel 연동이 그 브랜치의 접속 정보를 같은 git 브랜치의 Vercel 프리뷰 배포에 넣어, **프리뷰 앱과 프리뷰 DB가 한 쌍**으로 뜬다. 연동의 "Deploy to production"을 켜므로 **main에 머지하는 순간이 곧 프로덕션 마이그레이션 적용**이다.
+
+- **시드는 데모 데이터셋이다.** `supabase/seed.sql`은 `buildSeedSql()`(`src/lib/demo/seed-sql.ts`)이 샘플 대시보드(S0)의 `buildDemoDataset()` 거래 188건을 프리뷰 계정 Free·Pro 두 개에 넣어 생성한다. 프리뷰 화면의 숫자가 `/demo`와 같다. **실데이터는 복사하지 않는다** — 프리뷰 DB는 PR 작성자·리뷰어 누구나 들여다보는 곳이다.
+- **프리뷰 로그인은 테스트 계정 비밀번호 로그인이다.** `isPreviewDeployment()`(`src/lib/preview-accounts.ts`)가 서버에서 `VERCEL_ENV === "preview"`일 때만 참이고, 그때만 `/login`에 계정 버튼이 뜨고 `signInAsPreviewAccount`(`src/app/login/actions.ts`)가 동작한다. 이유: 프리뷰 브랜치마다 Supabase 프로젝트 주소가 달라 Google OAuth 콜백 주소가 바뀐다. Google 콘솔에 브랜치마다 콜백을 등록할 수 없다. 시드 계정 밖의 가입은 `supabase/config.toml`의 `[auth] enable_signup = false`가 막는다.
+- **Polar 결제 흐름은 프리뷰에서 검증하지 않는다.** 웹훅이 프리뷰 주소를 알 수 없다. 플랜별 화면은 시드의 Pro 계정(`plan='pro'`, 만료 2099-12-31)으로 본다. 결제 흐름은 지금처럼 프로덕션의 Polar 샌드박스로 검증한다(BT-19).
+- **`supabase/`를 건드린 PR은 게이트가 승인만 한다.** `scripts/merge_gate.py`가 `--files`로 받은 변경 경로(이름 변경의 옛 경로 포함) 중 `supabase/`로 시작하는 것이 있으면, 심각도로는 머지였을 판정을 승인으로 낮춘다. 머지 버튼은 사람이 누른다.
+- **마이그레이션 파일명을 `<UTC YYYYMMDDHHMMSS>_<snake_case>.sql`로 바꿨다.** 원래는 `0001_init.sql`처럼 4자리 순번이었고, 원격 `supabase_migrations.schema_migrations`에는 MCP·대시보드로 적용할 때 붙은 14자리 타임스탬프 버전이 기록돼 있었다. 연동은 파일명 앞의 버전을 원격 이력과 대조하므로, 이름이 다르면 이미 적용된 8개를 **새 마이그레이션으로 보고 프로덕션에 다시 돌리려 한다.** 파일을 원격 버전 이름으로 옮겼고(내용 동일), `src/lib/migration-files.test.ts`가 규약과 이력 일치를 고정한다.
+
+**이유**: 지금까지 마이그레이션은 사람이 CLI나 대시보드로 원격에 적용했다. 그러면 PR 리뷰 시점에 마이그레이션이 실제 DB에서 도는지 아무도 모르고, 처음 도는 곳이 프로덕션이다. 프리뷰 앱도 프로덕션 DB를 가리켜 스키마를 바꾸는 PR은 프리뷰로 확인할 수 없었다. Branching은 PR마다 빈 DB에 전체 마이그레이션 + 시드를 처음부터 돌려 보므로, 깨지는 마이그레이션이 머지 전에 드러난다.
+
+자동 머지를 `supabase/`에서 끊는 이유는 "Deploy to production" 때문이다. 이전 규칙("마이그레이션은 사람이 적용한다")이 막던 위험 — **사람이 보지 않은 변경이 실데이터에 들어가는 것** — 이 이제는 머지 시점에 생긴다. 그래서 사람의 확인을 적용 단계에서 머지 단계로 옮긴다.
+
+**버린 대안**:
+
+| 대안 | 버린 이유 |
+|---|---|
+| 영구 스테이징 브랜치 하나 | 상시 켜진 컴퓨트라 PR이 없어도 과금된다. 여러 PR이 한 DB를 공유해 서로의 마이그레이션이 섞인다 |
+| Free 유지 + 로컬 `supabase start` | 비용은 0이지만 PR마다 자동으로 돌지 않는다. 사람이 기억해서 돌려야 하는 검증은 결국 안 돈다 |
+| `supabase/` PR도 완전 자동 머지 | LLM 리뷰가 깨끗하다고 한 마이그레이션이 사람 눈 없이 실데이터에 적용된다. 되돌릴 수 없는 쪽의 실수다 |
+
+**트레이드오프**: Supabase Pro 요금과 프리뷰 브랜치의 시간당 컴퓨트 비용이 생긴다. 프리뷰는 Google 로그인·Polar 결제·Storage 원본 파일(시드 업로드 행은 `storage_path`만 있고 객체가 없다)을 검증하지 못한다. `supabase/` PR은 리뷰가 깨끗해도 사람이 머지할 때까지 멈춘다. 그리고 이미 적용된 마이그레이션 파일은 이름도 내용도 영영 고칠 수 없다 — 고치려면 새 마이그레이션을 쓴다.
+
+**사람이 할 설정** — 에이전트가 할 수 없다. **이 ADR을 들인 PR(phase 4-branching)이 머지된 뒤에** 순서대로 한다. 머지 전에 연동부터 켜면 옛 4자리 파일명이 main에 있는 상태로 "Deploy to production"이 돈다.
+
+1. Supabase 조직을 Pro로 올린다. Branching은 Pro부터 켜진다.
+2. Supabase 대시보드 → Integrations → GitHub: 이 리포를 연결하고 Working directory는 `.`(리포 루트, `supabase/`가 있는 곳), "Deploy to production"을 켠다. 프로덕션 브랜치는 `main`.
+3. Supabase–Vercel 연동을 설치하고 이 Vercel 프로젝트에 연결한다. **환경변수 이름이 앱과 다르다**(step 1 대조):
+
+   | 앱이 읽는 이름 | 연동이 넣는 이름 |
+   |---|---|
+   | `NEXT_PUBLIC_SUPABASE_URL` | 같음 |
+   | `NEXT_PUBLIC_SUPABASE_ANON_KEY` (`src/services/supabase.ts`) | `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` |
+   | `SUPABASE_SERVICE_ROLE_KEY` (`src/services/supabase-service.ts`) | `SUPABASE_SECRET_KEY` |
+   | `NEXT_PUBLIC_SITE_URL` (결제 라우트) | 넣지 않는다 |
+
+   설치 후 Vercel → Settings → Environment Variables의 Preview 범위에서 연동이 실제로 쓴 이름을 확인한다. 위 표대로라면 프리뷰 앱은 브랜치 URL에 **프로덕션 anon·service role 키**를 들고 붙어 인증이 실패한다. Vercel 환경변수는 다른 변수를 참조할 수 없고 브랜치 값은 연동이 PR마다 쓰므로, 손으로 복사해 맞출 수 없다. 앱이 새 이름(`PUBLISHABLE_KEY`·`SECRET_KEY`)을 읽도록 하는 코드 변경을 **별도 PR로** 낸다. 그 전까지 Preview 범위에 프로덕션 Supabase 키를 남겨 두지 않는다 — 프리뷰가 실데이터에 닿는 경로가 된다. `NEXT_PUBLIC_SITE_URL`은 결제에만 쓰이고 프리뷰는 결제를 검증하지 않으므로 Preview 범위에 두지 않아도 된다.
+4. 아무 PR이나 하나 열어 첫 프리뷰 브랜치의 로그(Supabase 대시보드 → Branches, 또는 PR의 Supabase 체크)에서 마이그레이션 8개와 `seed.sql`이 통과하는지 확인한다. 마이그레이션 8개 중 7개에 `begin; … commit;`이 직접 들어 있다. 연동이 파일을 자체 트랜잭션으로 감싸면 **여기서 처음 실패할 수 있다.** 실패하면 기존 파일을 고치지 말고(이름·내용 불변 규칙) 원인을 확인한 뒤 결정한다. 그 다음 프리뷰 앱 `/login`에서 Free·Pro 계정으로 들어가 대시보드 숫자가 `/demo`와 같은지 본다.
+5. 리포 설정 "Allow GitHub Actions to create and approve pull requests"가 켜져 있는지 확인한다(`gh api repos/{owner}/{repo}/actions/permissions/workflow` → `can_approve_pull_request_reviews`). 꺼져 있으면 `supabase/` PR의 승인조차 422로 거절된다.

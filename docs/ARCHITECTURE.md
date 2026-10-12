@@ -31,7 +31,10 @@ src/
 ├── lib/                # 순수 유틸 (파싱, 해시, 가맹점 규칙 사전, 집계, 탐지) + 집계 쿼리
 │   └── demo/           # 샘플 대시보드 전용 합성 CSV·데이터셋 (DB 없는 경로)
 └── services/           # 외부 API 래퍼 (Claude, Supabase, Polar)
-supabase/migrations/    # SQL 마이그레이션
+supabase/
+├── migrations/           # SQL 마이그레이션 (<UTC YYYYMMDDHHMMSS>_<snake_case>.sql)
+├── config.toml           # 프리뷰 브랜치 설정 (ADR-016)
+└── seed.sql              # 자동 생성(src/lib/demo/seed-sql.ts), 프리뷰 전용 합성 데이터
 ```
 
 ## 화면 인벤토리
