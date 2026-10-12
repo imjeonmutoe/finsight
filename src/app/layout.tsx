@@ -6,8 +6,7 @@ import { Analytics } from "@vercel/analytics/next";
 // 두어 브라우저가 화면에 실제로 쓰인 글자의 청크만 받는다. 통짜 variable 파일은
 // 2.0MB라 쓸 수 없다. 이 서체를 쓰는 이유는 시스템 폰트로 두면 macOS는 Apple SD
 // Gothic Neo, Windows는 맑은 고딕이 잡혀 같은 화면이 OS마다 다르게 보이기 때문이다.
-// 선언은 DeferredFonts가 첫 렌더 뒤에 받는다.
-import { DeferredFonts } from "@/components/DeferredFonts";
+import "pretendard/dist/web/variable/pretendardvariable-dynamic-subset.css";
 import "./globals.css";
 
 // 숫자 전용 서체. next/font가 빌드 타임에 self-host하므로 외부 요청이 없다.
@@ -67,7 +66,6 @@ export default function RootLayout({
       </head>
       <body className="bg-bg text-text antialiased">
         {children}
-        <DeferredFonts />
         <Analytics />
       </body>
     </html>
