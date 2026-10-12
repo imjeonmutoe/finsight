@@ -222,7 +222,12 @@ def trial(description):
 
     if status == "keep" and not baseline:
         git("add", "-A")
-        git("commit", "-m", f"perf(lighthouse): {description}\n\n{reason}")
+        try:
+            git("commit", "-m", f"perf(lighthouse): {description}\n\n{reason}")
+        except subprocess.CalledProcessError as e:
+            # pre-commit 훅(CRITICAL 규칙 검사)에 걸린 변경은 점수와 무관하게 채택하지 않는다
+            status, reason = "crash", f"커밋 거부: {e.stdout.strip() or e.stderr.strip()}"[:300]
+            discard_changes()
     elif not baseline:
         discard_changes()
 
