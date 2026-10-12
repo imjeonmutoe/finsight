@@ -13,7 +13,10 @@
     {
       "step": 1,
       "name": "docs-rules",
-      "status": "pending"
+      "status": "completed",
+      "started_at": "2026-10-12T13:21:41+0900",
+      "summary": "ADR-016에 '대체됨' 표시 + ADR-017(무료 스테이징·사람의 프로덕션 적용·이어받음/버림 표·STAGING_DB_URL 단일 비밀·ref 가드·사람 설정 6단계). CLAUDE.md/AGENTS.md 동일 수정(스택 줄, 마이그레이션 적용·파일명 이유, config.toml 버킷·함수 규칙 삭제 → CI는 스테이징만 CRITICAL 추가, 게이트 이유, 수동 초기화 명령), config.toml·merge_gate.py·review-code.yml·ARCHITECTURE 주석, supabase-config.test.ts 버킷·함수 단언 삭제",
+      "completed_at": "2026-10-12T13:24:00+0900"
     }
   ],
   "created_at": "2026-10-12T13:19:21+0900"

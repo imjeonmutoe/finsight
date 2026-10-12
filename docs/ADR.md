@@ -216,6 +216,8 @@ Next.js는 반대로 **16.3.4(최신)** 를 쓴다. 생짜로 시작하는 프�
 
 ### ADR-016: Supabase Branching으로 PR마다 프리뷰 DB를 띄우고, DB 변경 PR은 사람이 머지한다
 
+**상태: ADR-017로 대체됨**
+
 **결정**: Supabase 조직을 Pro로 올리고 Branching을 GitHub 연동으로 켠다. PR이 열리면 Supabase가 그 PR 전용 프리뷰 브랜치(별도 Postgres·Auth)를 만들어 `supabase/migrations/`와 `supabase/seed.sql`을 적용하고, PR이 머지되거나 닫히면 브랜치를 지운다. Supabase–Vercel 연동이 그 브랜치의 접속 정보를 같은 git 브랜치의 Vercel 프리뷰 배포에 넣어, **프리뷰 앱과 프리뷰 DB가 한 쌍**으로 뜬다. 연동의 "Deploy to production"을 켜므로 **main에 머지하는 순간이 곧 프로덕션 마이그레이션 적용**이다.
 
 - **시드는 데모 데이터셋이다.** `supabase/seed.sql`은 `buildSeedSql()`(`src/lib/demo/seed-sql.ts`)이 샘플 대시보드(S0)의 `buildDemoDataset()` 거래 188건을 프리뷰 계정 Free·Pro 두 개에 넣어 생성한다. 프리뷰 화면의 숫자가 `/demo`와 같다. **실데이터는 복사하지 않는다** — 프리뷰 DB는 PR 작성자·리뷰어 누구나 들여다보는 곳이다.
@@ -254,3 +256,43 @@ Next.js는 반대로 **16.3.4(최신)** 를 쓴다. 생짜로 시작하는 프�
    설치 후 Vercel → Settings → Environment Variables의 Preview 범위에서 연동이 실제로 쓴 이름을 확인한다. 위 표대로라면 프리뷰 앱은 브랜치 URL에 **프로덕션 anon·service role 키**를 들고 붙어 인증이 실패한다. Vercel 환경변수는 다른 변수를 참조할 수 없고 브랜치 값은 연동이 PR마다 쓰므로, 손으로 복사해 맞출 수 없다. 앱이 새 이름(`PUBLISHABLE_KEY`·`SECRET_KEY`)을 읽도록 하는 코드 변경을 **별도 PR로** 낸다. 그 전까지 Preview 범위에 프로덕션 Supabase 키를 남겨 두지 않는다 — 프리뷰가 실데이터에 닿는 경로가 된다. `NEXT_PUBLIC_SITE_URL`은 결제에만 쓰이고 프리뷰는 결제를 검증하지 않으므로 Preview 범위에 두지 않아도 된다.
 4. 아무 PR이나 하나 열어 첫 프리뷰 브랜치의 로그(Supabase 대시보드 → Branches, 또는 PR의 Supabase 체크)에서 마이그레이션 8개와 `seed.sql`이 통과하는지 확인한다. 마이그레이션 8개 중 7개에 `begin; … commit;`이 직접 들어 있다. 연동이 파일을 자체 트랜잭션으로 감싸면 **여기서 처음 실패할 수 있다.** 실패하면 기존 파일을 고치지 말고(이름·내용 불변 규칙) 원인을 확인한 뒤 결정한다. 그 다음 프리뷰 앱 `/login`에서 Free·Pro 계정으로 들어가 대시보드 숫자가 `/demo`와 같은지 본다.
 5. 리포 설정 "Allow GitHub Actions to create and approve pull requests"가 켜져 있는지 확인한다(`gh api repos/{owner}/{repo}/actions/permissions/workflow` → `can_approve_pull_request_reviews`). 꺼져 있으면 `supabase/` PR의 승인조차 422로 거절된다.
+
+---
+
+### ADR-017: Branching 대신 무료 스테이징 프로젝트를 프리뷰 DB로 쓰고, 프로덕션 마이그레이션은 사람이 적용한다
+
+**결정**: Supabase Branching(ADR-016)을 켜지 않는다. 대신 Free 조직의 두 번째 프로젝트 `finsight-staging`을 프리뷰 DB로 쓴다.
+
+- **스테이징에는 합성 데이터만 둔다.** `supabase/seed.sql`(`buildSeedSql()`이 생성) 그대로다. 실데이터를 복사하지 않는다.
+- **Vercel Preview 환경변수는 언제나 스테이징을 가리킨다.** 앱이 이미 읽는 이름(`NEXT_PUBLIC_SUPABASE_URL`·`NEXT_PUBLIC_SUPABASE_ANON_KEY`·`SUPABASE_SERVICE_ROLE_KEY`)을 그대로 쓴다. 연동이 PR마다 값을 쓰지 않으므로 이름을 바꾸는 코드 변경이 필요 없다.
+- **`.github/workflows/staging-db.yml`이 스테이징을 다시 만든다.** `supabase/**`를 건드린 PR, `main` 푸시(같은 경로), 수동 실행(`workflow_dispatch`)에서 `supabase db reset --db-url "$STAGING_DB_URL" --yes`로 초기화 → 마이그레이션 전부 → 시드(`[db.seed]`) 순서로 돈다. Supabase CLI는 2.120.0으로 고정한다. 실행은 `concurrency: staging-db`로 직렬화하고 도중 취소하지 않는다. `main` 푸시 실행은 PR이 남긴 스키마를 main 상태로 되돌린다.
+- **프로덕션 마이그레이션은 사람이 CLI(`db push`)나 대시보드로 적용한다.** PR #26 이전 규칙으로 되돌린다.
+
+**이유**: Branching은 Supabase 조직 Pro 월 요금에 프리뷰 브랜치마다 시간당 컴퓨트 요금이 붙는다. 포트폴리오/데모 규모에서 PR마다 DB를 띄우는 값으로는 크다. ADR-016이 노린 핵심 — **마이그레이션이 프로덕션보다 먼저 빈 DB에서 처음부터 돌아 보는 것**, **프리뷰 앱이 실데이터에 닿지 않는 것** — 은 무료 스테이징 하나와 초기화 워크플로우로 얻는다.
+
+**ADR-016에서 이어받는 것과 버리는 것**:
+
+| 항목 | ADR-016 | ADR-017 |
+|---|---|---|
+| 마이그레이션 파일명 `<UTC YYYYMMDDHHMMSS>_<snake_case>.sql`, 적용 후 불변 | ✓ | **이어받음** — CLI `db push`·스테이징 초기화 모두 버전을 원격 `schema_migrations`와 대조한다 |
+| `seed.sql` 생성기(`buildSeedSql()`), 합성 데이터만 | ✓ | **이어받음** |
+| 프리뷰 로그인(`isPreviewDeployment()`, `VERCEL_ENV === "preview"`) | ✓ | **이어받음** — Google OAuth 콜백을 프리뷰 주소마다 등록할 수 없는 사정은 같다 |
+| `supabase/` PR 자동 머지 금지 게이트(`merge_gate.py`) | ✓ | **이어받음** — 이유가 바뀐다: 머지와 프로덕션 적용을 사람이 함께 해야 앱 코드와 DB가 어긋나지 않는다 |
+| Polar 결제는 프리뷰에서 검증하지 않는다 | ✓ | **이어받음** |
+| PR마다 별도 프리뷰 DB | ✓ | **버림** — 모든 PR이 스테이징 하나를 공유한다 |
+| Supabase GitHub 연동 "Deploy to production"(머지 = 프로덕션 적용) | ✓ | **버림** — 사람이 적용한다 |
+| Supabase–Vercel 연동(브랜치별 환경변수 주입) | ✓ | **버림** — Preview 환경변수를 스테이징 값으로 고정한다 |
+| `config.toml`에 버킷·함수 선언 금지 | ✓ | **버림** — 이유였던 연동의 프로덕션 배포가 없다. `config.toml`은 로컬·CLI 설정이고 원격에 자동 적용되지 않는다 |
+
+**CI는 스테이징에만 붙는다.** 워크플로우의 비밀은 스테이징 접속 문자열 `STAGING_DB_URL` 하나다. Supabase 개인 액세스 토큰은 두지 않는다 — 토큰은 계정의 모든 프로젝트(실데이터가 든 프로덕션 포함)를 다룰 수 있어, PR 코드가 도는 잡에 두면 거기까지 손이 닿는다. 같은 이유로 프로젝트 연결(`supabase link`)도 쓰지 않는다. `db reset`은 대상 DB를 통째로 지우므로, 시크릿에 프로덕션 주소를 잘못 넣는 실수를 **프로덕션 ref 가드 스텝**이 초기화 전에 잡는다(URL에 프로덕션 프로젝트 ref가 있으면 실패, 메시지에 URL을 찍지 않는다). 이 불변식은 `scripts/test_staging_workflow.py`가 고정한다.
+
+**트레이드오프**: 모든 PR이 스테이징 하나를 공유한다 — 마이그레이션 PR 두 개가 열려 있으면 나중에 돈 쪽의 스키마가 남고, 다른 PR의 프리뷰가 그 스키마를 본다. 실행이 직렬이라 섞이지는 않지만, 확인 순서는 사람이 맞춘다. Free 프로젝트는 7일 동안 쓰지 않으면 일시정지되고, 그때는 사람이 대시보드에서 복구한다. 프로덕션 적용이 수동이므로 머지 후 적용을 잊으면 앱 코드와 DB가 어긋난다 — 그래서 `supabase/` PR은 게이트가 승인만 하고 사람이 머지·적용을 함께 한다. 스테이징 Auth 설정은 `config.toml`과 따로 대시보드에서 맞춰야 해 둘이 어긋날 수 있다.
+
+**사람이 할 설정** — 에이전트가 할 수 없다.
+
+1. Supabase에서 `finsight-staging` 프로젝트를 만든다 (Free, 프로덕션과 같은 리전).
+2. 스테이징 Connect → **Session pooler** 접속 문자열을 GitHub 리포 시크릿 `STAGING_DB_URL`에 등록한다. Direct 연결은 IPv6 전용이라 GitHub 러너에서 붙지 않는다. 비밀번호의 특수문자는 퍼센트 인코딩한다.
+3. Actions → `스테이징 DB 초기화`(`staging-db.yml`) → Run workflow로 첫 초기화를 한다. 로그에서 마이그레이션 8개와 시드가 통과하는지 확인한다. 마이그레이션의 `begin; … commit;`이 첫 실패 지점일 수 있다 — 실패하면 기존 파일을 고치지 말고(이름·내용 불변 규칙) 원인을 확인한 뒤 결정한다.
+4. 스테이징 Auth: 이메일 로그인을 켜고, 가입을 막고, Redirect URL에 `https://*-jpjeon87-9303s-projects.vercel.app/**`를 추가한다. `config.toml`은 원격에 자동 적용되지 않는다.
+5. Vercel → Settings → Environment Variables에서 **Preview** 범위의 Supabase 변수 3개(`NEXT_PUBLIC_SUPABASE_URL`·`NEXT_PUBLIC_SUPABASE_ANON_KEY`·`SUPABASE_SERVICE_ROLE_KEY`)를 스테이징 값으로 교체한다. 지금 Preview에 프로덕션 키가 있으면 프리뷰 앱이 실데이터 DB에 붙어 있는 것이다.
+6. Supabase 대시보드의 GitHub·Vercel 연동은 켜지 않는다. 켜면 ADR-016의 "Deploy to production"·브랜치별 환경변수 주입이 되살아난다.

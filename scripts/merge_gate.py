@@ -10,8 +10,8 @@
     critical·major 하나라도 → none    아무것도 하지 않는다
 
     바뀐 파일에 `supabase/` 아래가 있으면 merge → approve로만 낮춘다 (approve·none은 그대로).
-    Branching 연동이 머지 순간 마이그레이션·config.toml을 프로덕션 DB에 적용하므로,
-    사람이 머지 버튼을 누르는 것이 곧 프로덕션 적용 승인이다.
+    마이그레이션 PR은 머지와 프로덕션 적용(CLI·대시보드)을 사람이 함께 한다. 머지만 되고
+    적용이 안 되면 앱 코드와 DB가 어긋난다 (ADR-017).
 
 틀리는 쪽은 항상 `none`이다. 판정을 모르겠으면(마커 없음·형식 깨짐·미실행 차원) 머지하지 않는다.
 
@@ -41,7 +41,7 @@ MARKER_RE = re.compile(r"<!--\s*finsight-review\s+(\{.*?\})\s*-->", re.S)
 SEVERITIES = ("critical", "major", "minor", "nit")
 BLOCKING = ("critical", "major")
 
-# 이 아래를 건드린 PR은 머지가 곧 프로덕션 DB 배포다 (Supabase Branching "Deploy to production").
+# 이 아래를 건드린 PR은 사람이 머지하고 프로덕션에 함께 적용한다. 자동 머지하면 앱 코드와 DB가 어긋난다 (ADR-017).
 DB_PATH_PREFIX = "supabase/"
 
 

@@ -1,16 +1,15 @@
-# Supabase Branching이 프리뷰 브랜치를 만들 때 읽는 설정이다.
-# [storage.buckets.*]와 [functions.*]는 일부러 적지 않는다 — PR을 머지하면 이 둘은 프로덕션에 배포되어
-# 마이그레이션이 만든 statements 버킷(비공개·4MB 상한·RLS)을 덮어쓸 수 있다.
-# API·Auth 설정과 시드는 프로덕션에서 무시되므로 아래 값은 프리뷰 브랜치에만 적용된다.
+# 로컬 `supabase start`와 CLI가 읽는 설정이다. 원격(스테이징·프로덕션)에는 자동 적용되지 않으며,
+# 스테이징 Auth는 대시보드에서 아래 값과 같게 맞춘다(ADR-017). 시드([db.seed])는 스테이징 초기화
+# 워크플로우의 `supabase db reset`도 읽는다.
 # 비밀값을 평문으로 적지 마라. 커밋된다. 필요하면 env(...) 참조를 쓴다.
 
 project_id = "finsight"
 
-# 원격과 같은 major여야 프리뷰 브랜치가 프로덕션과 같은 Postgres에서 마이그레이션을 돌린다 (show server_version → 17.6)
+# 원격과 같은 major여야 로컬이 프로덕션과 같은 Postgres에서 마이그레이션을 돌린다 (show server_version → 17.6)
 [db]
 major_version = 17
 
-# 프리뷰 브랜치가 생길 때 한 번 테스트 사용자를 넣는다. seed.sql은 step 2가 만든다
+# DB를 초기화할 때 테스트 사용자를 넣는다(로컬·스테이징). seed.sql은 buildSeedSql()이 만든다
 [db.seed]
 enabled = true
 sql_paths = ["./seed.sql"]

@@ -219,8 +219,8 @@ jobs:
             --jq '.[] | {login: .user.login, at: .submitted_at, body: .body} | @json' > events.jsonl
           gh api "repos/$REPO/issues/$PR/comments" --paginate \
             --jq '.[] | {login: .user.login, at: .created_at, body: .body} | @json' >> events.jsonl
-          # supabase/를 건드린 PR은 머지가 곧 프로덕션 DB 적용(Branching)이라 승인까지만 하고 사람이 머지한다.
-          # 이름 변경은 옛 경로도 넘긴다 — supabase/ 밖으로 옮긴 파일도 프로덕션에 반영된다.
+          # supabase/를 건드린 PR은 승인까지만 한다. 머지와 프로덕션 적용을 사람이 함께 해야 앱 코드와 DB가 어긋나지 않는다(ADR-017).
+          # 이름 변경은 옛 경로도 넘긴다 — supabase/ 밖으로 옮긴 마이그레이션도 사람이 확인해야 한다.
           gh api "repos/$REPO/pulls/$PR/files" --paginate \
             --jq '.[] | .filename, (.previous_filename // empty)' > files.txt
           # 마커를 못 읽으면 여기서 exit 3 → 스텝 실패. 리뷰는 올라왔는데 판정을 못 읽는 것은
