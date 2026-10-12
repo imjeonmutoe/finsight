@@ -24,7 +24,7 @@
       "status": "completed",
       "started_at": "2026-10-12T11:14:17+0900",
       "summary": "buildSeedSql()(src/lib/demo/seed-sql.ts, 순수 함수)이 buildDemoDataset() 거래 188건을 프리뷰 계정 Free·Pro(src/lib/preview-accounts.ts, server-only, 고정 UUID·@finsight.test·PREVIEW_PASSWORD)에 각각 넣는 supabase/seed.sql(auth.users·auth.identities→handle_new_user 프로필→Pro만 profiles update(만료 2099-12-31)→출처→parsed 업로드→거래, 해시는 사용자별 출처 UUID로 dedupe.ts가 재계산, 전 insert 대상 없는 on conflict do nothing, begin/commit·DDL 없음)을 만들고 toMatchFileSnapshot으로 고정했다. 원격 information_schema 대조: 시드가 쓰는 auth.users·auth.identities·profiles·financial_sources·uploads·transactions 컬럼이 전부 존재하고, 기본값 없는 NOT NULL 컬럼(identities provider_id·user_id·identity_data·provider, 각 public 테이블의 필수 컬럼)을 모두 채우며 생성 컬럼(identities.email·users.confirmed_at)은 쓰지 않는다. pgcrypto가 extensions 스키마라 extensions.crypt/gen_salt로 스키마를 한정했다. 업로드 행은 Storage 객체 없이 storage_path만 갖는다",
-      "completed_at": "2026-10-12T11:16:53+0900"
+      "completed_at": "2026-10-12T11:17:19+0900"
     },
     {
       "step": 3,
