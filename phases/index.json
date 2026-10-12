@@ -27,7 +27,8 @@
     },
     {
       "dir": "4-branching",
-      "status": "pending"
+      "status": "completed",
+      "completed_at": "2026-10-12T11:23:38+0900"
     }
   ]
 }
