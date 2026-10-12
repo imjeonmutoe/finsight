@@ -5,12 +5,15 @@
     {
       "step": 0,
       "name": "staging-workflow",
-      "status": "pending"
+      "status": "completed",
+      "started_at": "2026-10-12T13:19:21+0900",
+      "summary": ".github/workflows/staging-db.yml(supabase/** PR·main push·수동, 직렬 concurrency, contents:read, 시크릿 STAGING_DB_URL 하나, 프로덕션 ref 가드 → `supabase db reset --db-url --yes`) + scripts/test_staging_workflow.py(텍스트 불변식 13개). Supabase CLI 2.120.0, supabase/setup-cli@45a513f8c64c0bc8e0e3dfe572b5c95be85f6359(v3.0.1), 시드는 reset 내장([db.seed], psql 별도 스텝 없음)"
     },
     {
       "step": 1,
       "name": "docs-rules",
       "status": "pending"
     }
-  ]
+  ],
+  "created_at": "2026-10-12T13:19:21+0900"
 }
