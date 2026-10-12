@@ -6,7 +6,7 @@ import { MAX_CSV_ROWS } from "@/lib/limits";
 import { CATEGORIES } from "@/types/category";
 
 const rawSql = readFileSync(
-  new URL("../../supabase/migrations/0001_init.sql", import.meta.url),
+  new URL("../../supabase/migrations/20260916045636_init.sql", import.meta.url),
   "utf8",
 );
 // 주석이 검증을 통과시키지 않게 제거합니다. SQL 문법 파서는 아닙니다.
@@ -192,7 +192,7 @@ describe("초기 마이그레이션 설계 규칙", () => {
 });
 
 const rawConfirmSql = readFileSync(
-  new URL("../../supabase/migrations/0003_upload_confirm.sql", import.meta.url),
+  new URL("../../supabase/migrations/20260916084517_upload_confirm.sql", import.meta.url),
   "utf8",
 );
 const confirmSql = rawConfirmSql.replace(/--[^\n]*/g, "").replace(/\s+/g, " ").trim();
@@ -268,7 +268,7 @@ describe("업로드 승인 트랜잭션", () => {
 });
 
 const grantsSql = readFileSync(
-  new URL("../../supabase/migrations/0004_upload_column_grants.sql", import.meta.url),
+  new URL("../../supabase/migrations/20261001070154_upload_column_grants.sql", import.meta.url),
   "utf8",
 ).replace(/--[^\n]*/g, "").replace(/\s+/g, " ").trim();
 
@@ -313,7 +313,7 @@ describe("uploads 컬럼 단위 쓰기 권한", () => {
 });
 
 const rawCostSql = readFileSync(
-  new URL("../../supabase/migrations/0007_close_client_cost_paths.sql", import.meta.url),
+  new URL("../../supabase/migrations/20261007064500_close_client_cost_paths.sql", import.meta.url),
   "utf8",
 );
 const costSql = rawCostSql.replace(/--[^\n]*/g, "").replace(/\s+/g, " ").trim();
@@ -381,7 +381,7 @@ describe("클라이언트 직접 쓰기로 분류 비용을 늘리는 경로", (
 });
 
 const rawDeletedSql = readFileSync(
-  new URL("../../supabase/migrations/0008_keep_count_after_upload_delete.sql", import.meta.url),
+  new URL("../../supabase/migrations/20261007082023_keep_count_after_upload_delete.sql", import.meta.url),
   "utf8",
 );
 const deletedSql = rawDeletedSql.replace(/--[^\n]*/g, "").replace(/\s+/g, " ").trim();

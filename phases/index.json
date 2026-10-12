@@ -24,6 +24,11 @@
       "dir": "3-monetization",
       "status": "completed",
       "completed_at": "2026-09-28T13:20:33+0900"
+    },
+    {
+      "dir": "4-branching",
+      "status": "completed",
+      "completed_at": "2026-10-12T11:23:38+0900"
     }
   ]
 }

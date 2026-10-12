@@ -1,0 +1,56 @@
+{
+  "project": "FinSight",
+  "phase": "4-branching",
+  "steps": [
+    {
+      "step": 0,
+      "name": "migration-rename",
+      "status": "completed",
+      "started_at": "2026-10-12T11:08:24+0900",
+      "summary": "supabase/migrations 8개를 원격 schema_migrations의 14자리 타임스탬프 버전으로 git mv(내용 100% 동일)하고, 파일명 규약·원격 이력 일치를 고정하는 src/lib/migration-files.test.ts와 테스트·ARCHITECTURE·supabase-advisor 스킬의 경로 참조를 갱신했다",
+      "completed_at": "2026-10-12T11:11:52+0900"
+    },
+    {
+      "step": 1,
+      "name": "supabase-config",
+      "status": "completed",
+      "started_at": "2026-10-12T11:11:52+0900",
+      "summary": "supabase/config.toml(버킷·함수·Google 없음, db.major_version=17(원격 17.6), seed ./seed.sql, 가입 차단)과 텍스트 검사 테스트 src/lib/supabase-config.test.ts를 추가했다. Vercel 팀 슬러그 jpjeon87-9303s-projects(vercel teams ls·vercel ls의 프리뷰 URL), 커스텀 도메인 0개(vercel domains ls)라 프로덕션은 https://finsight-zeta-peach.vercel.app(vercel project ls), 프리뷰 리다이렉트는 https://*-jpjeon87-9303s-projects.vercel.app/**. 스펙과 다른 점: CLI 소스상 [auth.email] enable_signup은 이메일 공급자 자체(EXTERNAL_EMAIL_ENABLED)라 false면 비밀번호 로그인도 꺼지므로, 가입 차단은 [auth] enable_signup=false(DISABLE_SIGNUP)로 하고 [auth.email] enable_signup=true로 뒀다. 환경변수 비교(Supabase 문서의 Vercel 연동 목록): NEXT_PUBLIC_SUPABASE_URL은 같고, 연동은 NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY·SUPABASE_SECRET_KEY를 넣어 앱의 NEXT_PUBLIC_SUPABASE_ANON_KEY·SUPABASE_SERVICE_ROLE_KEY와 이름이 다르다. 앱이 쓰는 NEXT_PUBLIC_SITE_URL은 연동이 넣지 않는다",
+      "completed_at": "2026-10-12T11:14:17+0900"
+    },
+    {
+      "step": 2,
+      "name": "seed-sql",
+      "status": "completed",
+      "started_at": "2026-10-12T11:14:17+0900",
+      "summary": "buildSeedSql()(src/lib/demo/seed-sql.ts, 순수 함수)이 buildDemoDataset() 거래 188건을 프리뷰 계정 Free·Pro(src/lib/preview-accounts.ts, server-only, 고정 UUID·@finsight.test·PREVIEW_PASSWORD)에 각각 넣는 supabase/seed.sql(auth.users·auth.identities→handle_new_user 프로필→Pro만 profiles update(만료 2099-12-31)→출처→parsed 업로드→거래, 해시는 사용자별 출처 UUID로 dedupe.ts가 재계산, 전 insert 대상 없는 on conflict do nothing, begin/commit·DDL 없음)을 만들고 toMatchFileSnapshot으로 고정했다. 원격 information_schema 대조: 시드가 쓰는 auth.users·auth.identities·profiles·financial_sources·uploads·transactions 컬럼이 전부 존재하고, 기본값 없는 NOT NULL 컬럼(identities provider_id·user_id·identity_data·provider, 각 public 테이블의 필수 컬럼)을 모두 채우며 생성 컬럼(identities.email·users.confirmed_at)은 쓰지 않는다. pgcrypto가 extensions 스키마라 extensions.crypt/gen_salt로 스키마를 한정했다. 업로드 행은 Storage 객체 없이 storage_path만 갖는다",
+      "completed_at": "2026-10-12T11:17:19+0900"
+    },
+    {
+      "step": 3,
+      "name": "preview-login",
+      "status": "completed",
+      "started_at": "2026-10-12T11:17:19+0900",
+      "summary": "isPreviewDeployment(env=process.env)(VERCEL_ENV==='preview'만 참)를 src/lib/preview-accounts.ts에, signInAsPreviewAccount(formData)를 src/app/login/actions.ts에 추가했다(맨 먼저 프리뷰 판정→아니면 Supabase 클라이언트 생성 없이 /login?error=preview, 폼은 accountId만 받아 PREVIEW_ACCOUNTS에 있을 때만 서버 상수 이메일·PREVIEW_PASSWORD로 signInWithPassword, 성공 /dashboard·실패 /login?error=preview, 로그·signUp 없음). /login은 프리뷰에서만 Google 버튼 아래 border-t 구분 영역 '프리뷰 전용'+보조(Secondary) 버튼 2개(hidden accountId)를 렌더하고 error=preview 전용 문구를 같은 자리에 띄운다. 기존 테스트 '이메일·비밀번호 로그인 경로를 만들지 않습니다'(export가 signInWithGoogle뿐)는 두 액션만 있음을 확인하도록 바꿨다. preview-shot.sh는 환경변수를 상속하므로 스크립트 수정 없이 VERCEL_ENV=preview를 앞에 붙여 실행했고, 라이트·다크·error=preview는 CDP(localStorage theme)로 확인했다. 빌드 후 .next/static에 비밀번호 문자열 0건",
+      "completed_at": "2026-10-12T11:20:04+0900"
+    },
+    {
+      "step": 4,
+      "name": "gate-db-guard",
+      "status": "completed",
+      "started_at": "2026-10-12T11:20:04+0900",
+      "summary": "scripts/merge_gate.py에 DB_PATH_PREFIX='supabase/'·touches_db(paths)·decide(marker, paths)(심각도 판정 뒤 merge일 때만 approve로 낮춤, approve·none 그대로)와 필수 --files(없으면 exit 2, 비면 exit 3), 출력 JSON touches_db를 추가하고 docstring 판정표·사용법을 갱신했다. 테스트는 기존 decide 호출에 비DB 경로 목록을 넘기도록 바꾸고 supabase/ 승인 강등·이름 변경 옛 경로·supabase-docs/ 접두어·--files 누락/빈 목록 10건을 더했다(pytest 132 통과). review-code.yml gate 잡은 pulls/{PR}/files에서 filename·previous_filename을 files.txt로 받아 --files로 넘기며 permissions·ref: main은 그대로다. 이 PR에서는 main의 merge_gate.py가 --files를 몰라 gate 잡이 exit 2로 빨간불인 것이 정상이다",
+      "completed_at": "2026-10-12T11:21:37+0900"
+    },
+    {
+      "step": 5,
+      "name": "docs-rules",
+      "status": "completed",
+      "started_at": "2026-10-12T11:21:37+0900",
+      "summary": "docs/ADR.md에 ADR-016(Pro Branching·GitHub 연동 PR별 프리뷰 DB+Vercel 한 쌍, 데모 데이터셋 시드·실데이터 금지, VERCEL_ENV=preview 전용 비밀번호 로그인(OAuth 콜백 이유), Polar는 프리뷰 미검증, supabase/ PR은 게이트가 승인만·머지=프로덕션 적용, 버린 대안 3개, 14자리 파일명 이유, 사람이 할 설정 5단계 체크리스트 — 연동 환경변수 이름 차이(PUBLISHABLE_KEY·SECRET_KEY vs 앱의 ANON_KEY·SERVICE_ROLE_KEY)는 Vercel에서 복사로 못 맞추므로 별도 코드 PR 필요·그 전까지 Preview에 프로덕션 키를 두지 말 것, 마이그레이션 7개의 begin/commit 첫 실패 가능성 포함)을 추가하고, CLAUDE.md·AGENTS.md를 같은 내용으로 고쳤다(마이그레이션 적용 주체를 PR 머지 시 연동으로, CRITICAL 4개 추가: 파일명 규약·불변, config.toml에 버킷·함수 금지, seed.sql 생성기 전용·실데이터 금지, isPreviewDeployment 판정 고정; 게이트 표 아래 supabase/ 승인만·--files 없으면 머지 안 함; 기술 스택 Supabase에 Branching). ARCHITECTURE 디렉토리 트리에 supabase/config.toml·seed.sql 추가. 아키텍처 규칙 diff 0, lint·build·test(959) 통과",
+      "completed_at": "2026-10-12T11:23:38+0900"
+    }
+  ],
+  "created_at": "2026-10-12T11:08:24+0900",
+  "completed_at": "2026-10-12T11:23:38+0900"
+}

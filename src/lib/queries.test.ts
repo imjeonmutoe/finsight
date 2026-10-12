@@ -144,7 +144,7 @@ describe("조회 실패", () => {
 
 describe("집계 SQL의 경계", () => {
   function sql() {
-    return readFileSync(new URL("../../supabase/migrations/0002_analytics.sql", import.meta.url), "utf8")
+    return readFileSync(new URL("../../supabase/migrations/20260916045651_analytics.sql", import.meta.url), "utf8")
       .replace(/--[^\n]*/g, "").replace(/\s+/g, " ").toLowerCase();
   }
 
