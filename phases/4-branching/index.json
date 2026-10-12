@@ -7,7 +7,8 @@
       "name": "migration-rename",
       "status": "completed",
       "started_at": "2026-10-12T11:08:24+0900",
-      "summary": "supabase/migrations 8개를 원격 schema_migrations의 14자리 타임스탬프 버전으로 git mv(내용 100% 동일)하고, 파일명 규약·원격 이력 일치를 고정하는 src/lib/migration-files.test.ts와 테스트·ARCHITECTURE·supabase-advisor 스킬의 경로 참조를 갱신했다"
+      "summary": "supabase/migrations 8개를 원격 schema_migrations의 14자리 타임스탬프 버전으로 git mv(내용 100% 동일)하고, 파일명 규약·원격 이력 일치를 고정하는 src/lib/migration-files.test.ts와 테스트·ARCHITECTURE·supabase-advisor 스킬의 경로 참조를 갱신했다",
+      "completed_at": "2026-10-12T11:11:52+0900"
     },
     {
       "step": 1,
