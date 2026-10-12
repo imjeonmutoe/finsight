@@ -39,7 +39,8 @@
       "name": "gate-db-guard",
       "status": "completed",
       "started_at": "2026-10-12T11:20:04+0900",
-      "summary": "scripts/merge_gate.py에 DB_PATH_PREFIX='supabase/'·touches_db(paths)·decide(marker, paths)(심각도 판정 뒤 merge일 때만 approve로 낮춤, approve·none 그대로)와 필수 --files(없으면 exit 2, 비면 exit 3), 출력 JSON touches_db를 추가하고 docstring 판정표·사용법을 갱신했다. 테스트는 기존 decide 호출에 비DB 경로 목록을 넘기도록 바꾸고 supabase/ 승인 강등·이름 변경 옛 경로·supabase-docs/ 접두어·--files 누락/빈 목록 10건을 더했다(pytest 132 통과). review-code.yml gate 잡은 pulls/{PR}/files에서 filename·previous_filename을 files.txt로 받아 --files로 넘기며 permissions·ref: main은 그대로다. 이 PR에서는 main의 merge_gate.py가 --files를 몰라 gate 잡이 exit 2로 빨간불인 것이 정상이다"
+      "summary": "scripts/merge_gate.py에 DB_PATH_PREFIX='supabase/'·touches_db(paths)·decide(marker, paths)(심각도 판정 뒤 merge일 때만 approve로 낮춤, approve·none 그대로)와 필수 --files(없으면 exit 2, 비면 exit 3), 출력 JSON touches_db를 추가하고 docstring 판정표·사용법을 갱신했다. 테스트는 기존 decide 호출에 비DB 경로 목록을 넘기도록 바꾸고 supabase/ 승인 강등·이름 변경 옛 경로·supabase-docs/ 접두어·--files 누락/빈 목록 10건을 더했다(pytest 132 통과). review-code.yml gate 잡은 pulls/{PR}/files에서 filename·previous_filename을 files.txt로 받아 --files로 넘기며 permissions·ref: main은 그대로다. 이 PR에서는 main의 merge_gate.py가 --files를 몰라 gate 잡이 exit 2로 빨간불인 것이 정상이다",
+      "completed_at": "2026-10-12T11:21:37+0900"
     },
     {
       "step": 5,
