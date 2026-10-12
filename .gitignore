@@ -35,3 +35,6 @@ __pycache__/
 
 # Supabase 어드바이저 리포트 (공개 리포 — 미수정 DB 지적 목록을 커밋하지 않는다)
 .supabase-advisor/
+
+# Lighthouse autoresearch 루프 산출물 (results.tsv·측정 로그·기준 스크린샷)
+.autoresearch/
