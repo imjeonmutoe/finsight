@@ -24,6 +24,7 @@ import merge_gate as mg
 
 SINCE = "2026-10-01T12:00:00Z"
 BOT = "github-actions[bot]"
+APP = ["src/app/page.tsx"]
 
 
 def marker(decision="Approve", critical=0, major=0, minor=0, nit=0, failed=0):
@@ -50,34 +51,34 @@ def body_with(mk):
 
 
 def test_지적이_하나도_없으면_머지한다():
-    action, _ = mg.decide(json.loads(mg.MARKER_RE.search(marker()).group(1)))
+    action, _ = mg.decide(json.loads(mg.MARKER_RE.search(marker()).group(1)), APP)
     assert action == "merge"
 
 
 @pytest.mark.parametrize("nit", [1, 5])
 def test_nit만_있으면_머지한다(nit):
-    action, _ = mg.decide(mg.extract(marker(nit=nit)))
+    action, _ = mg.decide(mg.extract(marker(nit=nit)), APP)
     assert action == "merge"
 
 
 def test_minor가_있으면_승인만_하고_머지하지_않는다():
-    action, reason = mg.decide(mg.extract(marker(minor=1, nit=2)))
+    action, reason = mg.decide(mg.extract(marker(minor=1, nit=2)), APP)
     assert action == "approve"
     assert "minor" in reason
 
 
 def test_major가_있으면_아무것도_하지_않는다():
-    action, _ = mg.decide(mg.extract(marker(decision="Changes Requested", major=1)))
+    action, _ = mg.decide(mg.extract(marker(decision="Changes Requested", major=1)), APP)
     assert action == "none"
 
 
 def test_critical이_있으면_아무것도_하지_않는다():
-    action, _ = mg.decide(mg.extract(marker(decision="Blocked", critical=1, nit=3)))
+    action, _ = mg.decide(mg.extract(marker(decision="Blocked", critical=1, nit=3)), APP)
     assert action == "none"
 
 
 def test_major와_nit이_섞여_있어도_아무것도_하지_않는다():
-    action, _ = mg.decide(mg.extract(marker(decision="Changes Requested", major=1, nit=9)))
+    action, _ = mg.decide(mg.extract(marker(decision="Changes Requested", major=1, nit=9)), APP)
     assert action == "none"
 
 
@@ -88,36 +89,36 @@ def test_major와_nit이_섞여_있어도_아무것도_하지_않는다():
 
 def test_차원이_미실행이면_지적_0건이어도_머지하지_않는다():
     # Incomplete = 그 차원은 한 번도 보지 않았다. 지적이 없는 게 아니라 모르는 것이다.
-    action, reason = mg.decide(mg.extract(marker(decision="Incomplete", failed=1)))
+    action, reason = mg.decide(mg.extract(marker(decision="Incomplete", failed=1)), APP)
     assert action == "none"
     assert "미실행" in reason
 
 
 def test_판정이_Approve여도_미실행_차원이_있으면_머지하지_않는다():
     # 판정 문자열과 stats가 어긋난 경우. 둘 다 봐야 한 겹이 남는다.
-    action, _ = mg.decide(mg.extract(marker(decision="Approve", failed=1)))
+    action, _ = mg.decide(mg.extract(marker(decision="Approve", failed=1)), APP)
     assert action == "none"
 
 
 def test_판정이_Approve여도_counts에_major가_있으면_머지하지_않는다():
     # 워크플로우가 판정을 잘못 계산한 경우에도 숫자가 막는다.
-    action, _ = mg.decide(mg.extract(marker(decision="Approve", major=1)))
+    action, _ = mg.decide(mg.extract(marker(decision="Approve", major=1)), APP)
     assert action == "none"
 
 
 def test_모르는_판정값은_아무것도_하지_않는다():
-    action, _ = mg.decide({"decision": "Whatever", "counts": {}, "stats": {}})
+    action, _ = mg.decide({"decision": "Whatever", "counts": {}, "stats": {}}, APP)
     assert action == "none"
 
 
 def test_counts가_없으면_형식_오류다():
     with pytest.raises(mg.MarkerError):
-        mg.decide({"decision": "Approve"})
+        mg.decide({"decision": "Approve"}, APP)
 
 
 def test_counts_값이_숫자가_아니면_형식_오류다():
     with pytest.raises(mg.MarkerError):
-        mg.decide({"decision": "Approve", "counts": {"critical": "0", "major": 0, "minor": 0, "nit": 0}})
+        mg.decide({"decision": "Approve", "counts": {"critical": "0", "major": 0, "minor": 0, "nit": 0}}, APP)
 
 
 # ---------------------------------------------------------------------------
@@ -199,9 +200,16 @@ def write_events(tmp_path, events):
     return str(p)
 
 
-def run_main(tmp_path, events, capsys):
+def write_files(tmp_path, paths):
+    p = tmp_path / "files.txt"
+    p.write_text("".join(f"{x}\n" for x in paths), encoding="utf-8")
+    return str(p)
+
+
+def run_main(tmp_path, events, capsys, paths=APP):
     path = write_events(tmp_path, events)
-    code = mg.main(["merge_gate.py", "--events", path, "--since", SINCE, "--actor", BOT])
+    files = write_files(tmp_path, paths)
+    code = mg.main(["merge_gate.py", "--events", path, "--files", files, "--since", SINCE, "--actor", BOT])
     return code, capsys.readouterr()
 
 
@@ -224,6 +232,75 @@ def test_main은_마커가_없으면_실패한다(tmp_path, capsys):
 def test_main은_빈_줄을_무시한다(tmp_path, capsys):
     path = tmp_path / "events.jsonl"
     path.write_text("\n" + json.dumps(event(body_with(marker()))) + "\n\n", encoding="utf-8")
-    code = mg.main(["merge_gate.py", "--events", str(path), "--since", SINCE, "--actor", BOT])
+    files = write_files(tmp_path, APP)
+    code = mg.main(["merge_gate.py", "--events", str(path), "--files", files, "--since", SINCE, "--actor", BOT])
     assert code == 0
     assert json.loads(capsys.readouterr().out)["action"] == "merge"
+
+
+# ---------------------------------------------------------------------------
+# supabase/ 를 건드린 PR — 머지가 곧 프로덕션 DB 적용이므로 사람이 머지한다
+# ---------------------------------------------------------------------------
+
+
+def test_nit만_있어도_마이그레이션을_건드렸으면_승인만_한다():
+    action, reason = mg.decide(mg.extract(marker(nit=2)), ["src/app/page.tsx", "supabase/migrations/x.sql"])
+    assert action == "approve"
+    assert "supabase/" in reason
+    assert "사람이 머지" in reason
+
+
+def test_지적이_없어도_config_toml을_건드렸으면_승인만_한다():
+    action, _ = mg.decide(mg.extract(marker()), ["supabase/config.toml"])
+    assert action == "approve"
+
+
+def test_supabase를_안_건드렸으면_그대로_머지한다():
+    action, _ = mg.decide(mg.extract(marker()), ["src/app/page.tsx"])
+    assert action == "merge"
+
+
+def test_minor와_supabase는_승인_그대로다():
+    action, reason = mg.decide(mg.extract(marker(minor=1)), ["supabase/seed.sql"])
+    assert action == "approve"
+    assert "minor" in reason
+
+
+def test_critical과_supabase는_아무것도_하지_않는다():
+    action, _ = mg.decide(mg.extract(marker(decision="Blocked", critical=1)), ["supabase/seed.sql"])
+    assert action == "none"
+
+
+def test_supabase_밖으로_옮긴_파일도_supabase를_건드린_것이다():
+    # 이름 변경은 새 경로와 옛 경로가 둘 다 목록에 들어온다. 옛 경로가 supabase/면 마이그레이션이 빠진 것이다.
+    action, _ = mg.decide(mg.extract(marker()), ["docs/old.sql", "supabase/migrations/old.sql"])
+    assert action == "approve"
+
+
+def test_접두어만_같은_경로는_supabase가_아니다():
+    assert not mg.touches_db(["supabase-docs/x.md"])
+    action, _ = mg.decide(mg.extract(marker()), ["supabase-docs/x.md"])
+    assert action == "merge"
+
+
+def test_main이_touches_db를_찍는다(tmp_path, capsys):
+    code, out = run_main(tmp_path, [event(body_with(marker()))], capsys, paths=["supabase/config.toml"])
+    assert code == 0
+    result = json.loads(out.out)
+    assert result["action"] == "approve"
+    assert result["touches_db"] is True
+
+
+def test_main은_files가_없으면_인자_오류다(tmp_path, capsys):
+    # 선택 인자로 두면 목록 없이 부른 옛 워크플로우가 supabase/ PR을 자동 머지한다.
+    path = write_events(tmp_path, [event(body_with(marker()))])
+    code = mg.main(["merge_gate.py", "--events", path, "--since", SINCE, "--actor", BOT])
+    assert code == 2
+    assert capsys.readouterr().out.strip() == ""
+
+
+def test_main은_files가_비어_있으면_실패한다(tmp_path, capsys):
+    # PR에 바뀐 파일이 0개일 수 없다. 비었으면 목록을 못 받은 것이다.
+    code, out = run_main(tmp_path, [event(body_with(marker()))], capsys, paths=[])
+    assert code == 3
+    assert out.out.strip() == ""

@@ -9,6 +9,10 @@
     minor 이하            → approve 승인만 한다. 머지는 사람이 한다
     critical·major 하나라도 → none    아무것도 하지 않는다
 
+    바뀐 파일에 `supabase/` 아래가 있으면 merge → approve로만 낮춘다 (approve·none은 그대로).
+    Branching 연동이 머지 순간 마이그레이션·config.toml을 프로덕션 DB에 적용하므로,
+    사람이 머지 버튼을 누르는 것이 곧 프로덕션 적용 승인이다.
+
 틀리는 쪽은 항상 `none`이다. 판정을 모르겠으면(마커 없음·형식 깨짐·미실행 차원) 머지하지 않는다.
 
 사용법:
@@ -16,9 +20,14 @@
       --jq '.[] | {login: .user.login, at: .submitted_at, body: .body} | @json' > events.jsonl
     gh api "repos/{owner}/{repo}/issues/<번호>/comments" --paginate \
       --jq '.[] | {login: .user.login, at: .created_at, body: .body} | @json' >> events.jsonl
-    python3 scripts/merge_gate.py --events events.jsonl --since <ISO8601> --actor "github-actions[bot]"
+    gh api "repos/{owner}/{repo}/pulls/<번호>/files" --paginate \
+      --jq '.[] | .filename, (.previous_filename // empty)' > files.txt
+    python3 scripts/merge_gate.py --events events.jsonl --files files.txt --since <ISO8601> --actor "github-actions[bot]"
 
-종료 코드: 0 판정함 / 2 인자 오류 / 3 마커를 못 읽음
+`--files`는 필수다. 이름 변경은 새 경로와 옛 경로를 둘 다 담는다. 목록이 비어 있으면
+못 받은 것으로 보고 exit 3 — PR에 바뀐 파일이 0개일 수 없다.
+
+종료 코드: 0 판정함 / 2 인자 오류 / 3 마커를 못 읽음·파일 목록이 비어 있음
 """
 
 import argparse
@@ -31,6 +40,9 @@ MARKER_RE = re.compile(r"<!--\s*finsight-review\s+(\{.*?\})\s*-->", re.S)
 
 SEVERITIES = ("critical", "major", "minor", "nit")
 BLOCKING = ("critical", "major")
+
+# 이 아래를 건드린 PR은 머지가 곧 프로덕션 DB 배포다 (Supabase Branching "Deploy to production").
+DB_PATH_PREFIX = "supabase/"
 
 
 class MarkerError(Exception):
@@ -70,8 +82,23 @@ def pick_marker(events, since, actor):
     return found[0] if found else None
 
 
-def decide(marker):
+def touches_db(paths):
+    """`supabase/` 아래 경로가 하나라도 있는가. 경로 구분자까지 비교해 `supabase-docs/`는 빼낸다."""
+    return any(p.startswith(DB_PATH_PREFIX) for p in paths)
+
+
+def decide(marker, paths):
     """(action, reason)을 돌려준다. action은 merge / approve / none."""
+    action, reason = _decide_by_severity(marker)
+    # 낮추기만 한다. approve·none을 올리거나 다른 값으로 바꾸지 않는다.
+    if action == "merge" and touches_db(paths):
+        return "approve", reason.replace(" — 승인하고 머지한다", "") + (
+            " — supabase/를 건드려 머지가 곧 프로덕션 DB 적용이다. 승인만 하고 사람이 머지한다"
+        )
+    return action, reason
+
+
+def _decide_by_severity(marker):
     counts = marker.get("counts")
     if not isinstance(counts, dict):
         raise MarkerError("마커에 counts가 없다")
@@ -104,6 +131,7 @@ def decide(marker):
 def main(argv):
     ap = argparse.ArgumentParser(description="리뷰 결과로 자동 승인·머지 여부를 정한다")
     ap.add_argument("--events", required=True, help="리뷰·코멘트 JSONL ({login, at, body})")
+    ap.add_argument("--files", required=True, help="바뀐 경로 목록 (한 줄에 하나, 이름 변경은 옛 경로도)")
     ap.add_argument("--since", required=True, help="이번 실행 시작 시각 (ISO8601)")
     ap.add_argument("--actor", required=True, help="리뷰를 올린 계정")
     try:
@@ -114,6 +142,13 @@ def main(argv):
     with open(ns.events, encoding="utf-8") as fh:
         events = [json.loads(line) for line in fh if line.strip()]
 
+    with open(ns.files, encoding="utf-8") as fh:
+        paths = [line.strip() for line in fh if line.strip()]
+    if not paths:
+        # 모르면 머지하지 않는다. 빈 목록을 'supabase/ 안 건드림'으로 읽으면 DB PR이 자동 머지된다.
+        print(f"{ns.files}에 바뀐 파일이 없다 — 파일 목록을 받지 못했다.", file=sys.stderr)
+        return 3
+
     try:
         marker = pick_marker(events, ns.since, ns.actor)
         if marker is None:
@@ -122,7 +157,7 @@ def main(argv):
                 file=sys.stderr,
             )
             return 3
-        action, reason = decide(marker)
+        action, reason = decide(marker, paths)
     except MarkerError as e:
         print(str(e), file=sys.stderr)
         return 3
@@ -134,6 +169,7 @@ def main(argv):
                 "reason": reason,
                 "decision": marker.get("decision"),
                 "counts": marker.get("counts"),
+                "touches_db": touches_db(paths),
             },
             ensure_ascii=False,
         )
