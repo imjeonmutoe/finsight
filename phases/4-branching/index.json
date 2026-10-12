@@ -13,7 +13,10 @@
     {
       "step": 1,
       "name": "supabase-config",
-      "status": "pending"
+      "status": "completed",
+      "started_at": "2026-10-12T11:11:52+0900",
+      "summary": "supabase/config.toml(버킷·함수·Google 없음, db.major_version=17(원격 17.6), seed ./seed.sql, 가입 차단)과 텍스트 검사 테스트 src/lib/supabase-config.test.ts를 추가했다. Vercel 팀 슬러그 jpjeon87-9303s-projects(vercel teams ls·vercel ls의 프리뷰 URL), 커스텀 도메인 0개(vercel domains ls)라 프로덕션은 https://finsight-zeta-peach.vercel.app(vercel project ls), 프리뷰 리다이렉트는 https://*-jpjeon87-9303s-projects.vercel.app/**. 스펙과 다른 점: CLI 소스상 [auth.email] enable_signup은 이메일 공급자 자체(EXTERNAL_EMAIL_ENABLED)라 false면 비밀번호 로그인도 꺼지므로, 가입 차단은 [auth] enable_signup=false(DISABLE_SIGNUP)로 하고 [auth.email] enable_signup=true로 뒀다. 환경변수 비교(Supabase 문서의 Vercel 연동 목록): NEXT_PUBLIC_SUPABASE_URL은 같고, 연동은 NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY·SUPABASE_SECRET_KEY를 넣어 앱의 NEXT_PUBLIC_SUPABASE_ANON_KEY·SUPABASE_SERVICE_ROLE_KEY와 이름이 다르다. 앱이 쓰는 NEXT_PUBLIC_SITE_URL은 연동이 넣지 않는다",
+      "completed_at": "2026-10-12T11:14:30+0900"
     },
     {
       "step": 2,
