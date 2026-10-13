@@ -127,9 +127,11 @@ describe("랜딩 (S1 · S1b)", () => {
 
 describe("랜딩 검색 노출", () => {
   it("핵심 검색어 '카드 명세서 분석'을 제목과 설명에 담고 대표 주소를 세웁니다", () => {
-    expect(String(metadata.title)).toContain("카드 명세서 분석");
-    expect(metadata.description).toContain("카드 명세서");
+        expect(metadata.description).toContain("카드 명세서");
     expect(metadata.alternates?.canonical).toBe("/");
+    expect(metadata.openGraph).toMatchObject({ url: "/" });
+    // 랜딩은 서비스 이름이 앞에 오는 고유 제목이라 템플릿을 타지 않습니다.
+    expect(metadata.title).toEqual({ absolute: "FinSight — 카드 명세서 분석으로 지출 누수 찾기" });
   });
 
   it("검색 결과용 구조화 데이터를 유효한 JSON으로 넣습니다", async () => {
@@ -137,11 +139,9 @@ describe("랜딩 검색 노출", () => {
 
     const script = container.querySelector('script[type="application/ld+json"]');
     expect(script).not.toBeNull();
-    expect(JSON.parse(script?.textContent ?? "")).toMatchObject({
-      "@context": "https://schema.org",
-      "@type": "WebApplication",
-      name: "FinSight",
-      inLanguage: "ko",
-    });
+    const data = JSON.parse(script?.textContent ?? "") as { "@context": string; "@graph": { "@type": string }[] };
+    expect(data["@context"]).toBe("https://schema.org");
+    expect(data["@graph"].map((node) => node["@type"])).toEqual(["Organization", "WebSite", "WebApplication"]);
+    expect(data["@graph"][2]).toMatchObject({ name: "FinSight", inLanguage: "ko" });
   });
 });

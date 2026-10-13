@@ -6,16 +6,16 @@ import { KpiCard } from "@/components/KpiCard";
 import { LandingCta } from "@/components/LandingCta";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { requireUserId } from "@/lib/api";
-import { jsonLdText, SITE_NAME, siteUrl } from "@/lib/site";
+import { jsonLdText, pageMetadata, SITE_NAME, siteUrl } from "@/lib/site";
 import { createServerSupabase } from "@/services/supabase";
 import type { MonthlySummary } from "@/types/analytics";
 
 // 핵심 검색어는 '카드 명세서 분석'이다. 제목·설명·h1에 같은 말을 둔다.
 export const metadata: Metadata = {
-  title: "FinSight — 카드 명세서 분석으로 지출 누수 찾기",
+  title: { absolute: "FinSight — 카드 명세서 분석으로 지출 누수 찾기" },
   description:
     "카드 명세서·은행 거래내역 CSV를 올리면 카테고리별 지출과 정기결제 누수를 자동으로 분석해 보여줍니다. 카드번호와 계좌번호는 받지 않습니다.",
-  alternates: { canonical: "/" },
+  ...pageMetadata("/"),
 };
 
 // 히어로 목업의 예시 숫자입니다. 합계는 아래 카테고리의 합과 일치시킵니다 —
@@ -121,17 +121,26 @@ function PricingTier({ name, price, note, features, highlight }: {
 
 export default async function Home() {
   const signedIn = await isSignedIn();
-  // 검색 결과에 앱 정보로 표시되게 하는 구조화 데이터. 요금은 아래 Free 요금제와 맞춘다.
+  // 검색 결과용 구조화 데이터. 브랜드(Organization)·사이트(WebSite)·앱(WebApplication)을 한 그래프로
+  // 묶어 서로 @id로 잇는다. 요금은 아래 Free 요금제와 맞춘다.
+  const url = siteUrl().href;
   const jsonLd = {
     "@context": "https://schema.org",
-    "@type": "WebApplication",
-    name: SITE_NAME,
-    url: siteUrl().href,
-    description: metadata.description,
-    applicationCategory: "FinanceApplication",
-    operatingSystem: "Web",
-    inLanguage: "ko",
-    offers: { "@type": "Offer", price: "0", priceCurrency: "KRW" },
+    "@graph": [
+      { "@type": "Organization", "@id": `${url}#organization`, name: SITE_NAME, url, logo: new URL("/apple-icon.png", url).href },
+      { "@type": "WebSite", "@id": `${url}#website`, name: SITE_NAME, url, inLanguage: "ko", publisher: { "@id": `${url}#organization` } },
+      {
+        "@type": "WebApplication",
+        name: SITE_NAME,
+        url,
+        description: metadata.description,
+        applicationCategory: "FinanceApplication",
+        operatingSystem: "Web",
+        inLanguage: "ko",
+        publisher: { "@id": `${url}#organization` },
+        offers: { "@type": "Offer", price: "0", priceCurrency: "KRW" },
+      },
+    ],
   };
 
   return (

@@ -10,7 +10,7 @@ import { Analytics } from "@vercel/analytics/next";
 // 작다. OFL 예약 이름 때문에 패밀리 이름은 FinSight Sans다 (scripts/gen_pretendard.py).
 import "./fonts/pretendard.css";
 import "./globals.css";
-import { isIndexable, SITE_NAME, siteUrl, siteVerification } from "@/lib/site";
+import { isIndexable, SHARED_OPEN_GRAPH, SITE_NAME, siteUrl, siteVerification } from "@/lib/site";
 
 // 숫자 전용 서체. next/font가 빌드 타임에 self-host하므로 외부 요청이 없다.
 // preload하지 않는다 — 금액이 없는 화면(개인정보 처리방침 등)에서도 31KB를 첫 렌더 전에
@@ -42,13 +42,15 @@ const jetBrainsMono = JetBrains_Mono({
 export function generateMetadata(): Metadata {
   return {
     metadataBase: siteUrl(),
-    title: "FinSight — 카드 명세서 소비 분석",
+    // 하위 페이지는 "로그인"처럼 짧게 쓰고 서비스 이름은 템플릿이 붙인다.
+    title: { default: "FinSight — 카드 명세서 소비 분석", template: `%s | ${SITE_NAME}` },
     // 실제 동작만 적는다. 원본 CSV는 ADR-004에 따라 계좌·카드번호째로 비공개 버킷에 보관하며,
     // 자르지 않는다. AI에 가는 것은 정제된 가맹점명과 금액뿐이다(lib/sanitize.ts).
     description:
       "카드 명세서 CSV를 올리면 카테고리별 소비 분해와 요약을 보여줍니다. 원본 파일은 본인만 접근할 수 있는 비공개 저장소에 보관하며, AI에는 계좌·카드번호를 가린 가맹점명과 금액만 전송합니다.",
     // 공유 이미지는 app/opengraph-image.png를 Next가 자동으로 붙인다.
-    openGraph: { siteName: SITE_NAME, locale: "ko_KR", type: "website" },
+    // og:url은 페이지별로 다르므로 여기 두지 않는다(lib/site.ts의 pageMetadata).
+    openGraph: SHARED_OPEN_GRAPH,
     twitter: { card: "summary_large_image" },
     verification: siteVerification(),
     // 프리뷰는 robots.txt로도 막지만, 링크를 타고 들어온 크롤러를 위해 페이지에도 단다.
