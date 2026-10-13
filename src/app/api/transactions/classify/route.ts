@@ -3,7 +3,7 @@ import { z } from "zod";
 import { errorResponse, jsonResponse, requireUserId } from "@/lib/api";
 import { CLASSIFICATION_BATCH_SIZE } from "@/lib/limits";
 import { classifyByRule } from "@/lib/merchant-rules";
-import { captureServerEvent } from "@/lib/posthog-server";
+import { captureServerEvent, trackApiFailure } from "@/lib/posthog-server";
 import { classifyTransactions, createAiObservabilityContext } from "@/services/claude";
 import { createServerSupabase } from "@/services/supabase";
 import type { ClassifyResponse } from "@/types/api";
@@ -95,6 +95,7 @@ export async function POST() {
 
   const remaining = await countRemaining();
   if (modelFailed) {
+    await trackApiFailure(userId, "transactions/classify", 502, "CLASSIFY_FAILED");
     return errorResponse(502, "CLASSIFY_FAILED", MODEL_FAILED, { classified, remaining });
   }
   if (remaining === 0) {

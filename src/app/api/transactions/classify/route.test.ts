@@ -20,7 +20,8 @@ const { getClaims, from, rpc, createServerSupabase, classifyTransactions, create
   };
 });
 vi.mock("server-only", () => ({}));
-vi.mock("@/lib/posthog-server", () => ({ captureServerEvent: vi.fn() }));
+const { trackApiFailure } = vi.hoisted(() => ({ trackApiFailure: vi.fn() }));
+vi.mock("@/lib/posthog-server", () => ({ captureServerEvent: vi.fn(), trackApiFailure }));
 vi.mock("@/services/supabase", () => ({ createServerSupabase }));
 vi.mock("@/services/claude", () => ({ classifyTransactions, createAiObservabilityContext }));
 vi.mock("next/headers", () => ({ cookies: vi.fn(async () => ({ getAll: () => [], set: () => {} })) }));
@@ -201,6 +202,7 @@ describe("POST /api/transactions/classify 3단 분류", () => {
     await expect(response.json()).resolves.toMatchObject({
       code: "CLASSIFY_FAILED", classified: 1, remaining: 1,
     });
+    expect(trackApiFailure).toHaveBeenCalledWith("user-1", "transactions/classify", 502, "CLASSIFY_FAILED");
   });
 });
 

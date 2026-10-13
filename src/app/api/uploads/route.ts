@@ -10,7 +10,7 @@ import { decodeCsv, detectEncoding } from "@/lib/encoding";
 import { MAX_CSV_ROWS, MAX_FILE_BYTES, MAX_MULTIPART_BODY_BYTES } from "@/lib/limits";
 import { buildSanitizedMappingInput } from "@/lib/sanitize";
 import { ownsStoragePath } from "@/lib/storage-path";
-import { captureServerEvent } from "@/lib/posthog-server";
+import { captureServerEvent, trackApiFailure } from "@/lib/posthog-server";
 import { createAiObservabilityContext, inferColumnMapping } from "@/services/claude";
 import { createServerSupabase } from "@/services/supabase";
 import type { MappingResponse } from "@/types/api";
@@ -98,6 +98,7 @@ export async function POST(request: Request) {
 
   const fileBytes = new Uint8Array(await file.arrayBuffer());
   if (fileBytes.byteLength > MAX_FILE_BYTES) {
+    await trackApiFailure(userId, "uploads", 413, "FILE_TOO_LARGE");
     return errorResponse(413, "FILE_TOO_LARGE", "파일이 4MB를 넘습니다. 기간을 나눠 다시 올려 주세요.");
   }
 
@@ -119,6 +120,7 @@ export async function POST(request: Request) {
     return errorResponse(400, "INVALID_CSV", "읽을 수 없는 파일입니다. 명세서를 다시 내려받아 올려 주세요.");
   }
   if (rows.length > MAX_CSV_ROWS) {
+    await trackApiFailure(userId, "uploads", 413, "TOO_MANY_ROWS");
     return errorResponse(413, "TOO_MANY_ROWS", "행이 10,000개를 넘습니다. 기간을 나눠 다시 올려 주세요.");
   }
 
@@ -186,6 +188,7 @@ export async function POST(request: Request) {
     const deletedThisMonth = profile.success && profile.data.last_deleted_upload_at !== null
       && Date.parse(profile.data.last_deleted_upload_at) >= Date.parse(kstMonthStart(now));
     if (count >= 1 || deletedThisMonth) {
+      await trackApiFailure(userId, "uploads", 403, "UPLOAD_LIMIT_REACHED");
       return errorResponse(403, "UPLOAD_LIMIT_REACHED",
         "이번 달 무료 업로드를 이미 사용했습니다. 다음 달 1일에 초기화됩니다.",
         { resetsAt: nextKstMonthStart(now) });
@@ -255,6 +258,7 @@ export async function POST(request: Request) {
     await markFailed(MAPPING_ERROR);
     // 추론만 실패했습니다. 원본은 Storage에 있으므로 사용자가 직접 컬럼을 고르면 그대로 진행됩니다.
     // 안내 문구가 "매핑 확인 화면에서 직접 선택하라"고 하므로 그 화면을 열 재료를 함께 줍니다.
+    await trackApiFailure(userId, "uploads", 502, "MAPPING_FAILED");
     return errorResponse(502, "MAPPING_FAILED", MAPPING_ERROR, {
       uploadId, sourceId, status: "failed", reused: false, mapping: null, confidence: 0,
       preview, totalRows, headerRowIndex,

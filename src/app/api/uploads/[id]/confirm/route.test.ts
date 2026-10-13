@@ -23,7 +23,8 @@ const { getClaims, from, rpc, download, storageFrom, createServerSupabase, claud
   };
 });
 vi.mock("server-only", () => ({}));
-vi.mock("@/lib/posthog-server", () => ({ captureServerEvent: vi.fn() }));
+const { trackApiFailure } = vi.hoisted(() => ({ trackApiFailure: vi.fn() }));
+vi.mock("@/lib/posthog-server", () => ({ captureServerEvent: vi.fn(), trackApiFailure }));
 vi.mock("@/services/supabase", () => ({ createServerSupabase }));
 vi.mock("@/services/claude", () => claude);
 vi.mock("next/headers", () => ({ cookies: vi.fn(async () => ({ getAll: () => [], set: () => {} })) }));
@@ -264,6 +265,7 @@ describe("POST /api/uploads/[id]/confirm 검증", () => {
     expect(body.message).toContain("2행");
     expect(body.message).not.toContain("쿠팡");
     expect(body.message).not.toContain("38400");
+    expect(trackApiFailure).toHaveBeenCalledWith("user-1", "uploads/confirm", 400, "PARSE_FAILED");
   });
 
   it("저장된 원본이 4MB를 넘으면 파싱하지 않고 413입니다", async () => {
@@ -276,6 +278,7 @@ describe("POST /api/uploads/[id]/confirm 검증", () => {
     expect(response.status).toBe(413);
     expect((await response.json()).code).toBe("FILE_TOO_LARGE");
     expect(rpc).not.toHaveBeenCalled();
+    expect(trackApiFailure).toHaveBeenCalledWith("user-1", "uploads/confirm", 413, "FILE_TOO_LARGE");
   });
 
   it("원본이 정확히 4MB면 크기로 막지 않습니다", async () => {
@@ -300,6 +303,7 @@ describe("POST /api/uploads/[id]/confirm 검증", () => {
     expect(body.code).toBe("UPLOAD_LIMIT_REACHED");
     expect(body.message).toBe("이번 달 무료 업로드를 이미 사용했습니다. 다음 달 1일에 초기화됩니다.");
     expect(typeof body.resetsAt).toBe("string");
+    expect(trackApiFailure).toHaveBeenCalledWith("user-1", "uploads/confirm", 403, "UPLOAD_LIMIT_REACHED");
   });
 
   it("원본을 읽지 못하면 500이며 거래를 넣지 않습니다", async () => {

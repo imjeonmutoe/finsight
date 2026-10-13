@@ -54,8 +54,34 @@ export async function captureServerEvent({
       ...(sessionId ? { $session_id: sessionId } : {}),
     },
   });
-  await posthog.flush();
+  // 계측 실패가 이미 끝난 저장을 500으로 바꾸지 않게 한다.
+  try {
+    await posthog.flush();
+  } catch {
+    return;
+  }
 
   logPostHogCapture(event);
   after(flushPostHogLogs);
+}
+
+/** 제품상 의미 있는 실패(한도·용량·매핑·분류·결제)를 한 이벤트 이름으로 모은다. 코드는 errorResponse의 고정 코드다. */
+export async function trackApiFailure(distinctId: string, route: string, status: number, errorCode: string) {
+  await captureServerEvent({
+    distinctId,
+    event: "api_request_failed",
+    properties: { route, status, error_code: errorCode },
+  });
+}
+
+/** 처리되지 않은 서버 예외. 메시지는 before_send가 지운다. 오류 보고가 또 다른 오류를 만들지 않게 삼킨다. */
+export async function captureServerException(error: unknown, properties: Record<string, string>) {
+  try {
+    const posthog = getPostHogClient();
+    if (!posthog) return;
+    posthog.captureException(error, undefined, properties);
+    await posthog.flush();
+  } catch {
+    // 보고 실패는 무시한다.
+  }
 }

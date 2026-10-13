@@ -1,8 +1,17 @@
 "use client";
 
+import { useEffect } from "react";
+import posthog from "posthog-js";
+
 // 에러 경계는 Client Component여야 한다. 원인과 다음 행동을 함께 준다(docs/UX_GUIDE.md 5).
 // error 객체의 내용은 표시하지 않는다 — 거래 내용이 메시지에 섞여 있을 수 있다.
-export default function DashboardError({ reset }: { error: Error; reset: () => void }) {
+// PostHog로는 보내되 메시지는 before_send가 지운다(src/lib/posthog-privacy.ts).
+// 경계에 잡힌 에러는 window.onerror에 닿지 않아 직접 보낸다. 재시도는 Next 16 권장대로 retry로 다시 불러온다.
+export default function DashboardError({ error, retry }: { error: Error; retry: () => void; reset: () => void }) {
+  useEffect(() => {
+    posthog.captureException(error);
+  }, [error]);
+
   return (
     <main className="mx-auto max-w-6xl space-y-3 px-6 py-16">
       <h1 className="text-2xl font-semibold leading-snug text-text">대시보드를 불러오지 못했습니다</h1>
@@ -11,7 +20,7 @@ export default function DashboardError({ reset }: { error: Error; reset: () => v
       </p>
       <button
         type="button"
-        onClick={reset}
+        onClick={retry}
         className="rounded-md bg-text px-4 py-2 text-sm font-medium text-bg hover:opacity-90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
       >
         다시 시도하기

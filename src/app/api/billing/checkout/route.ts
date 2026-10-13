@@ -1,7 +1,7 @@
 import { cookies } from "next/headers";
 import { z } from "zod";
 import { errorResponse, jsonResponse, requireUserId } from "@/lib/api";
-import { captureServerEvent } from "@/lib/posthog-server";
+import { captureServerEvent, trackApiFailure } from "@/lib/posthog-server";
 import { clientIpAddress, createProCheckout } from "@/services/polar";
 import { createServerSupabase } from "@/services/supabase";
 
@@ -49,6 +49,7 @@ export async function POST(request: Request) {
       successUrl: `${siteUrl}${CHECKOUT_RETURN_PATH}`,
     });
   } catch {
+    await trackApiFailure(userId, "billing/checkout", 503, "CHECKOUT_UNAVAILABLE");
     return errorResponse(503, "CHECKOUT_UNAVAILABLE",
       "지금은 결제를 시작할 수 없습니다. 잠시 후 다시 시도해 주세요.");
   }
