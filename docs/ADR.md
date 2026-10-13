@@ -267,6 +267,7 @@ Next.js는 반대로 **16.3.4(최신)** 를 쓴다. 생짜로 시작하는 프�
 - 소유 확인 값은 `GOOGLE_SITE_VERIFICATION`·`NAVER_SITE_VERIFICATION` 환경 변수로 받는다. 공개되는 값이라 비밀이 아니다.
 - 구조화 데이터(JSON-LD)는 `dangerouslySetInnerHTML` 없이 `<script>`의 자식 텍스트로 넣고, `jsonLdText()`가 `<`를 이스케이프해 태그 밖으로 나가지 못하게 한다.
 - 공유 이미지(`src/app/opengraph-image.png`)는 정적 PNG다. 랜딩 히어로의 예시 숫자를 그대로 쓴다.
+- 공개 페이지는 `pageMetadata(path)`로 canonical과 `og:url`을 같은 경로에 묶는다. 페이지가 `openGraph`를 주면 레이아웃 값과 루트 공유 이미지가 통째로 덮이므로 `SHARED_OPEN_GRAPH`에 이미지까지 명시한다. 하위 페이지 제목은 짧게 쓰고 `%s | FinSight` 템플릿이 붙인다. 구조화 데이터는 `Organization`·`WebSite`·`WebApplication`을 한 `@graph`로 잇고, iOS 홈 화면용 `apple-icon.png`(180×180)를 둔다.
 
 **이유**: 프리뷰 배포에는 공개 비밀번호로 들어가는 테스트 계정 로그인이 열려 있다(ADR-016). 프리뷰 주소가 검색에 걸리면 그 화면이 누구에게나 노출된다. 수집 허용을 기본 차단으로 두고 프로덕션에서만 여는 쪽이 틀렸을 때 안전하다.
 

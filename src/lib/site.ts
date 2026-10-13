@@ -16,6 +16,21 @@ export function siteUrl(env: NodeJS.ProcessEnv = process.env): URL {
   return new URL("http://localhost:3000");
 }
 
+// 공유 태그의 공통 부분. 페이지가 openGraph를 따로 주면 레이아웃 것도, 루트의 opengraph-image.png도
+// 통째로 덮인다(필드 단위로 합치지 않는다). 그래서 이미지를 여기서 명시하고 페이지 쪽에서도 함께 넣는다.
+// alt는 app/opengraph-image.alt.txt와 같은 문장이다.
+export const SHARED_OPEN_GRAPH = {
+  siteName: SITE_NAME,
+  locale: "ko_KR",
+  type: "website",
+  images: [{ url: "/opengraph-image.png", width: 1200, height: 630, alt: "FinSight — 카드 명세서 분석. 이번 달 총지출 예시와 카테고리별 지출 막대" }],
+};
+
+// 공개 페이지의 대표 주소와 og:url을 같은 경로로 맞춘다. 상대 경로는 metadataBase가 절대 주소로 바꾼다.
+export function pageMetadata(path: (typeof PUBLIC_PATHS)[number]): Pick<Metadata, "alternates" | "openGraph"> {
+  return { alternates: { canonical: path }, openGraph: { ...SHARED_OPEN_GRAPH, url: path } };
+}
+
 // 프로덕션 배포만 수집을 허용한다. 프리뷰에는 테스트 계정 비밀번호 로그인이 열려 있어
 // 검색에 걸리면 안 된다. 판정은 isPreviewDeployment와 같은 이유로 VERCEL_ENV만 본다.
 export function isIndexable(env: NodeJS.ProcessEnv = process.env): boolean {

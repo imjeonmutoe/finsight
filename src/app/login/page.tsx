@@ -9,7 +9,7 @@ import { signInAsPreviewAccount, signInWithGoogle } from "./actions";
 
 // 검색 결과에 로그인 화면이 따로 뜨지 않게 한다. 링크는 따라가도 된다.
 export const metadata: Metadata = {
-  title: "로그인 | FinSight",
+  title: "로그인",
   robots: { index: false, follow: true },
 };
 

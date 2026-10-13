@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { isIndexable, jsonLdText, siteUrl, siteVerification } from "./site";
+import { isIndexable, jsonLdText, pageMetadata, siteUrl, siteVerification } from "./site";
 
 const env = (values: Record<string, string>) => values as unknown as NodeJS.ProcessEnv;
 
@@ -49,5 +49,21 @@ describe("jsonLdText", () => {
     const text = jsonLdText({ name: "</script><script>alert(1)</script>" });
     expect(text).not.toContain("<");
     expect(JSON.parse(text)).toEqual({ name: "</script><script>alert(1)</script>" });
+  });
+});
+
+describe("pageMetadata", () => {
+  it("대표 주소와 og:url을 같은 경로로 맞추고 공통 공유 태그를 유지합니다", () => {
+    expect(pageMetadata("/demo")).toEqual({
+      alternates: { canonical: "/demo" },
+      openGraph: {
+        siteName: "FinSight",
+        locale: "ko_KR",
+        type: "website",
+        url: "/demo",
+        // 페이지가 openGraph를 덮으면 루트의 opengraph-image.png가 따라오지 않아 직접 단다.
+        images: [{ url: "/opengraph-image.png", width: 1200, height: 630, alt: "FinSight — 카드 명세서 분석. 이번 달 총지출 예시와 카테고리별 지출 막대" }],
+      },
+    });
   });
 });

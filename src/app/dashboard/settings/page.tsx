@@ -12,7 +12,7 @@ import type { Plan } from "@/types/billing";
 import { signOut } from "./actions";
 
 export const metadata: Metadata = {
-  title: "설정 | FinSight",
+  title: "설정",
   description: "플랜을 확인하고 보관 중인 금융 데이터를 지웁니다.",
 };
 

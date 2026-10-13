@@ -77,3 +77,7 @@ it("Google·네이버 소유 확인 값을 메타 태그로 넣습니다", () =>
 
   expect(generateMetadata().verification).toEqual({ google: "g-code", other: { "naver-site-verification": "n-code" } });
 });
+
+it("하위 페이지 제목 뒤에 서비스 이름을 자동으로 붙입니다", () => {
+  expect(generateMetadata().title).toEqual({ default: "FinSight — 카드 명세서 소비 분석", template: "%s | FinSight" });
+});

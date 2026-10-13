@@ -8,7 +8,7 @@ import { requireUserId } from "@/lib/api";
 import { createServerSupabase } from "@/services/supabase";
 
 export const metadata: Metadata = {
-  title: "업로드 이력 | FinSight",
+  title: "업로드 이력",
   description: "올린 명세서의 처리 상태를 확인하고 이어서 진행하거나 지웁니다.",
 };
 
