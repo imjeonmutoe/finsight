@@ -1,6 +1,6 @@
 // @vitest-environment node
 import { describe, expect, it } from "vitest";
-import { renderReport, reportFileName } from "./report";
+import { renderFalsifyReport, renderReport, reportFileName } from "./report";
 import type { Case, Result } from "./lib";
 
 const cases: Case[] = [
@@ -59,5 +59,38 @@ describe("renderReport", () => {
 describe("reportFileName", () => {
   it("UTC 시각으로 정렬되는 파일명을 만든다", () => {
     expect(reportFileName(meta.startedAt)).toBe("harness-20261013T023005Z.html");
+    expect(reportFileName(meta.startedAt, "falsify")).toBe("harness-falsify-20261013T023005Z.html");
+  });
+});
+
+describe("renderFalsifyReport", () => {
+  const probe: Result[] = [
+    { id: "review-a", track: "review", status: "fail", reason: "놓쳤다" },
+    { id: "review-b", track: "review", status: "pass", reason: "<i>통과시킴</i>" },
+  ];
+  const baseline: Result[] = [
+    { id: "review-a", track: "review", status: "pass", reason: "일반 상식으로 잡음" },
+    { id: "qa-a", track: "qa", status: "fail", reason: "모름" },
+  ];
+  const html = renderFalsifyReport(cases, probe, baseline, meta);
+
+  it("채점자 누수와 하네스 무관 케이스를 구분해 표시한다", () => {
+    expect(html).toContain("채점자 누수");
+    expect(html).toContain("하네스 무관");
+    expect(html).toContain("하네스 필요");
+    expect(html).toContain("게이트 실패");
+    expect(html).toContain("1/2");
+  });
+
+  it("오탐 방지 케이스가 기준선에서 통과하면 경고 대신 정상으로 표시한다", () => {
+    const clean = renderFalsifyReport(cases, [], [{ id: "review-b", track: "review", status: "pass", reason: "" }], meta);
+    expect(clean).not.toContain("하네스 무관</span>");
+    expect(clean).toContain("오탐 없음");
+  });
+
+  it("넣은 틀린 답과 이유를 이스케이프해 담는다", () => {
+    expect(html).toContain("위반 없음");
+    expect(html).toContain("&lt;i&gt;통과시킴&lt;/i&gt;");
+    expect(html).not.toContain("<i>통과시킴");
   });
 });

@@ -3,7 +3,7 @@ id: review-clean-total
 track: review
 expect: pass
 ---
-`src/lib/total-spend.ts`
+`src/lib/total-spend.ts` (같은 폴더에 `total-spend.test.ts`가 먼저 커밋돼 있다)
 
 ```ts
 import type { Transaction } from "@/types/transaction";

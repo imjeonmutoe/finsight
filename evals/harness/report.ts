@@ -1,7 +1,7 @@
 // eval 결과를 브라우저로 여는 단일 HTML로 그린다. 순수 함수이고 파일 쓰기는 run.ts가 한다.
 // 채점 이유는 LLM 출력이라 임의 문자열이 섞일 수 있다. 모든 값은 esc()를 거친다.
 
-import { exitCode, summarize } from "./lib";
+import { exitCode, falsify, falsifyExitCode, isCleanCase, summarize, wrongAnswer } from "./lib";
 import type { Case, Result, Track } from "./lib";
 
 export type ReportMeta = { startedAt: Date; subjectModel: string; judgeModel: string };
@@ -33,17 +33,37 @@ function label(c: Case | undefined): string {
   return `${premise}<div class="sub">must</div>${list(c.must)}${mustNot}`;
 }
 
-function rows(results: Result[], byId: Map<string, Case>): string {
-  return results.map((r) => `<tr class="${r.status}">
+type Chip = { cls: string; text: string };
+const statusChip = (r: Result): Chip => ({ cls: r.status, text: STATUS_LABEL[r.status] });
+
+function rows(results: Result[], second: (r: Result) => string, chip: (r: Result) => Chip): string {
+  return results.map((r) => {
+    const { cls, text } = chip(r);
+    return `<tr class="${cls}">
   <td class="id">${esc(r.id)}</td>
-  <td>${label(byId.get(r.id))}</td>
-  <td><span class="chip ${r.status}">${STATUS_LABEL[r.status]}</span></td>
+  <td>${second(r)}</td>
+  <td><span class="chip ${cls}">${text}</span></td>
   <td class="reason">${esc(r.reason)}</td>
-</tr>`).join("\n");
+</tr>`;
+  }).join("\n");
 }
 
-export function reportFileName(startedAt: Date): string {
-  return `harness-${startedAt.toISOString().replace(/\.\d{3}Z$/, "Z").replaceAll("-", "").replaceAll(":", "")}.html`;
+function table(heads: [string, string], body: string): string {
+  return `<div class="table-wrap"><table>
+    <colgroup><col class="c-id"><col><col class="c-status"><col class="c-reason"></colgroup>
+    <thead><tr><th>케이스</th><th>${heads[0]}</th><th>결과</th><th>${heads[1]}</th></tr></thead>
+    <tbody>${body}</tbody>
+  </table></div>`;
+}
+
+function tile(title: string, value: string, tone = ""): string {
+  return `<div class="tile ${tone}"><span class="muted">${title}</span><span class="num">${value}</span></div>`;
+}
+
+const stamp = (d: Date): string => d.toISOString().replace(/\.\d{3}Z$/, "Z");
+
+export function reportFileName(startedAt: Date, kind?: "falsify"): string {
+  return `harness-${kind ? `${kind}-` : ""}${stamp(startedAt).replaceAll("-", "").replaceAll(":", "")}.html`;
 }
 
 export function renderReport(cases: Case[], results: Result[], meta: ReportMeta): string {
@@ -51,25 +71,61 @@ export function renderReport(cases: Case[], results: Result[], meta: ReportMeta)
   const ok = exitCode(summary) === 0;
   const byId = new Map(cases.map((c) => [c.id, c]));
   const tracks = (["review", "qa"] as const).filter((track) => summary.byTrack[track].total > 0);
-  const when = meta.startedAt.toISOString().replace(/\.\d{3}Z$/, "Z");
 
-  const tiles = tracks.map((track) => `<div class="tile"><span class="muted">${track}</span>
-  <span class="num">${summary.byTrack[track].passed}/${summary.byTrack[track].total}</span></div>`).join("");
+  const tiles = tile(`전체 · ${ok ? "게이트 통과" : "게이트 실패"}`, `${summary.passed}/${summary.total}`, ok ? "good" : "bad")
+    + tracks.map((track) => tile(track, `${summary.byTrack[track].passed}/${summary.byTrack[track].total}`)).join("");
   const sections = tracks.map((track) => `<section>
   <h2>${TRACK_TITLE[track]}</h2>
-  <div class="table-wrap"><table>
-    <colgroup><col class="c-id"><col><col class="c-status"><col class="c-reason"></colgroup>
-    <thead><tr><th>케이스</th><th>정답 라벨</th><th>결과</th><th>채점 이유</th></tr></thead>
-    <tbody>${rows(results.filter((r) => r.track === track), byId)}</tbody>
-  </table></div>
+  ${table(["정답 라벨", "채점 이유"], rows(results.filter((r) => r.track === track), (r) => label(byId.get(r.id)), statusChip))}
 </section>`).join("\n");
+  return page("FinSight 하네스 eval 결과", meta, `<div class="score">${tiles}</div>\n${sections}`);
+}
 
+export function renderFalsifyReport(cases: Case[], probe: Result[], baseline: Result[], meta: ReportMeta): string {
+  const f = falsify(cases, probe, baseline);
+  const ok = falsifyExitCode(f) === 0;
+  const byId = new Map(cases.map((c) => [c.id, c]));
+  const injected = (r: Result): string => {
+    const c = byId.get(r.id);
+    return c ? esc(wrongAnswer(c)) : "";
+  };
+  // 반증에서는 '실패'가 기대한 결과다. 칩은 판정이 아니라 기대와 맞았는지를 말한다.
+  const probeChip = (r: Result): Chip => r.status === "fail" ? { cls: "pass", text: "정상(fail)" }
+    : r.status === "pass" ? { cls: "fail", text: "채점자 누수" } : statusChip(r);
+  const baselineChip = (r: Result): Chip => {
+    if (r.status === "error") return statusChip(r);
+    if (isCleanCase(byId.get(r.id))) {
+      return r.status === "pass" ? { cls: "pass", text: "오탐 없음" } : { cls: "pass", text: "하네스 필요" };
+    }
+    return r.status === "fail" ? { cls: "pass", text: "하네스 필요" } : { cls: "error", text: "하네스 무관" };
+  };
+  const leaksOk = probe.length - f.judgeLeaks.length;
+
+  const tiles = tile(ok ? "게이트 통과" : "게이트 실패", `${leaksOk}/${probe.length}`, ok ? "good" : "bad")
+    + tile("하네스 무관 케이스", `${f.harnessFree.length}/${baseline.filter((r) => !isCleanCase(byId.get(r.id))).length}`, f.harnessFree.length > 0 ? "warn" : "")
+    + tile("에러", String(f.errors.length), f.errors.length > 0 ? "bad" : "");
+  const body = `<div class="score">${tiles}</div>
+<section>
+  <h2>채점자 반증: 틀린 답에 fail을 주는가</h2>
+  <p class="muted">케이스 기준을 정면으로 어기는 답을 채점자에게 바로 넣었다. 전부 fail이어야 채점을 믿을 수 있다.</p>
+  ${table(["넣은 틀린 답", "채점 이유"], rows(probe, injected, probeChip))}
+</section>
+<section>
+  <h2>하네스 제거: CLAUDE.md 없이도 통과하는가</h2>
+  <p class="muted">같은 케이스를 CLAUDE.md 규칙 없는 일반 프롬프트로 돌렸다. 그래도 통과한 케이스는 하네스가 아니라 모델의 일반 지식을 잰다. 게이트를 닫지는 않지만 더 프로젝트 고유한 케이스로 바꿀 후보다.</p>
+  ${table(["정답 라벨", "채점 이유"], rows(baseline, (r) => label(byId.get(r.id)), baselineChip))}
+</section>`;
+  return page("FinSight 하네스 eval 반증", meta, body);
+}
+
+function page(title: string, meta: ReportMeta, body: string): string {
+  const when = stamp(meta.startedAt);
   return `<!doctype html>
 <html lang="ko">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>하네스 eval ${esc(when)}</title>
+<title>${esc(title)} ${esc(when)}</title>
 <style>
 :root {
   --bg: #f6f7f5; --surface: #ffffff; --fg: #1b2420; --muted: #5d6b64; --line: #dde3df;
@@ -94,7 +150,8 @@ code, .id, .num { font-family: var(--mono); }
 .score { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; }
 .tile { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; display: grid; }
 .num { font-size: 28px; font-weight: 600; font-variant-numeric: tabular-nums; }
-.tile.gate .num { color: var(--${ok ? "pass" : "fail"}); }
+.tile.good .num { color: var(--pass); } .tile.bad .num { color: var(--fail); } .tile.warn .num { color: var(--error); }
+p { margin: 0; max-width: 72ch; }
 .table-wrap { overflow-x: auto; background: var(--surface); border: 1px solid var(--line); border-radius: 10px; }
 table { width: 100%; border-collapse: collapse; min-width: 760px; table-layout: fixed; }
 col.c-id { width: 230px; } col.c-status { width: 64px; } col.c-reason { width: 38%; }
@@ -117,19 +174,14 @@ ul { margin: 0; padding-left: 18px; font-size: 13.5px; }
 <body>
 <main>
 <header>
-  <h1>FinSight 하네스 eval 결과</h1>
+  <h1>${esc(title)}</h1>
   <div class="meta">
     <span>${esc(when)}</span>
     <span>응답 <code>${esc(meta.subjectModel)}</code></span>
     <span>채점 <code>${esc(meta.judgeModel)}</code></span>
   </div>
 </header>
-<div class="score">
-  <div class="tile gate"><span class="muted">전체 · ${ok ? "게이트 통과" : "게이트 실패"}</span>
-  <span class="num">${summary.passed}/${summary.total}</span></div>
-  ${tiles}
-</div>
-${sections}
+${body}
 </main>
 </body>
 </html>
