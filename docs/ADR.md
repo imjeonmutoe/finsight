@@ -254,3 +254,27 @@ Next.js는 반대로 **16.3.4(최신)** 를 쓴다. 생짜로 시작하는 프�
    설치 후 Vercel → Settings → Environment Variables의 Preview 범위에서 연동이 실제로 쓴 이름을 확인한다. 위 표대로라면 프리뷰 앱은 브랜치 URL에 **프로덕션 anon·service role 키**를 들고 붙어 인증이 실패한다. Vercel 환경변수는 다른 변수를 참조할 수 없고 브랜치 값은 연동이 PR마다 쓰므로, 손으로 복사해 맞출 수 없다. 앱이 새 이름(`PUBLISHABLE_KEY`·`SECRET_KEY`)을 읽도록 하는 코드 변경을 **별도 PR로** 낸다. 그 전까지 Preview 범위에 프로덕션 Supabase 키를 남겨 두지 않는다 — 프리뷰가 실데이터에 닿는 경로가 된다. `NEXT_PUBLIC_SITE_URL`은 결제에만 쓰이고 프리뷰는 결제를 검증하지 않으므로 Preview 범위에 두지 않아도 된다.
 4. 아무 PR이나 하나 열어 첫 프리뷰 브랜치의 로그(Supabase 대시보드 → Branches, 또는 PR의 Supabase 체크)에서 마이그레이션 8개와 `seed.sql`이 통과하는지 확인한다. 마이그레이션 8개 중 7개에 `begin; … commit;`이 직접 들어 있다. 연동이 파일을 자체 트랜잭션으로 감싸면 **여기서 처음 실패할 수 있다.** 실패하면 기존 파일을 고치지 말고(이름·내용 불변 규칙) 원인을 확인한 뒤 결정한다. 그 다음 프리뷰 앱 `/login`에서 Free·Pro 계정으로 들어가 대시보드 숫자가 `/demo`와 같은지 본다.
 5. 리포 설정 "Allow GitHub Actions to create and approve pull requests"가 켜져 있는지 확인한다(`gh api repos/{owner}/{repo}/actions/permissions/workflow` → `can_approve_pull_request_reviews`). 꺼져 있으면 `supabase/` PR의 승인조차 422로 거절된다.
+
+### ADR-017: 계측을 PostHog로 넓히되, 금융 데이터는 코드로 막는다
+
+**결정**: 제품 분석·에러 추적·LLM 관측·운영 로그를 PostHog(US 리전)로 보낸다. step 10의 "계측은 Vercel Analytics만, 이벤트 추적 코드를 직접 작성하지 않는다"를 이 ADR이 대체한다. Vercel Analytics는 그대로 둔다.
+
+- **보내는 것**: Supabase user id(이메일은 보내지 않는다), 화면 이동, 버튼 이름(`data-ph-capture-attribute-cta`), 서버 이벤트의 건수·종류·플랜, 실패의 라우트·상태·고정 코드(`api_request_failed`), 예외의 타입·스택, LLM 호출의 모델·토큰·비용·지연, `logEvent`의 고정 코드.
+- **막는 것과 막는 위치**:
+  - 화면 텍스트·요소 속성 — `mask_all_text`·`mask_all_element_attributes`, 녹화는 `maskTextSelector: "*"`(`src/lib/posthog-privacy.ts`). 거래 목록 select의 `aria-label`에 가맹점명이 들어 있어 자동 수집이 그대로 보내고 있었다.
+  - 예외 메시지 — 브라우저·서버 공통 `before_send`가 지운다. 메시지에 거래 내용이 섞일 수 있다.
+  - LLM 프롬프트·응답 원문 — `privacyMode`·`posthogPrivacyMode`.
+  - 서버 예외 경로 — `request.path` 대신 라우트 파일 경로만(`instrumentation.ts`의 `onRequestError`).
+- **계측이 요청을 깨지 않는다**: 전송 실패는 삼킨다. 이미 끝난 저장을 500으로 바꾸지 않는다.
+
+**이유**: Vercel Analytics는 페이지뷰만 본다. 업로드 한도 도달·매핑 실패·분류 실패·결제 확인 지연·인사이트 캐시 적중률처럼 퍼널과 비용을 가르는 사건이 보이지 않았고, 서버 예외는 Vercel 함수 로그를 직접 뒤져야 했다. 도입 직후 `insight_loaded`가 캐시 적중 0%를, `insight_cache_unavailable` 로그가 그 원인(service role 키 누락)을 바로 보여 줬다.
+
+**버린 대안**:
+
+| 대안 | 버린 이유 |
+|---|---|
+| Vercel Analytics 유지 + 직접 만든 이벤트 테이블 | 대시보드·퍼널·에러 묶음을 다시 만들어야 한다. step 10이 이벤트 테이블을 만들지 않기로 한 이유와 같다 |
+| 자동 수집 끄고 전부 수동 `capture` | 놓친 클릭은 나중에 볼 수 없다. 텍스트만 가리면 구조와 버튼 이름은 남는다 |
+| 이메일로 식별 | 사람을 찾기 쉽지만 개인정보 위탁 범위가 넓어진다. id로 Supabase를 찾으면 된다 |
+
+**트레이드오프**: 개인정보처리방침에 PostHog를 수탁자로 적는다. 화면 텍스트를 가려서 녹화·히트맵으로는 무슨 금액을 보고 있었는지 알 수 없다. 예외 메시지를 지워 같은 타입의 다른 원인이 한 이슈로 묶일 수 있다 — 스택과 라우트 경로로 가른다.

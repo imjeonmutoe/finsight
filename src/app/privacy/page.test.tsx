@@ -13,11 +13,18 @@ describe("개인정보처리방침", () => {
     expect(screen.getByText(/사용자가 삭제할 때까지 보관합니다/)).toBeVisible();
   });
 
-  it("국외 이전 표에 수탁자 4곳을 모두 담습니다", () => {
+  it("서비스 이용 기록과 화면 글자를 가린다는 사실을 밝힙니다", () => {
+    render(<PrivacyPage />);
+
+    expect(screen.getByText(/서비스 이용 기록/)).toBeVisible();
+    expect(screen.getByText(/화면의 글자·금액·가맹점명은 가린 채/)).toBeVisible();
+  });
+
+  it("국외 이전 표에 수탁자 5곳을 모두 담습니다", () => {
     render(<PrivacyPage />);
 
     const table = screen.getByRole("table", { name: /국외 이전/ });
-    for (const processor of ["Anthropic", "Supabase", "Vercel", "Polar"]) {
+    for (const processor of ["Anthropic", "Supabase", "Vercel", "Polar", "PostHog"]) {
       expect(within(table).getByRole("rowheader", { name: processor })).toBeVisible();
     }
     // 표 헤더는 스크린리더가 열을 읽을 수 있게 scope를 갖습니다.
