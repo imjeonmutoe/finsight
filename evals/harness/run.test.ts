@@ -1,7 +1,8 @@
 // @vitest-environment node
 import { describe, expect, it, vi } from "vitest";
-import { runSuite } from "./run";
+import { runBaseline, runJudgeProbe, runSuite } from "./run";
 import type { Deps } from "./run";
+import { wrongAnswer } from "./lib";
 import type { Case } from "./lib";
 
 const CLAUDE_MD = "- CRITICAL: 비밀키에 NEXT_PUBLIC_ 접두사를 붙이지 않는다.\n";
@@ -46,5 +47,24 @@ describe("runSuite", () => {
     }));
     expect(results.map((r) => r.status)).toEqual(["error", "pass"]);
     expect(results[0]?.reason).toContain("429");
+  });
+});
+
+describe("반증 실행", () => {
+  it("runJudgeProbe는 subject를 부르지 않고 틀린 답을 채점자에게 넣는다", async () => {
+    const d = deps({ judge: vi.fn(async () => ({ pass: false, reason: "틀림" })) });
+    const results = await runJudgeProbe([reviewCase], d);
+    expect(d.answer).not.toHaveBeenCalled();
+    expect(d.judge).toHaveBeenCalledWith(expect.any(String), expect.stringContaining(wrongAnswer(reviewCase)));
+    expect(results[0]).toMatchObject({ id: "v", status: "fail" });
+  });
+
+  it("runBaseline은 CLAUDE.md 없는 프롬프트로 답을 받는다", async () => {
+    const d = deps();
+    await runBaseline([reviewCase, qaCase], d);
+    for (const [system] of vi.mocked(d.answer).mock.calls) {
+      expect(system).not.toContain("NEXT_PUBLIC_");
+      expect(system).not.toContain("CRITICAL");
+    }
   });
 });

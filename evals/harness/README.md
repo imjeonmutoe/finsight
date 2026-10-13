@@ -41,9 +41,22 @@ Claude 호출까지 eval용 키로 나가기 때문이다.
 | 파일 | 역할 | 네트워크 |
 |---|---|---|
 | `lib.ts` | frontmatter 파싱·균형 검사·프롬프트 조립·집계 (순수 함수) | ✗ |
-| `run.ts` | 케이스 로드 → subject → judge → 집계 → exit code. 모델 호출은 `Deps`로 주입 | ✓ (`main`만) |
+| `run.ts` | 케이스 로드 → subject → judge → 집계 → exit code. `--falsify`면 반증. 모델 호출은 `Deps`로 주입 | ✓ (`main`만) |
 | `report.ts` | 결과를 단일 HTML로 그린다 (순수 함수, LLM 출력은 이스케이프) | ✗ |
 | `cases/*.md` | golden set | — |
+
+## 반증 (`npm run eval -- --falsify`)
+
+9/9 통과는 "eval이 무언가를 잡을 수 있다"는 증거가 아니다. 채점자가 너무 후하거나, 모델이 원래 아는
+내용이면 하네스가 망가져도 초록불이 뜬다. 그래서 두 가지를 따로 확인한다.
+
+| 반증 | 하는 일 | 기대 | 어긋나면 |
+|---|---|---|---|
+| 채점자 반증 | subject 없이 케이스 기준을 정면으로 어기는 답(`wrongAnswer()`)을 채점자에게 넣는다 | 전부 fail | **exit 1.** 채점자 누수이므로 채점 기준(`judgePrompt`)을 고친다 |
+| 하네스 제거 | CLAUDE.md 없는 기준선 프롬프트(`baselineSystemPrompt()`)로 같은 케이스를 돌린다 | 실패 | 경고만 한다. 그 케이스는 하네스가 아니라 모델의 일반 지식을 재므로, 더 프로젝트 고유한 케이스로 바꿀 후보다 |
+
+보고서는 `.evals/harness-falsify-<UTC 시각>.html`이다. 하네스 제거 결과는 모델 버전에 따라 달라지므로,
+subject 모델을 바꾸면 다시 돌린다.
 
 ## 케이스 형식
 

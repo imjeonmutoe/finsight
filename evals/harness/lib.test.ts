@@ -3,8 +3,8 @@ import { readdirSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import {
-  checkBalance, criticalRules, exitCode, judgePrompt, parseCase, parseFrontmatter,
-  qaSystemPrompt, reviewSystemPrompt, summarize,
+  baselineSystemPrompt, checkBalance, criticalRules, exitCode, falsify, falsifyExitCode, judgePrompt,
+  parseCase, parseFrontmatter, qaSystemPrompt, reviewSystemPrompt, summarize, wrongAnswer,
 } from "./lib";
 import type { Case, Result } from "./lib";
 
@@ -164,5 +164,44 @@ describe("summarize / exitCode", () => {
 
   it("케이스가 0개면 통과로 치지 않는다", () => {
     expect(exitCode(summarize([]))).toBe(1);
+  });
+});
+
+describe("반증", () => {
+  it("틀린 답: 위반 케이스엔 위반 없음, 정상 케이스엔 위반 주장", () => {
+    expect(wrongAnswer(review("v", "violation", "r"))).toContain("위반 없음");
+    const forClean = wrongAnswer(review("p", "pass"));
+    expect(forClean).toContain("위반");
+    expect(forClean).not.toContain("위반 없음");
+  });
+
+  it("틀린 답: qa는 모른다고 하고, 틀린 전제 케이스는 전제를 그대로 따른다", () => {
+    expect(wrongAnswer(qa("q"))).toContain("모르겠");
+    expect(wrongAnswer(qa("q", true))).toContain("질문하신 대로");
+  });
+
+  it("기준선 프롬프트는 CLAUDE.md 규칙 없이 트랙 역할만 준다", () => {
+    for (const track of ["review", "qa"] as const) {
+      const prompt = baselineSystemPrompt(track);
+      expect(prompt).not.toContain("CRITICAL");
+      expect(prompt).not.toContain("merchant_rules");
+    }
+    expect(baselineSystemPrompt("review")).toContain("리뷰어");
+  });
+
+  const r = (id: string, status: Result["status"]): Result => ({ id, track: "qa", status, reason: "" });
+
+  it("채점자가 틀린 답에 pass를 주면 누수, 기준선 통과는 하네스 무관으로 모은다", () => {
+    const result = falsify([r("a", "fail"), r("b", "pass")], [r("a", "pass"), r("b", "fail"), r("c", "error")]);
+    expect(result.judgeLeaks.map((x) => x.id)).toEqual(["b"]);
+    expect(result.harnessFree.map((x) => x.id)).toEqual(["a"]);
+    expect(result.errors.map((x) => x.id)).toEqual(["c"]);
+  });
+
+  it("누수·에러가 없을 때만 0. 하네스 무관 케이스는 경고일 뿐 게이트를 닫지 않는다", () => {
+    expect(falsifyExitCode(falsify([r("a", "fail")], [r("a", "pass")]))).toBe(0);
+    expect(falsifyExitCode(falsify([r("a", "pass")], [r("a", "fail")]))).toBe(1);
+    expect(falsifyExitCode(falsify([r("a", "fail")], [r("a", "error")]))).toBe(1);
+    expect(falsifyExitCode(falsify([], []))).toBe(1);
   });
 });
