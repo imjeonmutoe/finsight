@@ -278,3 +278,26 @@ Next.js는 반대로 **16.3.4(최신)** 를 쓴다. 생짜로 시작하는 프�
 | 이메일로 식별 | 사람을 찾기 쉽지만 개인정보 위탁 범위가 넓어진다. id로 Supabase를 찾으면 된다 |
 
 **트레이드오프**: 개인정보처리방침에 PostHog를 수탁자로 적는다. 화면 텍스트를 가려서 녹화·히트맵으로는 무슨 금액을 보고 있었는지 알 수 없다. 예외 메시지를 지워 같은 타입의 다른 원인이 한 이슈로 묶일 수 있다 — 스택과 라우트 경로로 가른다.
+
+### ADR-018: 검색 노출은 공개 페이지 세 개로 한정하고, 프로덕션 배포만 수집을 허용한다
+
+**결정**: 검색엔진 수집 대상은 `/`·`/demo`·`/privacy`(`PUBLIC_PATHS`, `src/lib/site.ts`)뿐이다. 핵심 검색어는 **'카드 명세서 분석'**이고 랜딩의 `<title>`·설명·h1에 같은 말을 둔다. 등록할 검색엔진은 Google과 네이버다.
+
+- **수집 허용은 `VERCEL_ENV === "production"`일 때만이다**(`isIndexable()`). 프리뷰·로컬에서는 `robots.txt`가 전부 막고, 모든 페이지에 `noindex` 메타 태그를 단다. 판정을 호스트 이름·`NEXT_PUBLIC_*`로 바꾸지 않는다 — `isPreviewDeployment()`와 같은 이유다.
+- **기준 주소**는 `NEXT_PUBLIC_SITE_URL`, 없으면 Vercel이 넣는 `VERCEL_PROJECT_PRODUCTION_URL`이다. 프리뷰의 canonical도 프로덕션을 가리킨다.
+- `/login`은 `noindex, follow`, `/dashboard`·`/api/`·`/auth/`는 `robots.txt`에서 막는다.
+- 소유 확인 값은 `GOOGLE_SITE_VERIFICATION`·`NAVER_SITE_VERIFICATION` 환경 변수로 받는다. 공개되는 값이라 비밀이 아니다.
+- 구조화 데이터(JSON-LD)는 `dangerouslySetInnerHTML` 없이 `<script>`의 자식 텍스트로 넣고, `jsonLdText()`가 `<`를 이스케이프해 태그 밖으로 나가지 못하게 한다.
+- 공유 이미지(`src/app/opengraph-image.png`)는 정적 PNG다. 랜딩 히어로의 예시 숫자를 그대로 쓴다.
+- 공개 페이지는 `pageMetadata(path)`로 canonical과 `og:url`을 같은 경로에 묶는다. 페이지가 `openGraph`를 주면 레이아웃 값과 루트 공유 이미지가 통째로 덮이므로 `SHARED_OPEN_GRAPH`에 이미지까지 명시한다. 하위 페이지 제목은 짧게 쓰고 `%s | FinSight` 템플릿이 붙인다. 구조화 데이터는 `Organization`·`WebSite`·`WebApplication`을 한 `@graph`로 잇고, iOS 홈 화면용 `apple-icon.png`(180×180)를 둔다.
+
+**이유**: 프리뷰 배포에는 공개 비밀번호로 들어가는 테스트 계정 로그인이 열려 있다(ADR-016). 프리뷰 주소가 검색에 걸리면 그 화면이 누구에게나 노출된다. 수집 허용을 기본 차단으로 두고 프로덕션에서만 여는 쪽이 틀렸을 때 안전하다.
+
+**버린 대안**:
+
+| 대안 | 버린 이유 |
+|---|---|
+| `next/og`로 공유 이미지를 동적 생성 | 한글을 그리려면 TTF/WOFF 서체를 함수 번들에 넣어야 한다. 앱의 Pretendard는 woff2 조각이라 그대로 못 쓴다. 바뀌지 않는 이미지에 비해 비용이 크다 |
+| 키워드를 h1 큰 문구에 직접 넣기 | 검색에는 가장 강하지만 랜딩의 짧은 문구가 길어진다. 작은 라벨로 h1 안에 둔다 |
+
+**트레이드오프**: 공유 이미지의 숫자는 랜딩 예시와 손으로 맞춰야 한다. 키워드별 콘텐츠 페이지(예: 카드사별 CSV 내려받는 법)는 다음 단계로 미뤘다.

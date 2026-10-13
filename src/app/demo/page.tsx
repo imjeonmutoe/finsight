@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { pageMetadata } from "@/lib/site";
 import { CategoryBars } from "@/components/CategoryBars";
 import { DetectionList } from "@/components/DetectionList";
 import { KpiCard } from "@/components/KpiCard";
@@ -6,8 +7,9 @@ import { TransactionTable } from "@/components/TransactionTable";
 import { buildDemoDataset } from "@/lib/demo/dataset";
 
 export const metadata: Metadata = {
-  title: "샘플 지출 대시보드 | FinSight",
+  title: "샘플 지출 대시보드",
   description: "합성 명세서로 카테고리별 지출과 구독·이상거래 탐지 결과를 확인합니다.",
+  ...pageMetadata("/demo"),
 };
 
 export default function DemoPage() {
