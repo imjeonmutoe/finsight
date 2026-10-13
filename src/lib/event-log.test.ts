@@ -1,9 +1,21 @@
 // @vitest-environment node
 
 import { afterEach, expect, it, vi } from "vitest";
-import { logEvent } from "./event-log";
+
+const { logPostHogOpsEvent } = vi.hoisted(() => ({ logPostHogOpsEvent: vi.fn() }));
+vi.mock("./posthog-log", () => ({ logPostHogOpsEvent }));
+
+const { logEvent } = await import("./event-log");
 
 afterEach(() => vi.restoreAllMocks());
+
+it("같은 코드를 PostHog 로그에도 보냅니다", () => {
+  vi.spyOn(console, "warn").mockImplementation(() => {});
+
+  logEvent("insight_cache_unavailable");
+
+  expect(logPostHogOpsEvent).toHaveBeenCalledWith("insight_cache_unavailable");
+});
 
 it("이벤트 코드만 한 줄 JSON으로 남깁니다", () => {
   const warn = vi.spyOn(console, "warn").mockImplementation(() => {});

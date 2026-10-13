@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { JetBrains_Mono } from "next/font/google";
-// 계측은 이것 하나다. 이벤트 테이블도 직접 작성한 추적 코드도 두지 않는다(step 10).
+// 페이지뷰 계측. 제품 분석·에러 추적은 PostHog가 맡는다(ADR-017, instrumentation-client.ts).
 import { Analytics } from "@vercel/analytics/next";
 // Pretendard — 한글 본문 서체. dynamic subset은 92개 woff2를 unicode-range로 쪼개
 // 두어 브라우저가 화면에 실제로 쓰인 글자의 청크만 받는다. 통짜 variable 파일은

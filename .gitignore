@@ -41,3 +41,4 @@ __pycache__/
 
 # 하네스 eval HTML 보고서 (npm run eval이 실행마다 쓴다)
 .evals/
+.env.eval.local

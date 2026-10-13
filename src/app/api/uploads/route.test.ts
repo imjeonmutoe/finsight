@@ -6,7 +6,7 @@ import { MAX_CSV_ROWS, MAX_FILE_BYTES, MAX_MULTIPART_BODY_BYTES } from "@/lib/li
 type Result = { data?: unknown; error?: unknown; count?: number };
 type Call = { key: string; method: string; args: unknown[] };
 
-const { getClaims, from, storageFrom, upload, remove, createServerSupabase, inferColumnMapping } = vi.hoisted(() => {
+const { getClaims, from, storageFrom, upload, remove, createServerSupabase, createAiObservabilityContext, inferColumnMapping } = vi.hoisted(() => {
   const uploadFn = vi.fn();
   const removeFn = vi.fn();
   const storage = vi.fn(() => ({ upload: uploadFn, remove: removeFn }));
@@ -16,11 +16,16 @@ const { getClaims, from, storageFrom, upload, remove, createServerSupabase, infe
     getClaims: claims, from: fromFn, storageFrom: storage, upload: uploadFn, remove: removeFn,
     createServerSupabase: vi.fn(() => ({ auth: { getClaims: claims }, from: fromFn, storage: { from: storage } })),
     inferColumnMapping: vi.fn(),
+    createAiObservabilityContext: vi.fn((distinctId: string, sessionId: string) => ({
+      distinctId, sessionId, traceId: "test-trace",
+    })),
   };
 });
 vi.mock("server-only", () => ({}));
+const { trackApiFailure } = vi.hoisted(() => ({ trackApiFailure: vi.fn() }));
+vi.mock("@/lib/posthog-server", () => ({ captureServerEvent: vi.fn(), trackApiFailure }));
 vi.mock("@/services/supabase", () => ({ createServerSupabase }));
-vi.mock("@/services/claude", () => ({ inferColumnMapping }));
+vi.mock("@/services/claude", () => ({ createAiObservabilityContext, inferColumnMapping }));
 vi.mock("next/headers", () => ({ cookies: vi.fn(async () => ({ getAll: () => [], set: () => {} })) }));
 
 const queues = new Map<string, Result[]>();
@@ -142,6 +147,7 @@ describe("POST /api/uploads 입력 검증", () => {
     }));
     expect(over.status).toBe(413);
     await expect(over.json()).resolves.toMatchObject({ code: "FILE_TOO_LARGE" });
+    expect(trackApiFailure).toHaveBeenCalledWith("user-1", "uploads", 413, "FILE_TOO_LARGE");
   });
 
   it("Content-Length 없이 스트리밍해도 실제 bytes로 본문 상한을 지킵니다", async () => {
@@ -170,6 +176,7 @@ describe("POST /api/uploads 입력 검증", () => {
     const over = await post(await multipart({ sourceId: SOURCE_ID, file: csvFile(rows(MAX_CSV_ROWS)) }));
     expect(over.status).toBe(413);
     await expect(over.json()).resolves.toMatchObject({ code: "TOO_MANY_ROWS" });
+    expect(trackApiFailure).toHaveBeenCalledWith("user-1", "uploads", 413, "TOO_MANY_ROWS");
   });
 
   it.each([
@@ -447,6 +454,7 @@ describe("POST /api/uploads 저장과 매핑", () => {
 
     expect(response.status).toBe(502);
     await expect(response.json()).resolves.toMatchObject({ code: "MAPPING_FAILED" });
+    expect(trackApiFailure).toHaveBeenCalledWith("user-1", "uploads", 502, "MAPPING_FAILED");
     const updated = argsOf("uploads:update", "update")[0]?.[0] as Record<string, unknown>;
     expect(updated.status).toBe("failed");
     expect(updated.error_message).toContain("횟수를 소비하지 않았습니다");
@@ -531,6 +539,7 @@ describe("POST /api/uploads Free 업로드 한도", () => {
     expect(inferColumnMapping).not.toHaveBeenCalled();
     expect(argsOf("uploads:insert", "insert")).toEqual([]);
     expect(upload).not.toHaveBeenCalled();
+    expect(trackApiFailure).toHaveBeenCalledWith("user-1", "uploads", 403, "UPLOAD_LIMIT_REACHED");
   });
 
   it("한도는 KST 캘린더 월에 만든 업로드를 상태와 관계없이 셉니다", async () => {

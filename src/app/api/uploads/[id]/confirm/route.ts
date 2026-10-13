@@ -6,6 +6,7 @@ import { parseStatementRows } from "@/lib/statement";
 import { decodeCsv } from "@/lib/encoding";
 import { MAX_CSV_ROWS, MAX_FILE_BYTES } from "@/lib/limits";
 import { ownsStoragePath } from "@/lib/storage-path";
+import { captureServerEvent, trackApiFailure } from "@/lib/posthog-server";
 import { classifyByRule } from "@/lib/merchant-rules";
 import { createServerSupabase } from "@/services/supabase";
 import type { ConfirmResponse, ImportReviewResponse } from "@/types/api";
@@ -119,6 +120,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   }
   // 4MB 상한은 POST /api/uploads에서 검사했지만, 사용자는 Storage API로 자기 경로의 파일을 덮어쓸 수 있다.
   if (stored.data.size > MAX_FILE_BYTES) {
+    await trackApiFailure(userId, "uploads/confirm", 413, "FILE_TOO_LARGE");
     return errorResponse(413, "FILE_TOO_LARGE", "파일이 4MB를 넘습니다. 기간을 나눠 다시 올려 주세요.");
   }
 
@@ -134,6 +136,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   } catch (error) {
     // 파서 메시지에는 행 번호만 들어 있습니다. 셀 값은 담기지 않습니다.
     const message = error instanceof Error ? error.message : "매핑을 다시 확인해 주세요.";
+    await trackApiFailure(userId, "uploads/confirm", 400, "PARSE_FAILED");
     return errorResponse(400, "PARSE_FAILED", message);
   }
 
@@ -230,6 +233,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   if (result.error) {
     // confirm_upload가 월 한도를 다시 확인합니다(0007). 업로드 행을 직접 넣어 POST의 검사를 피한 경우입니다.
     if (result.error.message === "UPLOAD_LIMIT_REACHED") {
+      await trackApiFailure(userId, "uploads/confirm", 403, "UPLOAD_LIMIT_REACHED");
       return errorResponse(403, "UPLOAD_LIMIT_REACHED",
         "이번 달 무료 업로드를 이미 사용했습니다. 다음 달 1일에 초기화됩니다.",
         { resetsAt: nextKstMonthStart(new Date()) });
@@ -244,5 +248,17 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   if (!confirmed.success) {
     return errorResponse(500, "CONFIRM_FAILED", "거래를 저장하지 못했습니다. 잠시 후 다시 시도해 주세요.");
   }
+
+  await captureServerEvent({
+    distinctId: userId,
+    event: "statement_import_confirmed",
+    properties: {
+      inserted_count: confirmed.data.inserted,
+      duplicate_count: confirmed.data.duplicates,
+      unclassified_count: confirmed.data.unclassified,
+      source_kind: source.data.kind,
+    },
+  });
+
   return jsonResponse(confirmed.data satisfies ConfirmResponse);
 }

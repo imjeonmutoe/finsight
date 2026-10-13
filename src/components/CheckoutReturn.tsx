@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
+import posthog from "posthog-js";
 import type { Plan } from "@/types/billing";
 
 const SECONDARY = "rounded-md border border-border-default px-4 py-2 text-sm text-text hover:bg-surface-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent";
@@ -30,6 +31,7 @@ export function CheckoutReturn({ plan }: { plan: Plan }) {
     deadline.current = until;
     const timer = setTimeout(() => {
       if (Date.now() >= until) {
+        posthog.capture("checkout_confirmation_timed_out");
         setWaited(true);
         return;
       }

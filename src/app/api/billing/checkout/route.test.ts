@@ -15,6 +15,8 @@ const { getClaims, from, createServerSupabase, createProCheckout } = vi.hoisted(
   };
 });
 vi.mock("server-only", () => ({}));
+const { trackApiFailure } = vi.hoisted(() => ({ trackApiFailure: vi.fn() }));
+vi.mock("@/lib/posthog-server", () => ({ captureServerEvent: vi.fn(), trackApiFailure }));
 vi.mock("@/services/supabase", () => ({ createServerSupabase }));
 vi.mock("next/headers", () => ({ cookies: vi.fn(async () => ({ getAll: () => [], set: () => {} })) }));
 vi.mock("@/services/polar", async (importOriginal) => {
@@ -142,7 +144,8 @@ describe("POST /api/billing/checkout", () => {
     const response = await POST(request());
 
     expect(response.status).toBe(503);
-    const body = await response.json() as { message: string };
+    const body = await response.json() as { code: string; message: string };
     expect(body.message).toContain("다시");
+    expect(trackApiFailure).toHaveBeenCalledWith(USER_ID, "billing/checkout", 503, body.code);
   });
 });

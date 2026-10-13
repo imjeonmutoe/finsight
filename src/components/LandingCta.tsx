@@ -7,7 +7,11 @@ const PRIMARY = "rounded-md bg-text px-4 py-2 text-sm font-medium text-bg hover:
 /** S1은 로그인으로, S1b는 대시보드로 보냅니다. 익명 사용자에게만 로그인을 권합니다. */
 export function LandingCta({ signedIn }: { signedIn: boolean }) {
   return (
-    <Link href={signedIn ? "/dashboard" : "/login"} className={PRIMARY}>
+    <Link
+      href={signedIn ? "/dashboard" : "/login"}
+      className={PRIMARY}
+      data-ph-capture-attribute-cta={signedIn ? "landing_dashboard" : "landing_signup"}
+    >
       {signedIn ? "대시보드로" : "Google로 시작하기"}
     </Link>
   );

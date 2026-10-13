@@ -6,7 +6,7 @@ import { CLASSIFICATION_BATCH_SIZE } from "@/lib/limits";
 type Result = { data?: unknown; error?: unknown; count?: number };
 type Call = { key: string; method: string; args: unknown[] };
 
-const { getClaims, from, rpc, createServerSupabase, classifyTransactions } = vi.hoisted(() => {
+const { getClaims, from, rpc, createServerSupabase, classifyTransactions, createAiObservabilityContext } = vi.hoisted(() => {
   const claims = vi.fn();
   const fromFn = vi.fn();
   const rpcFn = vi.fn();
@@ -14,11 +14,16 @@ const { getClaims, from, rpc, createServerSupabase, classifyTransactions } = vi.
     getClaims: claims, from: fromFn, rpc: rpcFn,
     createServerSupabase: vi.fn(() => ({ auth: { getClaims: claims }, from: fromFn, rpc: rpcFn })),
     classifyTransactions: vi.fn(),
+    createAiObservabilityContext: vi.fn((distinctId: string) => ({
+      distinctId, sessionId: "test-session", traceId: "test-trace",
+    })),
   };
 });
 vi.mock("server-only", () => ({}));
+const { trackApiFailure } = vi.hoisted(() => ({ trackApiFailure: vi.fn() }));
+vi.mock("@/lib/posthog-server", () => ({ captureServerEvent: vi.fn(), trackApiFailure }));
 vi.mock("@/services/supabase", () => ({ createServerSupabase }));
-vi.mock("@/services/claude", () => ({ classifyTransactions }));
+vi.mock("@/services/claude", () => ({ classifyTransactions, createAiObservabilityContext }));
 vi.mock("next/headers", () => ({ cookies: vi.fn(async () => ({ getAll: () => [], set: () => {} })) }));
 
 const queues = new Map<string, Result[]>();
@@ -148,7 +153,7 @@ describe("POST /api/transactions/classify 3단 분류", () => {
     expect(classifyTransactions).toHaveBeenCalledTimes(1);
     expect(classifyTransactions).toHaveBeenCalledWith([
       { id: ID(3), merchant: "동네철물점", amountKrw: 10_003 },
-    ]);
+    ], expect.objectContaining({ distinctId: "user-1" }));
     const updates = argsOf("transactions:update", "update").map(([payload]) => payload);
     expect(updates).toEqual([
       { category: "배달", category_source: "user" },
@@ -197,6 +202,7 @@ describe("POST /api/transactions/classify 3단 분류", () => {
     await expect(response.json()).resolves.toMatchObject({
       code: "CLASSIFY_FAILED", classified: 1, remaining: 1,
     });
+    expect(trackApiFailure).toHaveBeenCalledWith("user-1", "transactions/classify", 502, "CLASSIFY_FAILED");
   });
 });
 

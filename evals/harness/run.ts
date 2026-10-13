@@ -5,8 +5,11 @@
 //   npm run eval -- --falsify    # 반증: 채점자가 틀린 답을 거르는지, 케이스가 CLAUDE.md 없이도 통과하는지
 
 import { mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { randomUUID } from "node:crypto";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import Anthropic from "@anthropic-ai/sdk";
+import { Anthropic as PostHogAnthropic } from "@posthog/ai/anthropic";
+import { PostHog } from "posthog-node";
 import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import { z } from "zod";
 import {
@@ -60,23 +63,32 @@ function textOf(response: Anthropic.Message): string {
   return response.content.filter((block) => block.type === "text").map((block) => block.text).join("");
 }
 
-function liveDeps(client: Anthropic): Deps {
+function liveDeps(client: Anthropic, sessionId?: string): Deps {
+  const observability = () => sessionId ? {
+    posthogTraceId: randomUUID(),
+    posthogProperties: { $ai_session_id: sessionId },
+    posthogPrivacyMode: false,
+  } : {};
   return {
     async answer(system, user) {
       // Sonnet 5.5는 temperature 기본값 외를 400으로 거절한다. 경량 리뷰어답게 effort를 낮춘다.
-      return textOf(await client.messages.create({
+      const request: Anthropic.MessageCreateParamsNonStreaming = {
         model: SUBJECT_MODEL, max_tokens: MAX_TOKENS, system,
         messages: [{ role: "user", content: user }],
         output_config: { effort: "low" },
-      }));
+        ...observability(),
+      };
+      return textOf(await client.messages.create(request));
     },
     async judge(system, user) {
       // Opus 5.5의 effort 기본값은 medium이다. 채점은 정확도가 우선이라 high로 올린다.
-      const text = textOf(await client.messages.create({
+      const request: Anthropic.MessageCreateParamsNonStreaming = {
         model: JUDGE_MODEL, max_tokens: MAX_TOKENS, system,
         messages: [{ role: "user", content: user }],
         output_config: { effort: "high", format: zodOutputFormat(verdictSchema) },
-      }));
+        ...observability(),
+      };
+      const text = textOf(await client.messages.create(request));
       return verdictSchema.parse(JSON.parse(text));
     },
   };
@@ -94,8 +106,28 @@ async function main(): Promise<void> {
     process.exit(1);
   }
 
+  const projectToken = process.env.NEXT_PUBLIC_POSTHOG_PROJECT_TOKEN;
+  const host = process.env.NEXT_PUBLIC_POSTHOG_HOST;
+  if ((!projectToken || !host) && process.env.NODE_ENV !== "production") {
+    const missingVariable = !projectToken ? "NEXT_PUBLIC_POSTHOG_PROJECT_TOKEN" : "NEXT_PUBLIC_POSTHOG_HOST";
+    throw new Error(
+      `${missingVariable} variable required by PostHog is missing or un-configured, this causes events to be silently missed. This error stops appearing once ${missingVariable} is configured`,
+    );
+  }
+  const posthog = projectToken && host
+    ? new PostHog(projectToken, { host, privacyMode: false, flushAt: 1, flushInterval: 0 })
+    : null;
+  const anthropicApiKey = process.env.ANTHROPIC_API_KEY;
+  let client: Anthropic;
+  if (posthog) {
+    if (!anthropicApiKey) throw new Error("ANTHROPIC_API_KEY is required");
+    client = new PostHogAnthropic({ apiKey: anthropicApiKey, posthog });
+  } else {
+    client = new Anthropic();
+  }
   const startedAt = new Date();
-  const deps = liveDeps(new Anthropic());
+  // An eval invocation is one process-run session; each subject or judge call is its own trace.
+  const deps = liveDeps(client, posthog ? randomUUID() : undefined);
   const meta = { startedAt, subjectModel: SUBJECT_MODEL, judgeModel: JUDGE_MODEL };
   let html: string;
   let code: 0 | 1;
@@ -127,6 +159,7 @@ async function main(): Promise<void> {
   mkdirSync(reportDir, { recursive: true });
   writeFileSync(reportPath, html);
   console.log(`보고서: ${reportPath}`);
+  if (posthog) await posthog.flush();
   process.exit(code);
 }
 
