@@ -191,17 +191,25 @@ describe("반증", () => {
 
   const r = (id: string, status: Result["status"]): Result => ({ id, track: "qa", status, reason: "" });
 
+  const qaCases = [qa("a"), qa("b"), qa("c")];
+
   it("채점자가 틀린 답에 pass를 주면 누수, 기준선 통과는 하네스 무관으로 모은다", () => {
-    const result = falsify([r("a", "fail"), r("b", "pass")], [r("a", "pass"), r("b", "fail"), r("c", "error")]);
+    const result = falsify(qaCases, [r("a", "fail"), r("b", "pass")], [r("a", "pass"), r("b", "fail"), r("c", "error")]);
     expect(result.judgeLeaks.map((x) => x.id)).toEqual(["b"]);
     expect(result.harnessFree.map((x) => x.id)).toEqual(["a"]);
     expect(result.errors.map((x) => x.id)).toEqual(["c"]);
   });
 
   it("누수·에러가 없을 때만 0. 하네스 무관 케이스는 경고일 뿐 게이트를 닫지 않는다", () => {
-    expect(falsifyExitCode(falsify([r("a", "fail")], [r("a", "pass")]))).toBe(0);
-    expect(falsifyExitCode(falsify([r("a", "pass")], [r("a", "fail")]))).toBe(1);
-    expect(falsifyExitCode(falsify([r("a", "fail")], [r("a", "error")]))).toBe(1);
-    expect(falsifyExitCode(falsify([], []))).toBe(1);
+    expect(falsifyExitCode(falsify(qaCases, [r("a", "fail")], [r("a", "pass")]))).toBe(0);
+    expect(falsifyExitCode(falsify(qaCases, [r("a", "pass")], [r("a", "fail")]))).toBe(1);
+    expect(falsifyExitCode(falsify(qaCases, [r("a", "fail")], [r("a", "error")]))).toBe(1);
+    expect(falsifyExitCode(falsify(qaCases, [], []))).toBe(1);
+  });
+
+  it("오탐 방지(expect=pass) 케이스는 기준선에서 통과해도 하네스 무관으로 치지 않는다", () => {
+    // 위반 없는 코드에 위반을 외치지 않는 것은 하네스 없이도 통과하는 게 정상이다.
+    const clean: Result = { id: "p", track: "review", status: "pass", reason: "" };
+    expect(falsify([review("p", "pass")], [], [clean]).harnessFree).toEqual([]);
   });
 });

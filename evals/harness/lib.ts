@@ -223,11 +223,17 @@ FinSight는 카드·은행 거래내역 CSV를 Claude API로 분석해 개인 �
 
 export type Falsification = { probeTotal: number; judgeLeaks: Result[]; harnessFree: Result[]; errors: Result[] };
 
-export function falsify(probe: Result[], baseline: Result[]): Falsification {
+// 오탐 방지 케이스(review expect=pass)는 하네스 없이도 통과하는 게 정상이라 하네스 무관으로 치지 않는다.
+export function isCleanCase(c: Case | undefined): boolean {
+  return c?.track === "review" && c.expect === "pass";
+}
+
+export function falsify(cases: Case[], probe: Result[], baseline: Result[]): Falsification {
+  const byId = new Map(cases.map((c) => [c.id, c]));
   return {
     probeTotal: probe.length,
     judgeLeaks: probe.filter((r) => r.status === "pass"),
-    harnessFree: baseline.filter((r) => r.status === "pass"),
+    harnessFree: baseline.filter((r) => r.status === "pass" && !isCleanCase(byId.get(r.id))),
     errors: [...probe, ...baseline].filter((r) => r.status === "error"),
   };
 }

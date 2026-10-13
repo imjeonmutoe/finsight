@@ -82,6 +82,12 @@ describe("renderFalsifyReport", () => {
     expect(html).toContain("1/2");
   });
 
+  it("오탐 방지 케이스가 기준선에서 통과하면 경고 대신 정상으로 표시한다", () => {
+    const clean = renderFalsifyReport(cases, [], [{ id: "review-b", track: "review", status: "pass", reason: "" }], meta);
+    expect(clean).not.toContain("하네스 무관</span>");
+    expect(clean).toContain("오탐 없음");
+  });
+
   it("넣은 틀린 답과 이유를 이스케이프해 담는다", () => {
     expect(html).toContain("위반 없음");
     expect(html).toContain("&lt;i&gt;통과시킴&lt;/i&gt;");

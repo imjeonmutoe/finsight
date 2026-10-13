@@ -1,7 +1,7 @@
 // eval 결과를 브라우저로 여는 단일 HTML로 그린다. 순수 함수이고 파일 쓰기는 run.ts가 한다.
 // 채점 이유는 LLM 출력이라 임의 문자열이 섞일 수 있다. 모든 값은 esc()를 거친다.
 
-import { exitCode, falsify, falsifyExitCode, summarize, wrongAnswer } from "./lib";
+import { exitCode, falsify, falsifyExitCode, isCleanCase, summarize, wrongAnswer } from "./lib";
 import type { Case, Result, Track } from "./lib";
 
 export type ReportMeta = { startedAt: Date; subjectModel: string; judgeModel: string };
@@ -82,7 +82,7 @@ export function renderReport(cases: Case[], results: Result[], meta: ReportMeta)
 }
 
 export function renderFalsifyReport(cases: Case[], probe: Result[], baseline: Result[], meta: ReportMeta): string {
-  const f = falsify(probe, baseline);
+  const f = falsify(cases, probe, baseline);
   const ok = falsifyExitCode(f) === 0;
   const byId = new Map(cases.map((c) => [c.id, c]));
   const injected = (r: Result): string => {
@@ -92,12 +92,17 @@ export function renderFalsifyReport(cases: Case[], probe: Result[], baseline: Re
   // 반증에서는 '실패'가 기대한 결과다. 칩은 판정이 아니라 기대와 맞았는지를 말한다.
   const probeChip = (r: Result): Chip => r.status === "fail" ? { cls: "pass", text: "정상(fail)" }
     : r.status === "pass" ? { cls: "fail", text: "채점자 누수" } : statusChip(r);
-  const baselineChip = (r: Result): Chip => r.status === "fail" ? { cls: "pass", text: "하네스 필요" }
-    : r.status === "pass" ? { cls: "error", text: "하네스 무관" } : statusChip(r);
+  const baselineChip = (r: Result): Chip => {
+    if (r.status === "error") return statusChip(r);
+    if (isCleanCase(byId.get(r.id))) {
+      return r.status === "pass" ? { cls: "pass", text: "오탐 없음" } : { cls: "pass", text: "하네스 필요" };
+    }
+    return r.status === "fail" ? { cls: "pass", text: "하네스 필요" } : { cls: "error", text: "하네스 무관" };
+  };
   const leaksOk = probe.length - f.judgeLeaks.length;
 
   const tiles = tile(ok ? "게이트 통과" : "게이트 실패", `${leaksOk}/${probe.length}`, ok ? "good" : "bad")
-    + tile("하네스 무관 케이스", `${f.harnessFree.length}/${baseline.length}`, f.harnessFree.length > 0 ? "warn" : "")
+    + tile("하네스 무관 케이스", `${f.harnessFree.length}/${baseline.filter((r) => !isCleanCase(byId.get(r.id))).length}`, f.harnessFree.length > 0 ? "warn" : "")
     + tile("에러", String(f.errors.length), f.errors.length > 0 ? "bad" : "");
   const body = `<div class="score">${tiles}</div>
 <section>

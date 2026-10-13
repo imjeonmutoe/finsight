@@ -102,7 +102,7 @@ async function main(): Promise<void> {
 
   if (process.argv.includes("--falsify")) {
     const [probe, baseline] = await Promise.all([runJudgeProbe(cases, deps), runBaseline(cases, deps)]);
-    const f = falsify(probe, baseline);
+    const f = falsify(cases, probe, baseline);
     console.log("[채점자 반증] 틀린 답에 fail이 나와야 정상");
     for (const r of probe) console.log(`${r.status.padEnd(5)} ${r.id}  ${r.reason}`);
     console.log("\n[하네스 제거] CLAUDE.md 없이 통과하면 그 케이스는 하네스를 재지 못한다");
