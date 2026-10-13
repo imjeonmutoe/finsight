@@ -4,6 +4,7 @@ import Link from "next/link";
 export const metadata: Metadata = {
   title: "개인정보처리방침 | FinSight",
   description: "FinSight가 수집하는 항목, 처리 목적, 보유 기간, 국외 이전 대상과 삭제 요청 방법을 안내합니다.",
+  alternates: { canonical: "/privacy" },
 };
 
 // 계정 삭제 셀프서비스는 MVP 제외이므로(docs/PRD.md) 접수 경로를 하나 명시합니다.

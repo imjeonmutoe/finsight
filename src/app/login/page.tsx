@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { isPreviewDeployment, PREVIEW_ACCOUNTS } from "@/lib/preview-accounts";
 import { signInAsPreviewAccount, signInWithGoogle } from "./actions";
@@ -5,6 +6,12 @@ import { signInAsPreviewAccount, signInWithGoogle } from "./actions";
 // S2의 단일 목표는 Google 버튼 하나다(docs/ARCHITECTURE.md 화면 인벤토리).
 // 소개 문구·기능 요약·요금제는 랜딩이 이미 했으므로 이 화면에 두지 않는다(docs/UX_GUIDE.md 3.3).
 // 예외: Vercel 프리뷰 배포에서만 Google 버튼 아래에 시드 테스트 계정 로그인을 보조로 둔다(프리뷰 DB는 OAuth 콜백을 등록할 수 없다).
+
+// 검색 결과에 로그인 화면이 따로 뜨지 않게 한다. 링크는 따라가도 된다.
+export const metadata: Metadata = {
+  title: "로그인 | FinSight",
+  robots: { index: false, follow: true },
+};
 
 // 오류 코드는 받은 값을 그대로 보여주지 않고 정해진 문장으로만 옮긴다.
 const ERROR_MESSAGE = "로그인을 완료하지 못했습니다. 아래 버튼으로 다시 시도해 주세요.";

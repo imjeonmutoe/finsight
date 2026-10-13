@@ -1,6 +1,6 @@
 import { render, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import Home from "@/app/page";
+import Home, { metadata } from "@/app/page";
 
 const mocks = vi.hoisted(() => ({
   getClaims: vi.fn(),
@@ -43,7 +43,7 @@ describe("랜딩 (S1 · S1b)", () => {
   it("결과를 먼저 말하는 히어로와 노동의 총량을 보여줍니다", async () => {
     render(await Home());
 
-    expect(screen.getByRole("heading", { level: 1, name: "지출이 어디로 새는지" })).toBeVisible();
+    expect(screen.getByRole("heading", { level: 1, name: "카드 명세서 분석 지출이 어디로 새는지" })).toBeVisible();
     expect(screen.getByText(/파일을 올리면 매핑 확인까지 1분, 요약까지 5분입니다./)).toBeVisible();
   });
 
@@ -122,5 +122,26 @@ describe("랜딩 (S1 · S1b)", () => {
     render(await Home());
 
     expect(screen.getByRole("button", { name: "다크 모드로 전환" })).toBeVisible();
+  });
+});
+
+describe("랜딩 검색 노출", () => {
+  it("핵심 검색어 '카드 명세서 분석'을 제목과 설명에 담고 대표 주소를 세웁니다", () => {
+    expect(String(metadata.title)).toContain("카드 명세서 분석");
+    expect(metadata.description).toContain("카드 명세서");
+    expect(metadata.alternates?.canonical).toBe("/");
+  });
+
+  it("검색 결과용 구조화 데이터를 유효한 JSON으로 넣습니다", async () => {
+    const { container } = render(await Home());
+
+    const script = container.querySelector('script[type="application/ld+json"]');
+    expect(script).not.toBeNull();
+    expect(JSON.parse(script?.textContent ?? "")).toMatchObject({
+      "@context": "https://schema.org",
+      "@type": "WebApplication",
+      name: "FinSight",
+      inLanguage: "ko",
+    });
   });
 });

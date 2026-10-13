@@ -1,7 +1,9 @@
 import { runInNewContext } from "node:vm";
 import { renderToStaticMarkup } from "react-dom/server";
-import { expect, it } from "vitest";
-import RootLayout from "@/app/layout";
+import { afterEach, expect, it, vi } from "vitest";
+import RootLayout, { generateMetadata } from "@/app/layout";
+
+afterEach(() => vi.unstubAllEnvs());
 
 function renderLayout() {
   return new DOMParser().parseFromString(
@@ -49,4 +51,29 @@ it.each([
   });
 
   expect(html.documentElement.dataset.theme).toBe(expected);
+});
+
+it("공유 미리보기와 대표 주소의 기준 주소를 세웁니다", () => {
+  vi.stubEnv("NEXT_PUBLIC_SITE_URL", "https://finsight.example");
+
+  const metadata = generateMetadata();
+
+  expect(String(metadata.metadataBase)).toBe("https://finsight.example/");
+  expect(metadata.openGraph).toMatchObject({ siteName: "FinSight", locale: "ko_KR", type: "website" });
+  expect(metadata.twitter).toMatchObject({ card: "summary_large_image" });
+});
+
+it("프로덕션이 아니면 검색 수집을 막는 메타 태그를 답니다", () => {
+  vi.stubEnv("VERCEL_ENV", "preview");
+  expect(generateMetadata().robots).toEqual({ index: false, follow: false });
+
+  vi.stubEnv("VERCEL_ENV", "production");
+  expect(generateMetadata().robots).toBeUndefined();
+});
+
+it("Google·네이버 소유 확인 값을 메타 태그로 넣습니다", () => {
+  vi.stubEnv("GOOGLE_SITE_VERIFICATION", "g-code");
+  vi.stubEnv("NAVER_SITE_VERIFICATION", "n-code");
+
+  expect(generateMetadata().verification).toEqual({ google: "g-code", other: { "naver-site-verification": "n-code" } });
 });
