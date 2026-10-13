@@ -25,6 +25,11 @@ function mockFetch(response: { ok: boolean; body: unknown }) {
 }
 
 describe("Pro 업그레이드 버튼", () => {
+  it("클릭 수집에 버튼 이름을 붙입니다", () => {
+    render(<UpgradeButton />);
+    expect(screen.getByRole("button", { name: "Pro 시작하기" })).toHaveAttribute("data-ph-capture-attribute-cta", "upgrade_pro");
+  });
+
   it("가격과 해지 조건을 버튼 옆에 같이 보여줍니다", () => {
     render(<UpgradeButton />);
 

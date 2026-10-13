@@ -4,6 +4,8 @@ import { CheckoutReturn } from "./CheckoutReturn";
 
 const { refresh } = vi.hoisted(() => ({ refresh: vi.fn() }));
 vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh }) }));
+const { capture } = vi.hoisted(() => ({ capture: vi.fn() }));
+vi.mock("posthog-js", () => ({ default: { capture } }));
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -71,6 +73,14 @@ describe("결제 복귀", () => {
     expect(screen.getByRole("status")).toHaveTextContent("아직 결제 확인이 오지 않았습니다");
     expect(refresh).toHaveBeenCalledTimes(stopped);
     expect(screen.getByRole("button", { name: "다시 확인하기" })).toBeVisible();
+    // 웹훅 지연·누락은 서버에서 보이지 않는다. 사용자가 기다리다 멈춘 순간을 남긴다.
+    expect(capture).toHaveBeenCalledExactlyOnceWith("checkout_confirmation_timed_out");
+  });
+
+  it("Pro가 확인되면 시간 초과를 기록하지 않습니다", async () => {
+    render(<CheckoutReturn plan="pro" />);
+    await advanceUntilTimeout();
+    expect(capture).not.toHaveBeenCalled();
   });
 
   it("다시 확인하기를 누르면 폴링을 한 번 더 시작합니다", async () => {

@@ -26,8 +26,8 @@ export function EmptyDashboard() {
           명세서 CSV를 올리면 지출을 분석해 드립니다. 파일을 올리면 매핑 확인까지 1분, 요약까지 5분입니다.
         </p>
         <div className="flex flex-wrap items-center gap-3">
-          <Link href="/dashboard/upload" className={PRIMARY}>명세서 올리기</Link>
-          <Link href="/demo" className={SECONDARY}>샘플 대시보드 보기</Link>
+          <Link href="/dashboard/upload" className={PRIMARY} data-ph-capture-attribute-cta="empty_upload">명세서 올리기</Link>
+          <Link href="/demo" className={SECONDARY} data-ph-capture-attribute-cta="empty_demo">샘플 대시보드 보기</Link>
         </div>
         <p className="text-sm leading-relaxed text-muted">
           파일이 아직 없다면 샘플 대시보드로 결과를 먼저 볼 수 있습니다.

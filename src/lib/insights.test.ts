@@ -12,9 +12,11 @@ vi.mock("@/services/claude", () => ({
   generateInsights: vi.fn(),
 }));
 vi.mock("./event-log", () => ({ logEvent: vi.fn() }));
+vi.mock("./posthog-server", () => ({ captureServerEvent: vi.fn() }));
 
 const { generateInsights } = await import("@/services/claude");
 const { logEvent } = await import("./event-log");
+const { captureServerEvent } = await import("./posthog-server");
 const { buildInsightInput, insightFingerprint, loadInsight } = await import("./insights");
 
 const summary: MonthlySummary = {
@@ -142,6 +144,17 @@ describe("인사이트 캐시", () => {
     expect(generateInsights).not.toHaveBeenCalled();
     expect(supabase.filter.eq).toHaveBeenCalledWith("user_id", "사용자");
     expect(supabase.filter.eq).toHaveBeenCalledWith("accounting_month", "2026-04-01");
+    expect(captureServerEvent).toHaveBeenCalledWith({
+      distinctId: "사용자", event: "insight_loaded", properties: { source: "cache", plan: "free" },
+    });
+  });
+
+  it("새로 생성하면 생성으로 기록합니다", async () => {
+    await loadInsight({ supabase: reader(null), service: writer(), userId: "사용자", plan: "pro", input });
+
+    expect(captureServerEvent).toHaveBeenCalledWith({
+      distinctId: "사용자", event: "insight_loaded", properties: { source: "generated", plan: "pro" },
+    });
   });
 
   it.each([

@@ -70,6 +70,7 @@ function LockedSection({ title, body, note }: { title: string; body: string; not
         <Link
           href="/dashboard/settings"
           className="text-accent underline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+          data-ph-capture-attribute-cta="locked_upgrade"
         >
           설정에서 Pro 시작하기
         </Link>

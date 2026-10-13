@@ -19,6 +19,15 @@ describe("랜딩 CTA", () => {
     expect(screen.queryByRole("link", { name: "Google로 시작하기" })).toBeNull();
   });
 
+  it.each([
+    [false, "Google로 시작하기", "landing_signup"],
+    [true, "대시보드로", "landing_dashboard"],
+  ])("로그인 %s이면 클릭 수집에 버튼 이름 %s → %s를 붙입니다", (signedIn, name, cta) => {
+    // 자동 수집은 화면 텍스트를 가리므로 버튼을 이름으로 구분합니다(ADR-017).
+    render(<LandingCta signedIn={signedIn} />);
+    expect(screen.getByRole("link", { name })).toHaveAttribute("data-ph-capture-attribute-cta", cta);
+  });
+
   it("대시보드와 같은 primary 버튼 모양을 씁니다", () => {
     render(<LandingCta signedIn={false} />);
 

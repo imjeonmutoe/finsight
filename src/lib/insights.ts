@@ -4,6 +4,7 @@ import { createHash } from "node:crypto";
 import { z } from "zod";
 import { logEvent } from "./event-log";
 import { modelForInsights } from "./limits";
+import { captureServerEvent } from "./posthog-server";
 import { createAiObservabilityContext, generateInsights } from "@/services/claude";
 import type { InsightInput, MonthlySummary, Outlier, Subscription } from "@/types/analytics";
 import type { Plan } from "@/types/billing";
@@ -113,10 +114,13 @@ export async function loadInsight({ supabase, service, userId, plan, input }: {
   }
   const row = cacheRowSchema.safeParse(cached);
   if (row.success && row.data.txn_fingerprint === fingerprint && row.data.plan === plan) {
+    // 캐시 적중률이 곧 모델 비용이다(ADR-012). 생성과 나눠 센다.
+    await captureServerEvent({ distinctId: userId, event: "insight_loaded", properties: { source: "cache", plan } });
     return row.data.payload;
   }
 
   const insight = await generateInsights(input, plan, createAiObservabilityContext(userId));
+  await captureServerEvent({ distinctId: userId, event: "insight_loaded", properties: { source: "generated", plan } });
 
   // 캐시 기록 실패는 화면을 막지 않는다. 다음 방문에 다시 시도한다. 대신 흔적을 남긴다 —
   // 기록이 계속 실패하면 페이지를 열 때마다 모델이 돌고, 그걸 청구서로 처음 알게 된다.

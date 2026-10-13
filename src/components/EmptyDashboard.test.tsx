@@ -18,6 +18,13 @@ describe("대시보드 빈 상태", () => {
     expect(screen.getByRole("link", { name: "샘플 대시보드 보기" })).toHaveAttribute("href", "/demo");
   });
 
+  it("클릭 수집에 버튼 이름을 붙입니다", () => {
+    render(<EmptyDashboard />);
+
+    expect(screen.getByRole("link", { name: "명세서 올리기" })).toHaveAttribute("data-ph-capture-attribute-cta", "empty_upload");
+    expect(screen.getByRole("link", { name: "샘플 대시보드 보기" })).toHaveAttribute("data-ph-capture-attribute-cta", "empty_demo");
+  });
+
   it("카드사·은행별 내려받기 경로를 펼친 상태로 보여줍니다", () => {
     render(<EmptyDashboard />);
     const guide = screen.getByTestId("csv-guide");
