@@ -3,7 +3,7 @@ import type { Metadata } from "next";
 export const SITE_NAME = "FinSight";
 
 // 검색엔진에 수집을 허용하는 공개 페이지. 대시보드는 로그인 뒤라 넣지 않는다.
-export const PUBLIC_PATHS = ["/", "/demo", "/privacy"] as const;
+export const PUBLIC_PATHS = ["/", "/demo", "/privacy", "/guide/card-statement-analysis"] as const;
 
 /**
  * 대표 주소(canonical)·공유 이미지·사이트맵의 절대 주소 기준점.

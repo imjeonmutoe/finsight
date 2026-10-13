@@ -99,6 +99,15 @@ describe("랜딩 (S1 · S1b)", () => {
     expect(screen.getByRole("link", { name: "샘플 대시보드 보기" })).toHaveAttribute("href", "/demo");
   });
 
+  it("검색으로 들어올 가이드 글로 가는 내부 링크를 둡니다", async () => {
+    render(await Home());
+
+    expect(screen.getByRole("link", { name: "카드 명세서 분석하는 법" })).toHaveAttribute(
+      "href",
+      "/guide/card-statement-analysis",
+    );
+  });
+
   it("로그인했으면 CTA를 대시보드로 바꿉니다", async () => {
     signedIn();
 

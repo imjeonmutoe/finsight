@@ -269,7 +269,10 @@ export default async function Home() {
       <footer className="border-t border-border-default">
         <div className="mx-auto flex max-w-5xl flex-wrap items-center justify-between gap-3 px-6 py-6">
           <p className="text-sm text-muted">© 2026 FinSight — 포트폴리오 데모</p>
-          <Link href="/privacy" className={LINK}>개인정보처리방침</Link>
+          <div className="flex flex-wrap items-center gap-4">
+            <Link href="/guide/card-statement-analysis" className={LINK}>카드 명세서 분석하는 법</Link>
+            <Link href="/privacy" className={LINK}>개인정보처리방침</Link>
+          </div>
         </div>
       </footer>
     </div>
