@@ -11,6 +11,7 @@ describe("sitemap.xml", () => {
       "https://finsight.example/",
       "https://finsight.example/demo",
       "https://finsight.example/privacy",
+      "https://finsight.example/guide/card-statement-analysis",
     ]);
   });
 });
