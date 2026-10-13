@@ -6,13 +6,16 @@ import { KpiCard } from "@/components/KpiCard";
 import { LandingCta } from "@/components/LandingCta";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { requireUserId } from "@/lib/api";
+import { jsonLdText, SITE_NAME, siteUrl } from "@/lib/site";
 import { createServerSupabase } from "@/services/supabase";
 import type { MonthlySummary } from "@/types/analytics";
 
+// 핵심 검색어는 '카드 명세서 분석'이다. 제목·설명·h1에 같은 말을 둔다.
 export const metadata: Metadata = {
-  title: "FinSight — 카드 명세서 소비 분석",
+  title: "FinSight — 카드 명세서 분석으로 지출 누수 찾기",
   description:
-    "카드사·은행에서 내려받은 CSV를 올리면 카테고리별 지출과 정기결제 누수를 정리해 보여줍니다.",
+    "카드 명세서·은행 거래내역 CSV를 올리면 카테고리별 지출과 정기결제 누수를 자동으로 분석해 보여줍니다. 카드번호와 계좌번호는 받지 않습니다.",
+  alternates: { canonical: "/" },
 };
 
 // 히어로 목업의 예시 숫자입니다. 합계는 아래 카테고리의 합과 일치시킵니다 —
@@ -118,9 +121,22 @@ function PricingTier({ name, price, note, features, highlight }: {
 
 export default async function Home() {
   const signedIn = await isSignedIn();
+  // 검색 결과에 앱 정보로 표시되게 하는 구조화 데이터. 요금은 아래 Free 요금제와 맞춘다.
+  const jsonLd = {
+    "@context": "https://schema.org",
+    "@type": "WebApplication",
+    name: SITE_NAME,
+    url: siteUrl().href,
+    description: metadata.description,
+    applicationCategory: "FinanceApplication",
+    operatingSystem: "Web",
+    inLanguage: "ko",
+    offers: { "@type": "Offer", price: "0", priceCurrency: "KRW" },
+  };
 
   return (
     <div className="font-sans">
+      <script type="application/ld+json">{jsonLdText(jsonLd)}</script>
       <header className="border-b border-border-default">
         <div className="mx-auto flex max-w-5xl flex-wrap items-center justify-between gap-3 px-6 py-4">
           <p className="text-sm font-medium text-text">FinSight</p>
@@ -136,12 +152,13 @@ export default async function Home() {
       <main className="mx-auto max-w-5xl space-y-10 px-6 py-16">
         {/* 중앙 정렬은 랜딩 히어로 한 곳만 허용합니다(UI_GUIDE `## 레이아웃`). */}
         <section aria-labelledby="hero-heading" className="space-y-6 text-center">
-          <p className="text-sm text-muted">CSV 기반 지출 분석</p>
           <h1 id="hero-heading" className="text-4xl font-semibold leading-snug text-text sm:text-5xl">
+            {/* 검색어는 h1 안에 두되 크기는 라벨로 줄인다. 큰 문구는 그대로 둔다. */}
+            <span className="mb-6 block text-sm font-normal text-muted">카드 명세서 분석</span>{" "}
             지출이 어디로 새는지
           </h1>
           <p className="mx-auto max-w-2xl text-sm leading-relaxed text-text-body">
-            카드사·은행에서 내려받은 CSV를 올리면 카테고리별 지출과 정기결제 누수를 정리해 보여줍니다.
+            카드 명세서·은행 거래내역 CSV를 올리면 카테고리별 지출과 정기결제 누수를 정리해 보여줍니다.
             가계부에 손으로 입력하지 않습니다.
           </p>
           <p className="mx-auto max-w-2xl text-sm leading-relaxed text-muted">

@@ -8,6 +8,7 @@ import { buildDemoDataset } from "@/lib/demo/dataset";
 export const metadata: Metadata = {
   title: "샘플 지출 대시보드 | FinSight",
   description: "합성 명세서로 카테고리별 지출과 구독·이상거래 탐지 결과를 확인합니다.",
+  alternates: { canonical: "/demo" },
 };
 
 export default function DemoPage() {

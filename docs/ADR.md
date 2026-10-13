@@ -254,3 +254,27 @@ Next.js는 반대로 **16.3.4(최신)** 를 쓴다. 생짜로 시작하는 프�
    설치 후 Vercel → Settings → Environment Variables의 Preview 범위에서 연동이 실제로 쓴 이름을 확인한다. 위 표대로라면 프리뷰 앱은 브랜치 URL에 **프로덕션 anon·service role 키**를 들고 붙어 인증이 실패한다. Vercel 환경변수는 다른 변수를 참조할 수 없고 브랜치 값은 연동이 PR마다 쓰므로, 손으로 복사해 맞출 수 없다. 앱이 새 이름(`PUBLISHABLE_KEY`·`SECRET_KEY`)을 읽도록 하는 코드 변경을 **별도 PR로** 낸다. 그 전까지 Preview 범위에 프로덕션 Supabase 키를 남겨 두지 않는다 — 프리뷰가 실데이터에 닿는 경로가 된다. `NEXT_PUBLIC_SITE_URL`은 결제에만 쓰이고 프리뷰는 결제를 검증하지 않으므로 Preview 범위에 두지 않아도 된다.
 4. 아무 PR이나 하나 열어 첫 프리뷰 브랜치의 로그(Supabase 대시보드 → Branches, 또는 PR의 Supabase 체크)에서 마이그레이션 8개와 `seed.sql`이 통과하는지 확인한다. 마이그레이션 8개 중 7개에 `begin; … commit;`이 직접 들어 있다. 연동이 파일을 자체 트랜잭션으로 감싸면 **여기서 처음 실패할 수 있다.** 실패하면 기존 파일을 고치지 말고(이름·내용 불변 규칙) 원인을 확인한 뒤 결정한다. 그 다음 프리뷰 앱 `/login`에서 Free·Pro 계정으로 들어가 대시보드 숫자가 `/demo`와 같은지 본다.
 5. 리포 설정 "Allow GitHub Actions to create and approve pull requests"가 켜져 있는지 확인한다(`gh api repos/{owner}/{repo}/actions/permissions/workflow` → `can_approve_pull_request_reviews`). 꺼져 있으면 `supabase/` PR의 승인조차 422로 거절된다.
+
+### ADR-018: 검색 노출은 공개 페이지 세 개로 한정하고, 프로덕션 배포만 수집을 허용한다
+
+> 번호: ADR-017(PostHog)은 PR #32에서 들어온다. 이 ADR은 그와 독립이라 다음 번호를 쓴다.
+
+**결정**: 검색엔진 수집 대상은 `/`·`/demo`·`/privacy`(`PUBLIC_PATHS`, `src/lib/site.ts`)뿐이다. 핵심 검색어는 **'카드 명세서 분석'**이고 랜딩의 `<title>`·설명·h1에 같은 말을 둔다. 등록할 검색엔진은 Google과 네이버다.
+
+- **수집 허용은 `VERCEL_ENV === "production"`일 때만이다**(`isIndexable()`). 프리뷰·로컬에서는 `robots.txt`가 전부 막고, 모든 페이지에 `noindex` 메타 태그를 단다. 판정을 호스트 이름·`NEXT_PUBLIC_*`로 바꾸지 않는다 — `isPreviewDeployment()`와 같은 이유다.
+- **기준 주소**는 `NEXT_PUBLIC_SITE_URL`, 없으면 Vercel이 넣는 `VERCEL_PROJECT_PRODUCTION_URL`이다. 프리뷰의 canonical도 프로덕션을 가리킨다.
+- `/login`은 `noindex, follow`, `/dashboard`·`/api/`·`/auth/`는 `robots.txt`에서 막는다.
+- 소유 확인 값은 `GOOGLE_SITE_VERIFICATION`·`NAVER_SITE_VERIFICATION` 환경 변수로 받는다. 공개되는 값이라 비밀이 아니다.
+- 구조화 데이터(JSON-LD)는 `dangerouslySetInnerHTML` 없이 `<script>`의 자식 텍스트로 넣고, `jsonLdText()`가 `<`를 이스케이프해 태그 밖으로 나가지 못하게 한다.
+- 공유 이미지(`src/app/opengraph-image.png`)는 정적 PNG다. 랜딩 히어로의 예시 숫자를 그대로 쓴다.
+
+**이유**: 프리뷰 배포에는 공개 비밀번호로 들어가는 테스트 계정 로그인이 열려 있다(ADR-016). 프리뷰 주소가 검색에 걸리면 그 화면이 누구에게나 노출된다. 수집 허용을 기본 차단으로 두고 프로덕션에서만 여는 쪽이 틀렸을 때 안전하다.
+
+**버린 대안**:
+
+| 대안 | 버린 이유 |
+|---|---|
+| `next/og`로 공유 이미지를 동적 생성 | 한글을 그리려면 TTF/WOFF 서체를 함수 번들에 넣어야 한다. 앱의 Pretendard는 woff2 조각이라 그대로 못 쓴다. 바뀌지 않는 이미지에 비해 비용이 크다 |
+| 키워드를 h1 큰 문구에 직접 넣기 | 검색에는 가장 강하지만 랜딩의 짧은 문구가 길어진다. 작은 라벨로 h1 안에 둔다 |
+
+**트레이드오프**: 공유 이미지의 숫자는 랜딩 예시와 손으로 맞춰야 한다. 키워드별 콘텐츠 페이지(예: 카드사별 CSV 내려받는 법)는 다음 단계로 미뤘다.
