@@ -232,6 +232,7 @@ npm run dev      # 개발 서버
 npm run build    # 프로덕션 빌드
 npm run lint     # ESLint
 npm run test     # 테스트 (vitest run)
+npm run eval     # 하네스 품질 eval (라이브 API 호출·비용 발생, evals/harness/README.md)
 bash scripts/preview-shot.sh [경로]   # 빌드 후 headless Chrome 스크린샷. PNG 경로를 출력한다
 python3 scripts/lighthouse_loop.py status   # Lighthouse autoresearch 루프 기록 (/lighthouse-loop, docs/LIGHTHOUSE_LOOP.md)
 
