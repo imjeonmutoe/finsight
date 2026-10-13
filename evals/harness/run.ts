@@ -3,7 +3,7 @@
 //
 //   npm run eval
 
-import { readdirSync, readFileSync } from "node:fs";
+import { mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import Anthropic from "@anthropic-ai/sdk";
 import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
@@ -13,6 +13,7 @@ import {
   reviewSystemPrompt, summarize,
 } from "./lib";
 import type { Case, Result } from "./lib";
+import { renderReport, reportFileName } from "./report";
 
 // subject와 judge를 다른 모델로 둔다. 같은 모델이 자기 답을 채점하면 같은 맹점을 공유한다.
 const SUBJECT_MODEL = "claude-sonnet-5-5";
@@ -82,11 +83,21 @@ async function main(): Promise<void> {
     process.exit(1);
   }
 
+  const startedAt = new Date();
   const results = await runSuite(cases, claudeMd, liveDeps(new Anthropic()));
   const summary = summarize(results);
   for (const r of results) console.log(`${r.status.padEnd(5)} ${r.id}  ${r.reason}`);
   console.log(`\nreview ${summary.byTrack.review.passed}/${summary.byTrack.review.total} · `
     + `qa ${summary.byTrack.qa.passed}/${summary.byTrack.qa.total} · 전체 ${summary.passed}/${summary.total}`);
+
+  // 실패한 실행일수록 보고서가 필요하므로 결과와 상관없이 매번 쓴다. 공개 리포라 커밋하지 않는다(.gitignore).
+  const reportDir = fileURLToPath(new URL("../../.evals/", import.meta.url));
+  const reportPath = reportDir + reportFileName(startedAt);
+  mkdirSync(reportDir, { recursive: true });
+  writeFileSync(reportPath, renderReport(cases, results, {
+    startedAt, subjectModel: SUBJECT_MODEL, judgeModel: JUDGE_MODEL,
+  }));
+  console.log(`보고서: ${reportPath}`);
   process.exit(exitCode(summary));
 }
 

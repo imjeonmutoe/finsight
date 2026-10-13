@@ -32,13 +32,17 @@ ANTHROPIC_API_KEY=sk-ant-...
 
 키를 `export ... && npm run eval`처럼 명령줄에 쓰지 않는다. 셸 히스토리와 에이전트 대화 기록에
 그대로 남는다. `.env.local`에 넣지 않는 이유는 `next dev`도 그 파일을 읽어, 개발 서버의 실제
-Claude 호출까지 eval용 키로 나가기 때문이다. **하나라도 fail이나 error가 나면 exit 1**이다. API 오류도 실패로
+Claude 호출까지 eval용 키로 나가기 때문이다. 
+
+실행마다 `.evals/harness-<UTC 시각>.html` 보고서를 쓰고 경로를 출력한다. 실패한 실행에서도 쓴다.
+공개 리포라 커밋하지 않는다(`.gitignore`). **하나라도 fail이나 error가 나면 exit 1**이다. API 오류도 실패로
 본다 — 돌지 못한 케이스는 '통과'가 아니라 '모른다'다. 케이스가 0개여도 exit 1이다.
 
 | 파일 | 역할 | 네트워크 |
 |---|---|---|
 | `lib.ts` | frontmatter 파싱·균형 검사·프롬프트 조립·집계 (순수 함수) | ✗ |
 | `run.ts` | 케이스 로드 → subject → judge → 집계 → exit code. 모델 호출은 `Deps`로 주입 | ✓ (`main`만) |
+| `report.ts` | 결과를 단일 HTML로 그린다 (순수 함수, LLM 출력은 이스케이프) | ✗ |
 | `cases/*.md` | golden set | — |
 
 ## 케이스 형식

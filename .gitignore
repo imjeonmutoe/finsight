@@ -38,3 +38,6 @@ __pycache__/
 
 # Lighthouse autoresearch 루프 산출물 (results.tsv·측정 로그·기준 스크린샷)
 .autoresearch/
+
+# 하네스 eval HTML 보고서 (npm run eval이 실행마다 쓴다)
+.evals/
