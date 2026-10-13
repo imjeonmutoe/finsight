@@ -10,7 +10,8 @@ import { decodeCsv, detectEncoding } from "@/lib/encoding";
 import { MAX_CSV_ROWS, MAX_FILE_BYTES, MAX_MULTIPART_BODY_BYTES } from "@/lib/limits";
 import { buildSanitizedMappingInput } from "@/lib/sanitize";
 import { ownsStoragePath } from "@/lib/storage-path";
-import { inferColumnMapping } from "@/services/claude";
+import { captureServerEvent } from "@/lib/posthog-server";
+import { createAiObservabilityContext, inferColumnMapping } from "@/services/claude";
 import { createServerSupabase } from "@/services/supabase";
 import type { MappingResponse } from "@/types/api";
 import type { ColumnMapping, ImportContext, UploadStatus } from "@/types/upload";
@@ -249,7 +250,7 @@ export async function POST(request: Request) {
   let mapping: ColumnMapping;
   let confidence: number;
   try {
-    ({ mapping, confidence } = await inferColumnMapping(sanitized));
+    ({ mapping, confidence } = await inferColumnMapping(sanitized, createAiObservabilityContext(userId, uploadId)));
   } catch {
     await markFailed(MAPPING_ERROR);
     // 추론만 실패했습니다. 원본은 Storage에 있으므로 사용자가 직접 컬럼을 고르면 그대로 진행됩니다.
@@ -264,6 +265,17 @@ export async function POST(request: Request) {
     .update({ status: "mapped", column_mapping: mapping, mapping_confidence: confidence })
     .eq("id", uploadId).eq("user_id", userId);
   if (error) return errorResponse(500, "UPLOAD_FAILED", "매핑을 저장하지 못했습니다. 잠시 후 다시 시도해 주세요.");
+
+  await captureServerEvent({
+    distinctId: userId,
+    event: "statement_upload_prepared",
+    properties: {
+      source_kind: source.data.kind,
+      row_count: totalRows,
+      mapping_confidence: confidence,
+      encoding,
+    },
+  });
 
   return jsonResponse({
     uploadId, sourceId, status: "mapped", reused: false, mapping, confidence, preview, totalRows, headerRowIndex,

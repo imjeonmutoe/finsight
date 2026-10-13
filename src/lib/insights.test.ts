@@ -5,7 +5,12 @@ import type { MonthlySummary, Outlier, Subscription } from "@/types/analytics";
 import type { Transaction } from "@/types/transaction";
 
 vi.mock("server-only", () => ({}));
-vi.mock("@/services/claude", () => ({ generateInsights: vi.fn() }));
+vi.mock("@/services/claude", () => ({
+  createAiObservabilityContext: vi.fn((distinctId: string) => ({
+    distinctId, sessionId: "test-session", traceId: "test-trace",
+  })),
+  generateInsights: vi.fn(),
+}));
 vi.mock("./event-log", () => ({ logEvent: vi.fn() }));
 
 const { generateInsights } = await import("@/services/claude");
@@ -147,7 +152,9 @@ describe("인사이트 캐시", () => {
     const service = writer();
 
     expect(await loadInsight({ supabase: reader(row), service, userId: "사용자", plan: "free", input })).toEqual(payload);
-    expect(generateInsights).toHaveBeenCalledExactlyOnceWith(input, "free");
+    expect(generateInsights).toHaveBeenCalledExactlyOnceWith(
+      input, "free", expect.objectContaining({ distinctId: "사용자" }),
+    );
     expect(service.upsert).toHaveBeenCalledWith(expect.objectContaining({
       user_id: "사용자", accounting_month: "2026-04-01", payload,
       txn_fingerprint: insightFingerprint(summary), plan: "free", model: "claude-sonnet-5",

@@ -4,7 +4,7 @@ import { createHash } from "node:crypto";
 import { z } from "zod";
 import { logEvent } from "./event-log";
 import { modelForInsights } from "./limits";
-import { generateInsights } from "@/services/claude";
+import { createAiObservabilityContext, generateInsights } from "@/services/claude";
 import type { InsightInput, MonthlySummary, Outlier, Subscription } from "@/types/analytics";
 import type { Plan } from "@/types/billing";
 import type { Transaction } from "@/types/transaction";
@@ -116,7 +116,7 @@ export async function loadInsight({ supabase, service, userId, plan, input }: {
     return row.data.payload;
   }
 
-  const insight = await generateInsights(input, plan);
+  const insight = await generateInsights(input, plan, createAiObservabilityContext(userId));
 
   // 캐시 기록 실패는 화면을 막지 않는다. 다음 방문에 다시 시도한다. 대신 흔적을 남긴다 —
   // 기록이 계속 실패하면 페이지를 열 때마다 모델이 돌고, 그걸 청구서로 처음 알게 된다.

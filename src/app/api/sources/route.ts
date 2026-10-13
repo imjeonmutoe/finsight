@@ -1,6 +1,7 @@
 import { cookies } from "next/headers";
 import { z } from "zod";
 import { errorResponse, jsonResponse, requireUserId } from "@/lib/api";
+import { captureServerEvent } from "@/lib/posthog-server";
 import { sanitizeMerchantForLlm } from "@/lib/sanitize";
 import { createServerSupabase } from "@/services/supabase";
 import type { FinancialSource } from "@/types/upload";
@@ -55,6 +56,12 @@ export async function POST(request: Request) {
     .select(COLUMNS).single();
   const source = rowSchema.safeParse(data);
   if (error || !source.success) return errorResponse(500, "WRITE_FAILED", WRITE_FAILED);
+
+  await captureServerEvent({
+    distinctId: userId,
+    event: "financial_source_created",
+    properties: { source_kind: source.data.kind },
+  });
 
   return jsonResponse({ source: source.data satisfies FinancialSource }, 201);
 }

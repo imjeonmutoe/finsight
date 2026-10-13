@@ -1,6 +1,7 @@
 import { cookies } from "next/headers";
 import { z } from "zod";
 import { errorResponse, jsonResponse, requireUserId } from "@/lib/api";
+import { captureServerEvent } from "@/lib/posthog-server";
 import { createServerSupabase } from "@/services/supabase";
 import { createServiceSupabase } from "@/services/supabase-service";
 
@@ -76,6 +77,8 @@ export async function DELETE(request: Request) {
     return errorResponse(500, "INSIGHT_CACHE_DELETE_FAILED",
       "금융 데이터는 지웠지만 인사이트 캐시가 남았습니다. 한 번 더 눌러 주세요.");
   }
+
+  await captureServerEvent({ distinctId: userId, event: "financial_data_deleted" });
 
   return jsonResponse({ deleted: true });
 }

@@ -6,6 +6,7 @@ import { parseStatementRows } from "@/lib/statement";
 import { decodeCsv } from "@/lib/encoding";
 import { MAX_CSV_ROWS, MAX_FILE_BYTES } from "@/lib/limits";
 import { ownsStoragePath } from "@/lib/storage-path";
+import { captureServerEvent } from "@/lib/posthog-server";
 import { classifyByRule } from "@/lib/merchant-rules";
 import { createServerSupabase } from "@/services/supabase";
 import type { ConfirmResponse, ImportReviewResponse } from "@/types/api";
@@ -244,5 +245,17 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   if (!confirmed.success) {
     return errorResponse(500, "CONFIRM_FAILED", "거래를 저장하지 못했습니다. 잠시 후 다시 시도해 주세요.");
   }
+
+  await captureServerEvent({
+    distinctId: userId,
+    event: "statement_import_confirmed",
+    properties: {
+      inserted_count: confirmed.data.inserted,
+      duplicate_count: confirmed.data.duplicates,
+      unclassified_count: confirmed.data.unclassified,
+      source_kind: source.data.kind,
+    },
+  });
+
   return jsonResponse(confirmed.data satisfies ConfirmResponse);
 }

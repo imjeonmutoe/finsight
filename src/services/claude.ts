@@ -1,6 +1,8 @@
 import "server-only";
 
+import { randomUUID } from "node:crypto";
 import Anthropic from "@anthropic-ai/sdk";
+import { Anthropic as PostHogAnthropic } from "@posthog/ai/anthropic";
 import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import { z } from "zod";
 import {
@@ -8,6 +10,7 @@ import {
   LLM_TIMEOUT_MS, MAX_LLM_RETRIES, SONNET_MODEL, modelForInsights,
 } from "@/lib/limits";
 import { groundedNumbers, knownNumbers } from "@/lib/insight-numbers";
+import { getPostHogClient } from "@/lib/posthog-server";
 import { sanitizeMerchantForLlm } from "@/lib/sanitize";
 import { CATEGORIES } from "@/types/category";
 import type { Category } from "@/types/category";
@@ -112,40 +115,75 @@ function inputBytes(request: Anthropic.MessageCreateParamsNonStreaming): number 
   return Buffer.byteLength(JSON.stringify(request), "utf8");
 }
 
-async function requestJson(request: Anthropic.MessageCreateParamsNonStreaming): Promise<unknown> {
+type AiObservabilityContext = {
+  distinctId: string;
+  sessionId: string;
+  traceId: string;
+};
+
+/** 이 앱에는 대화 스레드가 없으므로 요청 하나를 하나의 AI 세션으로 기록한다. */
+export function createAiObservabilityContext(distinctId: string, sessionId: string = randomUUID()): AiObservabilityContext {
+  return { distinctId, sessionId, traceId: randomUUID() };
+}
+
+async function requestJson(
+  request: Anthropic.MessageCreateParamsNonStreaming, observability?: AiObservabilityContext,
+): Promise<unknown> {
   if (inputBytes(request) > MAX_LLM_INPUT_BYTES) throw new Error(SIZE_ERROR);
-  let client: Anthropic;
+  // 기존 서버 SDK를 재사용한다. 개발 환경에서 설정이 빠졌을 때는 여기서 명확히 실패한다.
+  const posthog = getPostHogClient();
+  let client: Anthropic | PostHogAnthropic;
   try {
     // 빌드/모듈 import에는 키가 필요하지 않다. SDK 디버그 로그도 금융 데이터 유출을 막기 위해 끈다.
-    client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY,
-      maxRetries: 0, timeout: LLM_TIMEOUT_MS, logLevel: "off" });
+    const apiKey = process.env.ANTHROPIC_API_KEY;
+    if (posthog) {
+      if (!apiKey) throw new Error(REQUEST_ERROR);
+      client = new PostHogAnthropic({ apiKey,
+        maxRetries: 0, timeout: LLM_TIMEOUT_MS, logLevel: "off", posthog });
+    } else {
+      client = new Anthropic({ apiKey,
+        maxRetries: 0, timeout: LLM_TIMEOUT_MS, logLevel: "off" });
+    }
   } catch {
     throw new Error(REQUEST_ERROR);
   }
-  for (let attempt = 0; attempt <= MAX_LLM_RETRIES; attempt += 1) {
-    let response: Anthropic.Message;
-    try {
-      response = await client.messages.create(request);
-    } catch (error) {
-      const retryable = error instanceof Anthropic.APIError && error.status !== undefined
-        && (error.status === 429 || (error.status >= 500 && error.status <= 599));
-      if (!retryable || attempt === MAX_LLM_RETRIES) throw new Error(REQUEST_ERROR);
-      await new Promise((resolve) => setTimeout(resolve, 250 * 2 ** attempt));
-      continue;
+  try {
+    for (let attempt = 0; attempt <= MAX_LLM_RETRIES; attempt += 1) {
+      let response: Anthropic.Message;
+      try {
+        response = posthog && observability
+          ? await (client as PostHogAnthropic).messages.create({
+            ...request,
+            posthogDistinctId: observability.distinctId,
+            posthogTraceId: observability.traceId,
+            posthogProperties: { $ai_session_id: observability.sessionId },
+            // 프롬프트에 가맹점명·금액이 담기므로 원문은 보내지 않는다. 모델·토큰·비용·지연만 기록된다.
+            posthogPrivacyMode: true,
+          }) as Anthropic.Message
+          : await client.messages.create(request);
+      } catch (error) {
+        const retryable = error instanceof Anthropic.APIError && error.status !== undefined
+          && (error.status === 429 || (error.status >= 500 && error.status <= 599));
+        if (!retryable || attempt === MAX_LLM_RETRIES) throw new Error(REQUEST_ERROR);
+        await new Promise((resolve) => setTimeout(resolve, 250 * 2 ** attempt));
+        continue;
+      }
+      if (response.stop_reason !== "end_turn") throw new Error(OUTPUT_ERROR);
+      const text = response.content.filter((block) => block.type === "text").map((block) => block.text).join("");
+      try {
+        return JSON.parse(text) as unknown;
+      } catch {
+        throw new Error(OUTPUT_ERROR);
+      }
     }
-    if (response.stop_reason !== "end_turn") throw new Error(OUTPUT_ERROR);
-    const text = response.content.filter((block) => block.type === "text").map((block) => block.text).join("");
-    try {
-      return JSON.parse(text) as unknown;
-    } catch {
-      throw new Error(OUTPUT_ERROR);
-    }
+    throw new Error(REQUEST_ERROR);
+  } finally {
+    if (posthog) await posthog.flush();
   }
-  throw new Error(REQUEST_ERROR);
 }
 
 export async function inferColumnMapping(
-  input: SanitizedMappingInput,
+  input: SanitizedMappingInput, observability?: AiObservabilityContext,
 ): Promise<{ mapping: ColumnMapping; confidence: number }> {
   const payload = checked(mappingInputSchema, {
     headerRowIndex: input.headerRowIndex,
@@ -155,7 +193,7 @@ export async function inferColumnMapping(
   }, INPUT_ERROR);
   const result = checked(mappingOutputSchema, await requestJson(buildRequest(
     SONNET_MODEL, MAPPING_PROMPT, payload, MAPPING_FORMAT,
-  )), OUTPUT_ERROR);
+  ), observability), OUTPUT_ERROR);
   const { mapping } = result;
   const indices = new Set(payload.columns.map((column) => column.index));
   const invalidIndex = Object.entries(mapping).some(([key, value]) => key !== "skipRows" && !indices.has(value));
@@ -171,7 +209,7 @@ export async function inferColumnMapping(
 
 /** 호출자가 사용자 규칙과 내장 규칙을 적용하고도 남은 미분류 거래만 받는다. */
 export async function classifyTransactions(
-  items: { id: string; merchant: string; amountKrw: number }[],
+  items: { id: string; merchant: string; amountKrw: number }[], observability?: AiObservabilityContext,
 ): Promise<{ id: string; category: Category }[]> {
   if (items.length === 0) return [];
   if (items.length > CLASSIFICATION_BATCH_SIZE) throw new Error("한 번에 최대 50건까지 분류할 수 있습니다. 배치를 나눠 주세요.");
@@ -180,7 +218,7 @@ export async function classifyTransactions(
   if (new Set(payload.map((item) => item.id)).size !== payload.length) throw new Error(INPUT_ERROR);
   const response = checked(z.object({ items: z.array(z.unknown()) }), await requestJson(buildRequest(
     SONNET_MODEL, CLASSIFICATION_PROMPT, { items: payload }, CLASSIFICATION_FORMAT, "low",
-  )), OUTPUT_ERROR);
+  ), observability), OUTPUT_ERROR);
   const requested = new Set(payload.map((item) => item.id));
   const byId = new Map<string, Category>();
   const repeated = new Set<string>();
@@ -210,7 +248,7 @@ function copySummary(summary: MonthlySummary): MonthlySummary {
  * 유지하고 dangerouslySetInnerHTML을 사용하지 않는다.
  */
 export async function generateInsights(
-  input: InsightInput, plan: Plan,
+  input: InsightInput, plan: Plan, observability?: AiObservabilityContext,
 ): Promise<{ headline: string; items: { text: string; transactionIds: string[] }[] }> {
   const payload: InsightInput = {
     summary: copySummary(input.summary),
@@ -238,7 +276,7 @@ export async function generateInsights(
     largest.pop();
     request = buildRequest(model, INSIGHT_PROMPT, safe, INSIGHT_FORMAT);
   }
-  const result = checked(insightOutputSchema, await requestJson(request), OUTPUT_ERROR);
+  const result = checked(insightOutputSchema, await requestJson(request, observability), OUTPUT_ERROR);
   const evidenceIds = new Set([
     ...safe.evidence.flatMap((item) => item.transactionIds),
     ...(safe.outliers ?? []).map((item) => item.transactionId),

@@ -6,7 +6,7 @@ import { MAX_CSV_ROWS, MAX_FILE_BYTES, MAX_MULTIPART_BODY_BYTES } from "@/lib/li
 type Result = { data?: unknown; error?: unknown; count?: number };
 type Call = { key: string; method: string; args: unknown[] };
 
-const { getClaims, from, storageFrom, upload, remove, createServerSupabase, inferColumnMapping } = vi.hoisted(() => {
+const { getClaims, from, storageFrom, upload, remove, createServerSupabase, createAiObservabilityContext, inferColumnMapping } = vi.hoisted(() => {
   const uploadFn = vi.fn();
   const removeFn = vi.fn();
   const storage = vi.fn(() => ({ upload: uploadFn, remove: removeFn }));
@@ -16,11 +16,15 @@ const { getClaims, from, storageFrom, upload, remove, createServerSupabase, infe
     getClaims: claims, from: fromFn, storageFrom: storage, upload: uploadFn, remove: removeFn,
     createServerSupabase: vi.fn(() => ({ auth: { getClaims: claims }, from: fromFn, storage: { from: storage } })),
     inferColumnMapping: vi.fn(),
+    createAiObservabilityContext: vi.fn((distinctId: string, sessionId: string) => ({
+      distinctId, sessionId, traceId: "test-trace",
+    })),
   };
 });
 vi.mock("server-only", () => ({}));
+vi.mock("@/lib/posthog-server", () => ({ captureServerEvent: vi.fn() }));
 vi.mock("@/services/supabase", () => ({ createServerSupabase }));
-vi.mock("@/services/claude", () => ({ inferColumnMapping }));
+vi.mock("@/services/claude", () => ({ createAiObservabilityContext, inferColumnMapping }));
 vi.mock("next/headers", () => ({ cookies: vi.fn(async () => ({ getAll: () => [], set: () => {} })) }));
 
 const queues = new Map<string, Result[]>();
