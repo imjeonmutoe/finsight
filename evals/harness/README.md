@@ -21,8 +21,18 @@ npm test          # 키 없음·무료. 파서·균형·프롬프트 조립·집
 npm run eval      # 라이브. 케이스당 Sonnet 1회 + Opus 1회 호출, 비용이 든다
 ```
 
-`npm run eval`은 SDK 기본 자격 증명(`ANTHROPIC_API_KEY` 등)을 쓴다. `.env.local`은 읽지
-않으므로 셸에서 export한다. **하나라도 fail이나 error가 나면 exit 1**이다. API 오류도 실패로
+`npm run eval`은 리포 루트의 `.env.eval.local`을 읽는다. 처음 한 번 만들어 둔다
+(`.gitignore`의 `.env*`에 걸려 커밋되지 않는다). 파일이 없으면 Node가 `not found`로 멈춘다.
+
+편집기로 아래 한 줄을 쓴다. `echo`로 만들면 그 명령이 셸 히스토리에 남는다.
+
+```
+ANTHROPIC_API_KEY=sk-ant-...
+```
+
+키를 `export ... && npm run eval`처럼 명령줄에 쓰지 않는다. 셸 히스토리와 에이전트 대화 기록에
+그대로 남는다. `.env.local`에 넣지 않는 이유는 `next dev`도 그 파일을 읽어, 개발 서버의 실제
+Claude 호출까지 eval용 키로 나가기 때문이다. **하나라도 fail이나 error가 나면 exit 1**이다. API 오류도 실패로
 본다 — 돌지 못한 케이스는 '통과'가 아니라 '모른다'다. 케이스가 0개여도 exit 1이다.
 
 | 파일 | 역할 | 네트워크 |

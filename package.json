@@ -11,7 +11,7 @@
     "start": "next start",
     "lint": "eslint .",
     "test": "vitest run",
-    "eval": "tsx evals/harness/run.ts"
+    "eval": "tsx --env-file=.env.eval.local evals/harness/run.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "0.125.0",
