@@ -124,6 +124,11 @@ def validate(patch, status):
         return ["패치가 비어 있다"]
 
     violations = []
+    # 공백·따옴표·비ASCII가 든 경로는 엄격한 헤더 정규식에 안 잡혀 아래 검사를 통째로 빠져나간다.
+    # 해석하지 못한 헤더는 고쳐 읽으려 하지 않고 거절한다 — 그런 파일명이 필요한 수정은 사람이 한다.
+    for header in re.findall(r"^diff --git .*$", patch, re.M):
+        if not re.match(r"^diff --git a/\S+ b/\S+$", header):
+            violations.append("해석할 수 없는 경로(공백·따옴표·비ASCII)")
     paths = changed_paths(patch)
     if not paths:
         violations.append("패치에서 바뀐 파일을 찾지 못했다")
