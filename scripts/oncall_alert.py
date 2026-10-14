@@ -78,8 +78,10 @@ def _json_candidates(text):
     yield text
     for m in re.finditer(r"```(?:json)?\s*\n(.*?)\n```", text, re.S):
         yield m.group(1)
-    if "{" in text:
-        yield text[text.index("{") : text.rindex("}") + 1]
+    # 출력이 중간에 끊기면 `}`가 없다. 여기서 예외가 나면 '못 읽으면 사람을 깨운다'는 폴백이 같이 죽는다.
+    start, end = text.find("{"), text.rfind("}")
+    if 0 <= start < end:
+        yield text[start : end + 1]
 
 
 def parse_verdict(text):

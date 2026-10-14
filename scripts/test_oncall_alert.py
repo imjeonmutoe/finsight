@@ -94,6 +94,8 @@ class TestParseVerdict:
             json.dumps(verdict(confidence="매우 높음")),
             json.dumps(verdict(users="많음")),
             json.dumps(verdict(analysis=None)),
+            '판정: {"verdict": "signal", 잘림',  # 닫는 괄호 없이 끊긴 출력
+            "}{",
         ],
     )
     def test_invalid_is_none(self, text):
@@ -134,6 +136,18 @@ class TestDecide:
         d = oa.decide(CREATED, v)
         assert d["action"] == "escalate" and d["confidence"] == "낮음"
         assert d["notes"]
+
+
+def test_decide_cli_wakes_human_on_truncated_output(tmp_path):
+    """판정을 못 읽어도 decide가 죽지 않고 Issue 본문을 쓴다 — 죽으면 escalate 잡이 아무것도 못 올린다."""
+    inputs = tmp_path / "inputs.json"
+    inputs.write_text(json.dumps({"event_id": EVENT, "kind": CREATED, "issue_id": ISSUE, "current_bucket_value": None, "computed_baseline": None}))
+    result = tmp_path / "result.json"
+    result.write_text(json.dumps({"result": '{"verdict": "signal", 잘림'}))
+    out = tmp_path / "out"
+    assert oa.main(["decide", "--inputs", str(inputs), "--result", str(result), "--out-dir", str(out), "--run-url", "u"]) == 0
+    assert (out / "issue-body.md").exists()
+    assert json.loads((out / "decision.json").read_text())["confidence"] == "낮음"
 
 
 class TestSanitize:
