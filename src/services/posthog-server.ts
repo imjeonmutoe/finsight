@@ -2,9 +2,20 @@ import { headers } from "next/headers";
 import { after } from "next/server";
 import { PostHog } from "posthog-node";
 import { flushPostHogLogs, logPostHogCapture } from "./posthog-log";
+import { deploymentEnvironment } from "./posthog-log-provider";
 import { redactExceptionEvent } from "@/lib/posthog-privacy";
 
 let client: PostHog | null = null;
+
+/**
+ * 서버 클라이언트로 나가는 모든 이벤트(일반·예외·AI 호출)를 한 곳에서 거친다.
+ * 서버 이벤트에는 $host가 없어 배포 환경을 직접 붙인다. 예외 메시지 정제는 그대로 한다.
+ */
+export function prepareServerEvent<T extends { event: string; properties?: Record<string, unknown> } | null>(event: T): T {
+  const redacted = redactExceptionEvent(event);
+  if (!redacted) return redacted;
+  return { ...redacted, properties: { ...redacted.properties, environment: deploymentEnvironment() } };
+}
 
 export function getPostHogClient(): PostHog | null {
   const projectToken = process.env.NEXT_PUBLIC_POSTHOG_PROJECT_TOKEN;
@@ -26,7 +37,7 @@ export function getPostHogClient(): PostHog | null {
     host,
     enableExceptionAutocapture: true,
     privacyMode: true,
-    before_send: redactExceptionEvent,
+    before_send: prepareServerEvent,
     flushAt: 1,
     flushInterval: 0,
   });

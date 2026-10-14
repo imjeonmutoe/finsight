@@ -17,8 +17,7 @@ vi.mock("next/headers", () => ({ headers: async () => new Headers() }));
 vi.mock("next/server", () => ({ after: vi.fn() }));
 vi.mock("./posthog-log", () => ({ flushPostHogLogs: vi.fn(), logPostHogCapture: vi.fn() }));
 
-const { captureServerEvent, captureServerException, getPostHogClient, trackApiFailure } = await import("./posthog-server");
-const { redactExceptionEvent } = await import("@/lib/posthog-privacy");
+const { captureServerEvent, captureServerException, getPostHogClient, prepareServerEvent, trackApiFailure } = await import("./posthog-server");
 
 beforeEach(() => {
   vi.stubEnv("NEXT_PUBLIC_POSTHOG_PROJECT_TOKEN", "phc_test");
@@ -36,7 +35,7 @@ describe("PostHog 서버 클라이언트", () => {
     getPostHogClient();
     expect(constructor).toHaveBeenCalledWith("phc_test", expect.objectContaining({
       privacyMode: true,
-      before_send: redactExceptionEvent,
+      before_send: prepareServerEvent,
     }));
   });
 
@@ -68,5 +67,37 @@ describe("실패·예외 추적", () => {
   it("예외 전송이 실패해도 던지지 않습니다", async () => {
     flush.mockRejectedValue(new Error("network"));
     await expect(captureServerException(new Error("실패"), {})).resolves.toBeUndefined();
+  });
+});
+
+type ServerEvent = { event: string; properties: Record<string, unknown> };
+
+describe("서버 이벤트 전처리", () => {
+  // 로컬 개발 서버도 같은 PostHog 프로젝트로 보낸다. 서버 이벤트에는 $host가 없어 표시가 없으면
+  // 개발 중 핫 리로드로 생긴 이벤트가 프로덕션 지표에 섞인다.
+  it("배포 환경을 붙입니다", () => {
+    vi.stubEnv("VERCEL_ENV", "production");
+    expect(prepareServerEvent({ event: "insight_loaded", properties: { source: "cache" } })?.properties)
+      .toEqual({ source: "cache", environment: "production" });
+  });
+
+  it("Vercel 밖(로컬 개발 서버)이면 development로 붙입니다", () => {
+    vi.stubEnv("VERCEL_ENV", undefined);
+    expect(prepareServerEvent<ServerEvent>({ event: "insight_loaded", properties: {} })?.properties.environment).toBe("development");
+  });
+
+  it("예외 메시지 정제는 그대로 합니다", () => {
+    vi.stubEnv("VERCEL_ENV", "preview");
+    const event = prepareServerEvent<ServerEvent>({
+      event: "$exception",
+      properties: { $exception_message: "스타벅스 4,500원 처리 실패", $exception_list: [{ type: "Error", value: "스타벅스" }] },
+    });
+
+    expect(JSON.stringify(event)).not.toContain("스타벅스");
+    expect(event?.properties.environment).toBe("preview");
+  });
+
+  it("null은 null로 돌려줍니다", () => {
+    expect(prepareServerEvent(null)).toBeNull();
   });
 });
