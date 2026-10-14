@@ -10,8 +10,8 @@
     critical·major 하나라도 → none    아무것도 하지 않는다
 
     바뀐 파일에 `supabase/` 아래가 있으면 merge → approve로만 낮춘다 (approve·none은 그대로).
-    DB 변경은 사람이 보고 머지한 뒤 사람이 프로덕션에 적용한다(ADR-016 시행 상태 — 연동이 꺼져 있어
-    머지가 적용하지 않는다). 연동을 켜면 머지가 곧 적용이 되므로 이 규칙은 그때도 그대로 필요하다.
+    마이그레이션 PR은 머지와 프로덕션 적용(CLI·대시보드)을 사람이 함께 한다. 머지만 되고
+    적용이 안 되면 앱 코드와 DB가 어긋난다 (ADR-019).
 
 틀리는 쪽은 항상 `none`이다. 판정을 모르겠으면(마커 없음·형식 깨짐·미실행 차원) 머지하지 않는다.
 
@@ -41,7 +41,7 @@ MARKER_RE = re.compile(r"<!--\s*finsight-review\s+(\{.*?\})\s*-->", re.S)
 SEVERITIES = ("critical", "major", "minor", "nit")
 BLOCKING = ("critical", "major")
 
-# 이 아래를 건드린 PR은 DB 변경이다. 사람이 머지하고 사람이 프로덕션에 적용한다 (ADR-016).
+# 이 아래를 건드린 PR은 사람이 머지하고 프로덕션에 함께 적용한다. 자동 머지하면 앱 코드와 DB가 어긋난다 (ADR-019).
 DB_PATH_PREFIX = "supabase/"
 
 

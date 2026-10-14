@@ -28,32 +28,19 @@ function section(name: string): string[] {
 
 describe("supabase/config.toml", () => {
   it("파일이 있다", () => {
-    expect(text, "supabase/config.toml이 없다. Branching은 이 파일로 프리뷰 브랜치 설정을 정한다").not.toBe("");
+    expect(text, "supabase/config.toml이 없다. 로컬과 스테이징 초기화(db reset)가 이 파일의 시드 설정을 읽는다").not.toBe("");
   });
 
-  it("Storage 버킷을 선언하지 않는다", () => {
-    const bad = headers.filter((h) => h.startsWith("[storage.buckets"));
-    expect(
-      bad,
-      "config.toml의 버킷은 PR을 머지하면 프로덕션에 배포되어 마이그레이션이 만든 statements 버킷 설정을 덮어쓸 수 있다",
-    ).toEqual([]);
-  });
-
-  it("Edge Function을 선언하지 않는다", () => {
-    const bad = headers.filter((h) => h.startsWith("[functions"));
-    expect(bad, "config.toml의 함수는 PR을 머지하면 프로덕션에 배포된다").toEqual([]);
-  });
-
-  it("프리뷰 브랜치에 seed.sql을 넣는다", () => {
+  it("DB 초기화 때 seed.sql을 넣는다", () => {
     const seed = section("db.seed");
-    expect(seed, "[db.seed]가 켜져 있어야 프리뷰 브랜치에 테스트 사용자가 생긴다").toContain("enabled = true");
+    expect(seed, "[db.seed]가 켜져 있어야 스테이징 초기화 때 테스트 사용자가 생긴다").toContain("enabled = true");
     expect(seed, "[db.seed]의 sql_paths가 ./seed.sql 하나여야 한다").toContain('sql_paths = ["./seed.sql"]');
   });
 
   it("Google OAuth를 켜지 않는다", () => {
     expect(
       headers,
-      "프리뷰 브랜치마다 콜백 주소가 바뀌어 Google Console에 등록할 수 없다. 켜 두면 실패하는 로그인 버튼만 남는다",
+      "프리뷰 배포마다 주소가 바뀌어 Google Console에 콜백을 등록할 수 없다. 켜 두면 실패하는 로그인 버튼만 남는다",
     ).not.toContain("[auth.external.google]");
   });
 
