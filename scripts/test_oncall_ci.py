@@ -174,6 +174,38 @@ def test_막힌_경로를_건드리면_거절한다(path):
     assert path in violations[0]
 
 
+@pytest.mark.parametrize(
+    "header",
+    [
+        "diff --git a/supabase/x y.sql b/supabase/x y.sql",  # git은 공백을 따옴표로 감싸지 않는다
+        'diff --git "a/supabase/\\303\\251.sql" "b/supabase/\\303\\251.sql"',  # 비ASCII·따옴표는 감싼다
+        "diff --git a/src/a.ts b/supabase/b c.sql",
+    ],
+)
+def test_해석할_수_없는_diff_헤더는_거절한다(header):
+    # 정상 파일과 섞어야 '바뀐 파일 없음'에 걸리지 않고 우회가 드러난다.
+    patch = patch_for("src/lib/ok.ts") + f"{header}\nnew file mode 100644\n--- /dev/null\n+++ b/x\n@@ -0,0 +1 @@\n+x\n"
+    assert oc.validate(patch, "fixed")
+
+
+@pytest.mark.parametrize("name", ["supabase/migrations/1 x.sql", "supabase/migrations/é.sql", ".github/workflows/a b.yml"])
+def test_실제_git_diff로_만든_특수_경로_패치도_거절한다(tmp_path, name):
+    def git(*args):
+        subprocess.run(["git", "-C", str(tmp_path), *args], check=True, capture_output=True)
+
+    git("init", "-q")
+    (tmp_path / "src").mkdir()
+    (tmp_path / "src" / "ok.ts").write_text("export {};\n")
+    target = tmp_path / name
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text("select 1;\n")
+    git("add", "-A")
+    patch = subprocess.run(
+        ["git", "-C", str(tmp_path), "diff", "--cached", "--binary"], check=True, capture_output=True, text=True
+    ).stdout
+    assert oc.validate(patch, "fixed")
+
+
 def test_막힌_경로_밖으로_옮기는_이름_변경도_거절한다():
     p = patch_for("src/lib/x.sql", rename_from="supabase/migrations/1_x.sql")
     assert oc.validate(p, "fixed")
