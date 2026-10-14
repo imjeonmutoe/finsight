@@ -76,7 +76,7 @@ jobs:
       # 배포 경로가 오염되면 바뀐 스크립트가 토큰을 쥔 이 잡에서 돈다. 바이너리를 직접 받아 고정한
       # sha256과 대조한 뒤 install.sh가 하던 마지막 단계(`claude install <버전>`)만 한다.
       # 버전을 올릴 때는 downloads.claude.ai/claude-code-releases/<버전>/manifest.json의
-      # platforms.linux-x64.checksum으로 CLAUDE_SHA256을 함께 바꾼다(두 워크플로우 모두).
+      # platforms.linux-x64.checksum으로 CLAUDE_SHA256을 함께 바꾼다(세 워크플로우 모두 — oncall-ci-fix.yml 포함).
       - name: Claude Code 설치
         env:
           CLAUDE_VERSION: 2.1.286

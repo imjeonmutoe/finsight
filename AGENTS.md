@@ -173,6 +173,39 @@ git config core.hooksPath scripts/githooks
 같은 ref에 묶어 둔 것이다. 대가는 **게이트를 고치는 PR이 자기 게이트를 검증하지 못한다**는 것 —
 머지된 뒤부터 적용된다. 그 PR에서 게이트 잡이 빨간불인 것은 정상이다.
 
+### oncall — CI 실패 자동 수정
+
+**사람이 시킨 게 아니라 main이 깨진 사실 자체가 트리거다.** `ci.yml`(lint · build · test)이 main
+푸시에서 실패하면 `oncall-ci-fix.yml`이 깨어나 헤드리스 에이전트(`claude -p`)가 실패 잡 로그만 읽고
+근본 원인을 고친 뒤 `oncall/ci-fix-<실행ID>` 브랜치로 **PR을 연다.** 출력은 언제나 PR이고 머지는
+사람이 한다. 고칠 수 없으면 `docs/incidents/`에 사고 기록만 담은 **draft** PR을 연다.
+
+| 잡 | LLM | 쓰기 권한 | 하는 일 |
+|---|---|---|---|
+| `diagnose` | ✓ | ✗ (`actions`·`contents`·`pull-requests` 읽기만) | 트리아지 → 로그 마스킹 → 수정 → 재검증 → 관문 → 패치 아티팩트 |
+| `publish` | ✗ | `contents`·`pull-requests` 쓰기 | 관문 재확인 → 브랜치 푸시 → PR 생성. **패치 코드를 실행하지 않는다** |
+
+**두 잡을 합치지 마라.** 리뷰 게이트와 같은 이유다 — 에이전트는 신뢰할 수 없는 로그를 읽는다.
+
+**무한 루프 방지는 다섯 겹이다.** main 푸시 CI만 본다(PR·`oncall/` 브랜치·fork 제외) / 봇 actor 제외 /
+`GITHUB_TOKEN`으로 만든 푸시·PR은 GitHub이 워크플로우를 띄우지 않는다 / 열린 `oncall/` PR이 있으면
+건너뜀 / main이 이미 다음 커밋이면 건너뜀. 그래서 **oncall PR에는 CI도 리뷰도 자동으로 돌지 않는다.**
+본문의 검증표는 oncall 잡이 직접 돌린 결과이고, 머지 전에 PR을 닫았다 다시 열면 CI가 돈다.
+사람이 `oncall/` 브랜치에 푸시해 리뷰 게이트가 `merge`를 내도 자동 머지 스텝이 건너뛴다.
+
+**관문(`scripts/oncall_ci.py validate`)이 '고친 척'을 막는다.** `.github/`·`.claude/`·`scripts/`·
+`supabase/`(머지 = 프로덕션 적용)·`package.json`·lint/tsc/vitest 설정·`next.config.ts`를 건드리거나,
+테스트 파일을 지우거나, `skip`·`only`·`eslint-disable`·`@ts-ignore`를 더한 패치는 PR이 되지 않고
+사고 기록 draft로 바뀐다. 막힌 경로를 고쳐야 하는 장애는 사람이 고친다.
+
+**비밀값.** 로그는 에이전트에게 넘기기 전에, PR 본문·제목은 올리기 전에 `redact`를 거친다. GitHub은
+등록된 시크릿만 `***`로 가린다. 워크플로우에는 `CLAUDE_CODE_OAUTH_TOKEN` 말고 어떤 서비스 키도 없고
+MCP도 띄우지 않는다(`--strict-mcp-config`) — **prod는 읽기조차 하지 않는다.**
+
+`workflow_run`은 기본 브랜치의 워크플로우 파일만 쓴다. 이 워크플로우를 고치는 PR은 **머지된 뒤부터**
+적용된다. `ci.yml`의 `name: CI`를 바꾸면 `workflows: [CI]`도 함께 바꿔라 — 안 바꾸면 조용히 안 깨어난다.
+수동 재실행: `gh workflow run oncall-ci-fix.yml -f run_id=<실패한 CI 실행 ID>`.
+
 ### CI에 이미 물려 있는 것
 
 고치기 전에 이유를 읽어라. 셋 다 **실패해도 빨간불이 안 뜨는** 종류의 함정이다.
@@ -202,7 +235,7 @@ git config core.hooksPath scripts/githooks
   되돌린 파일은 작업트리에 남으므로, `/review-code` 1단계는 CI에서 작업트리·untracked diff를 빼고
   `merge-base..HEAD`만 팩에 담는다. 안 빼면 되돌림이 "PR이 자기 변경을 되돌린다"는 가짜 hunk로 섞인다.
 - Claude Code는 `install.sh`를 파이프로 실행하지 않고, 바이너리를 받아 **고정한 sha256**과 대조한 뒤
-  `claude install <버전>`만 한다(두 워크플로우 모두). install.sh와 그것이 읽는 manifest는 고정할 수
+  `claude install <버전>`만 한다(세 워크플로우 모두 — review-code·owasp-scan·oncall-ci-fix). install.sh와 그것이 읽는 manifest는 고정할 수
   없어서다. 버전을 올리면 `CLAUDE_SHA256`도 그 버전 manifest의 `linux-x64` checksum으로 함께 바꿔라 —
   안 바꾸면 설치 스텝이 `sha256sum -c`에서 빨간불로 멈춘다(그게 설계대로다).
 - GitHub 토큰은 `GH_TOKEN`(`secrets.GITHUB_TOKEN`) 하나다. 워크플로우의 `permissions` 그대로

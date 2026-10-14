@@ -1,0 +1,48 @@
+name: CI
+
+# 기본 검사. Stop 훅(`npm run lint && npm run build && npm run test`)과 같은 세 개를 돈다.
+# 시크릿을 쓰지 않는다 — env 없이도 세 개가 통과한다(2026-10-14 깨끗한 worktree에서 확인).
+# 검사에 시크릿이 필요해지면 이 잡이 아니라 별도 잡으로 떼어라. pull_request는 fork에서도 돈다.
+#
+# main에서 이 워크플로우가 실패하면 `oncall-ci-fix.yml`이 깨어난다. 그쪽은 이 워크플로우를
+# **이름("CI")으로** 찾으므로 name을 바꾸면 그쪽 `workflows:`도 함께 바꿔라 — 안 바꾸면
+# oncall이 조용히 영영 안 깨어난다.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  # main은 커밋마다 결과를 남긴다(oncall이 실패한 커밋을 집는다). PR은 최신 푸시만 본다.
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+permissions:
+  contents: read
+
+jobs:
+  # 액션은 커밋 SHA로 고정한다(review-code.yml과 같은 이유).
+  check:
+    name: lint · build · test
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 20.20.0
+          cache: npm
+
+      - run: npm ci
+
+      # 세 개를 스텝으로 나눈다. oncall이 읽는 `--log-failed`가 실패한 스텝 로그만 담게 된다.
+      - name: lint
+        run: npm run lint
+      - name: build
+        run: npm run build
+      - name: test
+        run: npm run test
