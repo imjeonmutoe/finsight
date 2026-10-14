@@ -135,6 +135,20 @@ def test_guard_runs_before_reset():
     assert "exit 1" in body
 
 
+def test_storage_cleared_between_guard_and_reset():
+    # 원격 `db reset`은 storage 스키마를 지우지 않는다. 두 번째 초기화부터 init 마이그레이션의
+    # statements 버킷 insert가 23505로 실패했다(2026-10-14). 가드 뒤, 초기화 앞에서 비운다.
+    lines = code_lines()
+    guard = step_index(PROD_REF)
+    clear = step_index(r"delete from storage\.buckets")
+    reset = step_index(r"supabase db reset")
+    assert guard < clear < reset
+    body = "\n".join(lines[clear - 10 : reset])
+    assert 'psql "$STAGING_DB_URL"' in body
+    assert "ON_ERROR_STOP=1" in body
+    assert "drop policy if exists statements_own on storage.objects" in body
+
+
 def test_reset_targets_db_url():
     line = code_lines()[step_index(r"supabase db reset")]
     assert '--db-url "$STAGING_DB_URL"' in line

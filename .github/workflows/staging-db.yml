@@ -69,6 +69,22 @@ jobs:
               ;;
           esac
 
+      # 원격 `db reset`은 storage 스키마를 지우지 않는다. 그대로 두면 두 번째 초기화부터 init 마이그레이션의
+      # statements 버킷 insert가 23505로 실패한다. 마이그레이션이 storage에 만든 것만 지운다.
+      # storage.allow_delete_query: Supabase가 storage 테이블 직접 DELETE를 막는 트리거의 해제 스위치(이 트랜잭션만).
+      - name: 스테이징 storage 비우기
+        env:
+          STAGING_DB_URL: ${{ secrets.STAGING_DB_URL }}
+        run: |
+          psql "$STAGING_DB_URL" -v ON_ERROR_STOP=1 -q <<'SQL'
+          begin;
+          set local storage.allow_delete_query = 'true';
+          drop policy if exists statements_own on storage.objects;
+          delete from storage.objects where bucket_id = 'statements';
+          delete from storage.buckets where id = 'statements';
+          commit;
+          SQL
+
       # 마이그레이션 전부를 처음부터 적용하고 [db.seed]의 seed.sql까지 넣는다(--no-seed를 주지 않으면
       # --db-url에서도 시드가 돈다 — 2.120.0 `db reset --help`로 확인). --yes는 원격 초기화 확인 프롬프트용.
       - name: 스테이징 초기화 · 마이그레이션 · 시드
