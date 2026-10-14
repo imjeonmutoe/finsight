@@ -436,3 +436,24 @@ describe("업로드를 지워도 Free 월 한도가 돌아오지 않습니다", 
     expect(rawDeletedSql).not.toMatch(/llm_usage|lease/i);
   });
 });
+
+const alertSql = readFileSync(
+  new URL("../../supabase/migrations/20261014054851_oncall_alert_events.sql", import.meta.url),
+  "utf8",
+).replace(/--[^\n]*/g, "").replace(/\s+/g, " ").trim();
+
+describe("oncall_alert_events는 서버만 쓰는 멱등 키입니다", () => {
+  it("event_id가 기본 키라 같은 alert를 두 번 넣을 수 없습니다", () => {
+    expect(alertSql).toContain("event_id uuid primary key");
+  });
+
+  it("RLS를 켜고 클라이언트 권한은 모두 철회합니다", () => {
+    expect(alertSql).toContain("alter table public.oncall_alert_events enable row level security;");
+    expect(alertSql).toContain("revoke all on table public.oncall_alert_events from public, anon, authenticated;");
+    expect(alertSql).not.toMatch(/create policy/i);
+  });
+
+  it("이슈 이름·예외 메시지 열을 두지 않습니다", () => {
+    expect(alertSql).not.toMatch(/\b(name|description|message|stack)\b/);
+  });
+});

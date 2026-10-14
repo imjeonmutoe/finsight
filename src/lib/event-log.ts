@@ -8,6 +8,9 @@ import { logPostHogOpsEvent } from "@/services/posthog-log";
 export type EventCode =
   | "webhook_signature_invalid"
   | "webhook_plan_update_failed"
+  | "oncall_alert_signature_invalid"
+  | "oncall_alert_store_failed"
+  | "oncall_alert_dispatch_failed"
   | "insight_cache_unavailable"
   | "insight_cache_read_failed"
   | "insight_cache_write_failed";

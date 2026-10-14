@@ -237,6 +237,33 @@ python3 scripts/oncall_ask.py approve .oncall/drafts/<파일>.md               #
 보려면 `SUPABASE_ACCESS_TOKEN`·`POSTHOG_PERSONAL_API_KEY`를 환경변수로 준다. 없으면 그 근거는 `[미확인]`으로
 남는다. 대화형 세션에서는 스킬이 연결된 MCP를 쓰고 `oncall_ask.py save`로 같은 관문을 거친다.
 
+### oncall — prod alert 1차 방어선
+
+PostHog error tracking alert(새 에러 · 재발 · 급증)를 받아 **노이즈면 기록만, 신호면 분석을 들고 사람을 깨운다.**
+두뇌는 `oncall-alert` 스킬, 판정 관문은 `scripts/oncall_alert.py`다.
+
+| 단계 | 어디서 | LLM | 하는 일 |
+|---|---|---|---|
+| 받기 | `/api/oncall/alert` (Vercel) | ✗ | Standard Webhooks 서명 검증 → `oncall_alert_events`에 event_id **선삽입**(PK 충돌 = 중복) → `workflow_dispatch` |
+| `analyze` | `oncall-alert.yml` | ✓ | PostHog(읽기 전용)·코드·최근 커밋으로 판정 · 분석 → 관문 → 가린 본문 아티팩트. 쓰기 권한 없음 |
+| `escalate` | `oncall-alert.yml` | ✗ | 노이즈 → 잡 요약에 기록 / 신호 → `oncall-alert` 라벨 Issue + 리포 주인 assign. 같은 PostHog 이슈는 열린 Issue에 코멘트(dedup) |
+
+**핸들러는 세 가지만 한다.** 서버리스는 `claude -p`를 못 띄운다. 이슈 이름·예외 메시지는 저장·전달하지 않는다 —
+사용자 데이터가 섞일 수 있고, CI가 PostHog에서 직접 읽는다. 위임이 실패하면 넣은 event_id를 지우고 502를
+돌려준다(안 지우면 PostHog 재전송이 '중복'으로 걸러져 alert가 사라진다).
+
+**경계는 신호로 기운다.** 관문은 에이전트 판정을 그대로 믿지 않는다. 결과를 못 읽으면 신호 · 확신도 낮음,
+급증 · 재발은 노이즈가 될 수 없고, 노이즈는 '확신도 높음 + 한 명으로 확인 + 핵심 경로 아님'일 때만 살아남는다.
+나머지 노이즈 판정은 신호 · 확신도 낮음으로 올린다. 틀리는 쪽은 사람을 한 번 더 깨우는 쪽이다.
+
+**리포가 공개라 Issue도 공개다.** 본문에 예외 메시지 · 스택 · 유저 식별자를 싣지 않고 PostHog 링크로 대신한다.
+관문이 비밀값 · 이메일 · 이슈 밖 UUID · HTML 주석(dedup 마커 위조) · `@멘션`을 가린다.
+
+**토큰.** Vercel의 `GITHUB_DISPATCH_TOKEN`은 이 리포에 **Actions: write만** 준 fine-grained PAT다.
+`repository_dispatch`로 바꾸지 마라 — Contents: write(= 코드 푸시 권한)가 필요해진다. Vercel env는
+`POSTHOG_ALERT_WEBHOOK_SECRET`(PostHog 목적지의 signing secret, `whsec_<base64>`)도 필요하다. 리포 시크릿
+`POSTHOG_PERSONAL_API_KEY`(읽기 스코프)가 없으면 분석은 전부 `[미확인]`이 되고 판정은 신호 · 확신도 낮음이다.
+
 ### CI에 이미 물려 있는 것
 
 고치기 전에 이유를 읽어라. 셋 다 **실패해도 빨간불이 안 뜨는** 종류의 함정이다.
@@ -266,7 +293,7 @@ python3 scripts/oncall_ask.py approve .oncall/drafts/<파일>.md               #
   되돌린 파일은 작업트리에 남으므로, `/review-code` 1단계는 CI에서 작업트리·untracked diff를 빼고
   `merge-base..HEAD`만 팩에 담는다. 안 빼면 되돌림이 "PR이 자기 변경을 되돌린다"는 가짜 hunk로 섞인다.
 - Claude Code는 `install.sh`를 파이프로 실행하지 않고, 바이너리를 받아 **고정한 sha256**과 대조한 뒤
-  `claude install <버전>`만 한다(세 워크플로우 모두 — review-code·owasp-scan·oncall-ci-fix). install.sh와 그것이 읽는 manifest는 고정할 수
+  `claude install <버전>`만 한다(네 워크플로우 모두 — review-code·owasp-scan·oncall-ci-fix·oncall-alert). install.sh와 그것이 읽는 manifest는 고정할 수
   없어서다. 버전을 올리면 `CLAUDE_SHA256`도 그 버전 manifest의 `linux-x64` checksum으로 함께 바꿔라 —
   안 바꾸면 설치 스텝이 `sha256sum -c`에서 빨간불로 멈춘다(그게 설계대로다).
 - GitHub 토큰은 `GH_TOKEN`(`secrets.GITHUB_TOKEN`) 하나다. 워크플로우의 `permissions` 그대로
@@ -300,6 +327,7 @@ npm run eval     # 하네스 품질 eval (라이브 API 호출·비용 발생, e
 bash scripts/preview-shot.sh [경로]   # 빌드 후 headless Chrome 스크린샷. PNG 경로를 출력한다
 python3 scripts/lighthouse_loop.py status   # Lighthouse autoresearch 루프 기록 (/lighthouse-loop, docs/LIGHTHOUSE_LOOP.md)
 python3 scripts/oncall_ask.py ask --audience user|internal "질문"   # oncall Autopilot one-shot (draft → approve)
+gh workflow run oncall-alert.yml -f event_id=<UUID> -f kind=<alert 종류> -f issue_id=<UUID>   # prod alert 수동 재실행
 
 # 하네스 스크립트 자체의 테스트 (pytest는 uv로 임시 설치해 돌린다)
 uv run --with pytest python -m pytest scripts/ -q
