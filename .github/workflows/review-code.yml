@@ -189,6 +189,7 @@ jobs:
     permissions:
       contents: write # 머지
       pull-requests: write # 승인
+      actions: write # 머지 뒤 main CI 실행(workflow_dispatch)
 
     steps:
       # **main의 스크립트를 쓴다.** 리뷰 잡이 `.claude/`를 main 것으로 되돌리기 때문에
@@ -265,6 +266,9 @@ jobs:
             echo "::error::자동 머지 실패 — 충돌이거나 머지할 수 없는 상태다. 사람이 처리해야 한다."
             exit 1
           fi
+          # GITHUB_TOKEN으로 만든 머지 커밋에는 push CI가 돌지 않는다. 그러면 머지가 main을 깨도
+          # oncall-ci-fix.yml이 깨어나지 않는다. workflow_dispatch는 GITHUB_TOKEN으로도 실행이 생긴다.
+          gh workflow run ci.yml --repo "$REPO" --ref main
 
       - name: oncall PR 머지 보류 기록
         if: steps.gate.outputs.action == 'merge' && startsWith(github.event.pull_request.head.ref, 'oncall/')

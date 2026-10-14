@@ -12,6 +12,9 @@ on:
   push:
     branches: [main]
   pull_request:
+  # 리뷰 게이트가 GITHUB_TOKEN으로 자동 머지한 커밋에는 GitHub이 push 실행을 띄우지 않는다.
+  # 게이트가 머지 직후 이걸로 main CI를 직접 띄운다(review-code.yml `자동 머지`).
+  workflow_dispatch:
 
 concurrency:
   group: ci-${{ github.ref }}

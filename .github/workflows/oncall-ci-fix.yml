@@ -15,7 +15,9 @@ name: oncall — CI 실패 자동 수정
 #
 # 무한 루프를 막는 겹:
 #   1. main 푸시로 돈 CI만 본다. oncall/ 브랜치·PR·fork는 트리아지에서 건너뛴다.
-#   2. 봇(Bot 타입 actor)이 일으킨 실행은 건너뛴다.
+#      예외: 리뷰 게이트가 자동 머지 직후 main에 띄운 CI(workflow_dispatch). 게이트는 oncall/ PR을
+#      머지하지 않으므로 이 경로로 루프가 생기지 않는다.
+#   2. 봇(Bot 타입 actor)이 일으킨 실행은 건너뛴다(위 예외의 github-actions[bot]만 빼고).
 #   3. 이 워크플로우가 GITHUB_TOKEN으로 만든 푸시·PR은 GitHub이 어떤 워크플로우도 띄우지 않는다.
 #   4. 열린 oncall/ PR이 이미 있으면 건너뛴다 — 한 번에 하나.
 #   5. main이 이미 다음 커밋으로 넘어갔으면 건너뛴다(그 커밋의 CI가 다시 판정한다).
@@ -82,9 +84,14 @@ jobs:
           [ "$(field .head_repository.full_name)" = "$REPO" ] || skip "fork에서 온 실행"
           branch=$(field .head_branch)
           case "$branch" in oncall/*) skip "oncall 브랜치의 실행" ;; esac
-          [ "$(field .event)" = "push" ] && [ "$branch" = "main" ] || skip "main 푸시가 아니다($(field .event) $branch)"
+          event=$(field .event)
+          [ "$branch" = "main" ] && { [ "$event" = "push" ] || [ "$event" = "workflow_dispatch" ]; } \
+            || skip "main 푸시가 아니다($event $branch)"
           for a in actor triggering_actor; do
-            [ "$(field ".$a.type")" != "Bot" ] || skip "봇이 일으킨 실행($(field ".$a.login"))"
+            [ "$(field ".$a.type")" != "Bot" ] && continue
+            # 리뷰 게이트가 자동 머지 뒤 띄운 main CI만 통과시킨다.
+            [ "$event" = "workflow_dispatch" ] && [ "$(field ".$a.login")" = "github-actions[bot]" ] \
+              || skip "봇이 일으킨 실행($(field ".$a.login"))"
           done
 
           sha=$(field .head_sha)
