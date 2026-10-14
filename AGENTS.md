@@ -206,6 +206,37 @@ MCP도 띄우지 않는다(`--strict-mcp-config`) — **prod는 읽기조차 하
 적용된다. `ci.yml`의 `name: CI`를 바꾸면 `workflows: [CI]`도 함께 바꿔라 — 안 바꾸면 조용히 안 깨어난다.
 수동 재실행: `gh workflow run oncall-ci-fix.yml -f run_id=<실패한 CI 실행 ID>`.
 
+### oncall — Autopilot (유저 질의 응답)
+
+유저 이메일 문의와 팀 내부 질문에 **코드 · PostHog 에러/로그 · Supabase DB(읽기 전용)** 를 근거로 답한다.
+두뇌는 `oncall-autopilot` 스킬이고, 상시 입구(메일 수신·봇)는 아직 없다 — 지금은 로컬 one-shot이다.
+
+| 청중 | 채널 | 답이 가는 곳 |
+|---|---|---|
+| 유저 | 이메일 | `.oncall/drafts/*.md` **draft만**(gitignore). 사람이 `approve`로 `## 유저용 답장`만 꺼내 직접 보낸다 |
+| 운영 동료 | Claude Code 터미널 | 바로 출력 |
+
+```bash
+python3 scripts/oncall_ask.py ask --audience user --email a@b.c "문의 원문"   # 헤드리스 one-shot
+python3 scripts/oncall_ask.py ask --audience internal "질문"
+python3 scripts/oncall_ask.py approve .oncall/drafts/<파일>.md               # 사람 승인
+```
+
+**에이전트는 아무것도 바꾸지 않는다.** 구독 해지·환불·플랜 변경·데이터 삭제는 `## escalation`에 사람이
+할 일로 적는다. 헤드리스 입구는 `--restricted`(프로젝트 설정·훅 미적용) + `--tools Read,Grep,Glob`(쓰기·셸
+도구 없음) + `--strict-mcp-config`(Supabase `read_only=true`, PostHog `readonly=true`·`x-posthog-read-only`)로
+잠근다. 이 플래그를 풀거나 쓰기 도구를 더하지 마라 — 문의 본문은 신뢰할 수 없는 입력이다.
+
+**관문(`check`)이 지어내기를 막는다.** 근거 줄은 `[코드]`·`[로그]`·`[DB]`·`[미확인]` 중 하나이고, `[코드]`는
+실제로 있는 `파일:줄`이어야 한다. 근거가 `[미확인]`뿐이면 escalation 없이 끝낼 수 없다. 유저용 답장에
+경로·UUID·SQL·스택이 섞이거나 "해지했습니다"처럼 하지 않은 조치를 쓰면 막는다. `approve`도 관문을 다시
+돌리므로 사람이 draft를 고친 뒤에도 같은 규칙이 걸린다. 관문은 인용이 **존재**하는지만 본다 — 인용이
+주장과 맞는지는 승인하는 사람이 본다.
+
+헤드리스 `claude -p`는 대화형 세션의 MCP OAuth 토큰을 쓰지 못한다(2.1.299 실측). one-shot에서 DB·로그를
+보려면 `SUPABASE_ACCESS_TOKEN`·`POSTHOG_PERSONAL_API_KEY`를 환경변수로 준다. 없으면 그 근거는 `[미확인]`으로
+남는다. 대화형 세션에서는 스킬이 연결된 MCP를 쓰고 `oncall_ask.py save`로 같은 관문을 거친다.
+
 ### CI에 이미 물려 있는 것
 
 고치기 전에 이유를 읽어라. 셋 다 **실패해도 빨간불이 안 뜨는** 종류의 함정이다.
@@ -268,6 +299,7 @@ npm run test     # 테스트 (vitest run)
 npm run eval     # 하네스 품질 eval (라이브 API 호출·비용 발생, evals/harness/README.md)
 bash scripts/preview-shot.sh [경로]   # 빌드 후 headless Chrome 스크린샷. PNG 경로를 출력한다
 python3 scripts/lighthouse_loop.py status   # Lighthouse autoresearch 루프 기록 (/lighthouse-loop, docs/LIGHTHOUSE_LOOP.md)
+python3 scripts/oncall_ask.py ask --audience user|internal "질문"   # oncall Autopilot one-shot (draft → approve)
 
 # 하네스 스크립트 자체의 테스트 (pytest는 uv로 임시 설치해 돌린다)
 uv run --with pytest python -m pytest scripts/ -q
