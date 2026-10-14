@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { MAX_CSV_ROWS, MAX_FILE_BYTES } from "@/lib/limits";
 import type { Plan } from "@/types/billing";
 import type { FinancialSource } from "@/types/upload";
+import { StatementDownloadSteps } from "./StatementDownloadSteps";
 
 const MEGABYTE = 1_000_000;
 const rowFormat = new Intl.NumberFormat("ko-KR");
@@ -16,13 +17,6 @@ const TYPE_ERROR = "CSV 또는 카드사에서 내려받은 엑셀 파일만 올
 const PRIMARY = "rounded-md bg-text px-4 py-2 text-sm font-medium text-bg hover:opacity-90 disabled:bg-disabled focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent";
 const SECONDARY = "rounded-md border border-border-default px-4 py-2 text-sm text-text hover:bg-surface-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent";
 const FIELD = "rounded-md border border-border-default bg-bg px-3 py-2 text-sm text-text placeholder:text-disabled focus:border-accent focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent";
-
-// 카드사 이름과 경로만 적습니다. 접힌 상태로 두는 것은 점진적 공개입니다(docs/UX_GUIDE.md 3.4).
-const GUIDES = [
-  "신한카드 · 마이신한 > 이용내역 조회 > 엑셀 내려받기",
-  "삼성카드 · 이용대금명세서 > 상세내역 > 엑셀 내려받기",
-  "국민은행 · 조회 > 입출금거래내역 > 파일 내려받기",
-];
 
 function resetDate(resetsAt: string): string {
   // KST 기준 날짜로 보여줍니다. 사용자의 달력과 한도 안내가 어긋나지 않게 합니다.
@@ -201,11 +195,10 @@ export function UploadFilePicker({ sources, plan, limitReached, resetsAt, busy, 
 
       <details className="rounded-md border border-border-default bg-surface p-5">
         <summary className="cursor-pointer text-sm text-text">카드사·은행에서 명세서 내려받는 곳</summary>
-        <ul className="mt-3 space-y-3">
-          {GUIDES.map((guide) => (
-            <li key={guide} className="text-sm leading-relaxed text-text-body">{guide}</li>
-          ))}
-        </ul>
+        {/* 접힌 상태로 두는 것은 점진적 공개입니다(docs/UX_GUIDE.md 3.4). */}
+        <div className="mt-3">
+          <StatementDownloadSteps />
+        </div>
       </details>
     </div>
   );
