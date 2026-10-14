@@ -132,7 +132,7 @@ jobs:
       - if: steps.triage.outputs.proceed == 'true'
         run: npm ci
 
-      # review-code.yml과 같은 버전·sha256. 올릴 때는 세 워크플로우를 함께 바꾼다.
+      # review-code.yml과 같은 버전·sha256. 올릴 때는 네 워크플로우를 함께 바꾼다.
       - name: Claude Code 설치
         if: steps.triage.outputs.proceed == 'true'
         env:

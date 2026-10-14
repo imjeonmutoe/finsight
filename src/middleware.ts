@@ -84,8 +84,9 @@ export async function middleware(request: NextRequest) {
 
 export const config = {
   matcher: [
-    // `/api/billing/webhook`은 제외합니다. 인증 미들웨어에 걸리면 Polar 요청이 리디렉트되어
-    // 웹훅이 영원히 실패합니다. 정적 파일은 세션과 무관하므로 함께 제외합니다.
-    "/((?!_next/static|_next/image|favicon\\.ico|api/billing/webhook).*)",
+    // 웹훅(`/api/billing/webhook` — Polar, `/api/oncall/alert` — PostHog)은 제외합니다. 인증
+    // 미들웨어에 걸리면 요청이 리디렉트되어 웹훅이 영원히 실패합니다. 정적 파일은 세션과 무관하므로
+    // 함께 제외합니다.
+    "/((?!_next/static|_next/image|favicon\\.ico|api/billing/webhook|api/oncall/alert).*)",
   ],
 };
