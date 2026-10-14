@@ -31,7 +31,7 @@ Tailwind v4의 `@theme`로 정의한다. **v3의 `bg-[--surface]` 문법을 쓰�
 @theme {
   /* 본문은 Pretendard, 숫자는 JetBrains Mono. 뒤의 시스템 폰트는 fallback이다.
      자세한 근거는 아래 `### 서체` 참조. @font-face 선언은 layout.tsx가 import한다. */
-  --font-sans: "Pretendard Variable", -apple-system, BlinkMacSystemFont,
+  --font-sans: "FinSight Sans", -apple-system, BlinkMacSystemFont,
                "Apple SD Gothic Neo", "Malgun Gothic", "맑은 고딕", "Segoe UI",
                system-ui, sans-serif;
   --font-mono: var(--font-jetbrains), ui-monospace, SFMono-Regular, "SF Mono",
@@ -95,7 +95,7 @@ v4는 테마 값을 실제 CSS 변수로 내보내고 유틸리티가 `var(--col
 
 | 용도 | 서체 | 전달 방식 |
 |---|---|---|
-| 본문·UI 전체 | Pretendard Variable | `pretendard` npm 패키지의 **dynamic subset**을 `layout.tsx`에서 import |
+| 본문·UI 전체 | Pretendard Variable (패밀리 이름 `FinSight Sans`) | `pretendard` npm 패키지의 **dynamic subset**을 굵기 축 400~700으로 자른 사본(`src/app/fonts/`, `scripts/gen_pretendard.py`가 생성)을 `layout.tsx`에서 import |
 | 숫자(금액·날짜) | JetBrains Mono 500 | `next/font/google`, 라틴 서브셋, 빌드 타임 self-host |
 
 **Pretendard를 쓰는 이유**: 시스템 폰트만 두면 macOS는 Apple SD Gothic Neo, Windows는 맑은 고딕이 잡힌다. 두 서체는 자소 비례와 굵기가 달라 **같은 화면이 OS마다 다르게 보인다.** 한국어가 기본인 제품에서 이건 그냥 두기 어려운 차이다.

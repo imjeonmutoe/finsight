@@ -5,10 +5,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { CATEGORIES } from "@/types/category";
 import type { InsightInput } from "@/types/analytics";
 import { buildSanitizedMappingInput } from "@/lib/sanitize";
-import { inferColumnMapping, classifyTransactions, generateInsights } from "./claude";
+import { inferColumnMapping, classifyTransactions, createAiObservabilityContext, generateInsights } from "./claude";
 
 const { create, constructor } = vi.hoisted(() => ({ create: vi.fn(), constructor: vi.fn() }));
 vi.mock("server-only", () => ({}));
+vi.mock("@/services/posthog-server", () => ({
+  getPostHogClient: () => ({ flush: async () => undefined }),
+}));
 vi.mock("@anthropic-ai/sdk", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@anthropic-ai/sdk")>();
   return {
@@ -20,6 +23,10 @@ vi.mock("@anthropic-ai/sdk", async (importOriginal) => {
       }
     },
   };
+});
+vi.mock("@posthog/ai/anthropic", async () => {
+  const { default: MockAnthropic } = await import("@anthropic-ai/sdk");
+  return { Anthropic: MockAnthropic };
 });
 
 const id1 = "00000000-0000-4000-8000-000000000001";
@@ -115,6 +122,12 @@ describe("분류 결과의 거래 식별", () => {
 });
 
 describe("입력 정제와 호출 계약", () => {
+  it("PostHog LLM 관측에는 프롬프트·응답 원문을 보내지 않습니다", async () => {
+    respond({ items: [] });
+    await classifyTransactions(items, createAiObservabilityContext("user-1"));
+    expect(request()).toMatchObject({ posthogDistinctId: "user-1", posthogPrivacyMode: true });
+  });
+
   it("200자 초과 가맹점명을 절단하고 허용 필드만 전송합니다", async () => {
     respond({ items: [] });
     await classifyTransactions([{ id: id1, merchant: "가".repeat(201), amountKrw: 1000,

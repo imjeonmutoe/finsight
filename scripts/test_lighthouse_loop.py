@@ -1,0 +1,101 @@
+"""scripts/lighthouse_loop.py의 판정 로직 테스트. 측정(빌드·Chrome)은 건드리지 않는다."""
+
+import lighthouse_loop as ll
+
+ROW = {
+    "commit": "a1b2c3d", "score": "80.0", "ref_score": "80.0", "delta": "0.0", "accessibility": "99.0",
+    "best_practices": "96.0", "seo": "100.0", "status": "keep", "routes": "/:69 /login:92", "description": "baseline",
+}
+
+
+def side(score, a11y=99.0, bp=96.0, seo=100.0):
+    return {"score": score, "accessibility": a11y, "best_practices": bp, "seo": seo, "routes": {}}
+
+
+def test_tsv_왕복(tmp_path):
+    path = tmp_path / "results.tsv"
+    ll.append_row(path, ROW)
+    ll.append_row(path, {**ROW, "commit": "b2c3d4e", "status": "discard", "description": "탭\t섞인 설명"})
+    rows = ll.read_rows(path)
+    assert [r["commit"] for r in rows] == ["a1b2c3d", "b2c3d4e"]
+    # 설명의 탭이 컬럼을 밀면 이후 행 전체가 깨진다
+    assert rows[1]["description"] == "탭 섞인 설명"
+
+
+def test_기준선_유무():
+    assert ll.has_baseline([]) is False
+    assert ll.has_baseline([{**ROW, "status": "crash"}]) is False
+    assert ll.has_baseline([ROW]) is True
+
+
+def test_마진_이상_오르면_keep():
+    assert ll.decide(side(80.0), side(80.0 + ll.MARGIN))[0] == "keep"
+
+
+def test_노이즈_범위면_discard():
+    # 같은 코드끼리 번갈아 재도 차이가 0이 아니다. 노이즈를 개선으로 채택하지 않는다
+    assert ll.decide(side(80.0), side(80.0 + ll.MARGIN - 0.1))[0] == "discard"
+
+
+def test_판정은_절대점수가_아니라_같은_시간대의_차이로():
+    # 머신이 바빠 둘 다 낮게 나와도 후보가 기준보다 확실히 높으면 개선이다
+    assert ll.decide(side(60.0), side(65.0))[0] == "keep"
+    assert ll.decide(side(95.0), side(94.0))[0] == "discard"
+
+
+def test_다른_카테고리가_떨어지면_성능이_올라도_discard():
+    status, reason = ll.decide(side(80.0), side(95.0, a11y=97.0))
+    assert status == "discard"
+    assert "accessibility" in reason
+
+
+def test_가드_카테고리의_1점_이내_흔들림은_허용():
+    assert ll.decide(side(80.0), side(90.0, bp=95.0))[0] == "keep"
+
+
+def test_만점끼리는_개선이_아니다():
+    assert ll.decide(side(100.0), side(100.0))[0] == "discard"
+
+
+def test_확인_측정은_두_번_모두_통과해야_keep():
+    first = ll.decide(side(80.0), side(85.0))
+    assert ll.confirm(first, ll.decide(side(80.0), side(84.0)))[0] == "keep"
+    status, reason = ll.confirm(first, ll.decide(side(80.0), side(80.5)))
+    assert status == "discard"
+    assert "확인 측정" in reason
+
+
+def test_첫_측정이_discard면_확인하지_않고_그대로():
+    first = ll.decide(side(80.0), side(80.0))
+    assert ll.confirm(first, None) == first
+
+
+def test_median():
+    assert ll.median([3, 1, 2]) == 2
+    assert ll.median([4, 1, 3, 2]) == 2.5
+
+
+def test_포트가_이미_쓰이면_True():
+    # 남아 있던 옛 서버를 재면 지워진 빌드의 CSS가 404로 떨어져 99점이 나온다(실제로 겪었다)
+    import socket
+
+    with socket.socket() as s:
+        s.bind(("127.0.0.1", 0))
+        s.listen()
+        port = s.getsockname()[1]
+        assert ll.port_in_use(port) is True
+    assert ll.port_in_use(port) is False
+
+
+def test_리포트는_행을_모두_담고_설명을_이스케이프한다(tmp_path):
+    rows = [ROW, {**ROW, "commit": "b2c3d4e", "status": "discard", "description": "<script>x</script> 폰트"}]
+    html = ll.render_report(rows, reverted=set())
+    assert "<title>" in html[:500]
+    assert "b2c3d4e" in html and "a1b2c3d" in html
+    assert "<script>x</script>" not in html
+    assert "&lt;script&gt;" in html
+
+
+def test_리포트는_되돌린_keep을_표시한다():
+    html = ll.render_report([ROW, {**ROW, "description": "폰트 지연"}], reverted={"폰트 지연"})
+    assert "되돌림" in html

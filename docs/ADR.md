@@ -216,7 +216,17 @@ Next.js는 반대로 **16.3.4(최신)** 를 쓴다. 생짜로 시작하는 프�
 
 ### ADR-016: Supabase Branching으로 PR마다 프리뷰 DB를 띄우고, DB 변경 PR은 사람이 머지한다
 
-**상태: ADR-017로 대체됨**
+**상태: ADR-019로 대체됨**
+
+> **시행 상태 (2026-10-14): 시행되지 않았다.** Branching에 필요한 Supabase Pro 비용 때문에 아래 "사람이 할 설정"
+> 1·2를 하지 않았다(2026-10-12). 그래서 프리뷰 DB도 없고, **main에 머지해도 프로덕션에 마이그레이션이 적용되지 않는다**
+> (PR #41 머지 뒤 원격 `schema_migrations`에 새 버전이 생기지 않은 것으로 확인). 아래 결정 중 지금 유효한 것은
+> 파일명 규약과 "`supabase/` PR은 게이트가 승인만 한다"뿐이다.
+>
+> **지금의 적용 절차** — `supabase/migrations/` PR을 사람이 머지한 직후, 그 파일을 사람이 대시보드 SQL Editor에서 한 트랜잭션으로 돌린다.
+> 끝에 `insert into supabase_migrations.schema_migrations (version, name) values ('<파일명 앞 14자리>', '<파일명 뒤 이름>');`를
+> 함께 넣는다. 이력을 안 넣으면 나중에 연동을 켰을 때 이미 적용된 마이그레이션을 다시 돌린다. 앱 배포(Vercel, 수동)는
+> 적용을 확인한 뒤에 한다 — 새 테이블을 쓰는 코드가 테이블보다 먼저 나가면 그 경로가 실패한다.
 
 **결정**: Supabase 조직을 Pro로 올리고 Branching을 GitHub 연동으로 켠다. PR이 열리면 Supabase가 그 PR 전용 프리뷰 브랜치(별도 Postgres·Auth)를 만들어 `supabase/migrations/`와 `supabase/seed.sql`을 적용하고, PR이 머지되거나 닫히면 브랜치를 지운다. Supabase–Vercel 연동이 그 브랜치의 접속 정보를 같은 git 브랜치의 Vercel 프리뷰 배포에 넣어, **프리뷰 앱과 프리뷰 DB가 한 쌍**으로 뜬다. 연동의 "Deploy to production"을 켜므로 **main에 머지하는 순간이 곧 프로덕션 마이그레이션 적용**이다.
 
@@ -257,22 +267,72 @@ Next.js는 반대로 **16.3.4(최신)** 를 쓴다. 생짜로 시작하는 프�
 4. 아무 PR이나 하나 열어 첫 프리뷰 브랜치의 로그(Supabase 대시보드 → Branches, 또는 PR의 Supabase 체크)에서 마이그레이션 8개와 `seed.sql`이 통과하는지 확인한다. 마이그레이션 8개 중 7개에 `begin; … commit;`이 직접 들어 있다. 연동이 파일을 자체 트랜잭션으로 감싸면 **여기서 처음 실패할 수 있다.** 실패하면 기존 파일을 고치지 말고(이름·내용 불변 규칙) 원인을 확인한 뒤 결정한다. 그 다음 프리뷰 앱 `/login`에서 Free·Pro 계정으로 들어가 대시보드 숫자가 `/demo`와 같은지 본다.
 5. 리포 설정 "Allow GitHub Actions to create and approve pull requests"가 켜져 있는지 확인한다(`gh api repos/{owner}/{repo}/actions/permissions/workflow` → `can_approve_pull_request_reviews`). 꺼져 있으면 `supabase/` PR의 승인조차 422로 거절된다.
 
+### ADR-017: 계측을 PostHog로 넓히되, 금융 데이터는 코드로 막는다
+
+**결정**: 제품 분석·에러 추적·LLM 관측·운영 로그를 PostHog(US 리전)로 보낸다. step 10의 "계측은 Vercel Analytics만, 이벤트 추적 코드를 직접 작성하지 않는다"를 이 ADR이 대체한다. Vercel Analytics는 그대로 둔다.
+
+- **보내는 것**: Supabase user id(이메일은 보내지 않는다), 화면 이동, 버튼 이름(`data-ph-capture-attribute-cta`), 서버 이벤트의 건수·종류·플랜, 실패의 라우트·상태·고정 코드(`api_request_failed`), 예외의 타입·스택, LLM 호출의 모델·토큰·비용·지연, `logEvent`의 고정 코드.
+- **막는 것과 막는 위치**:
+  - 화면 텍스트·요소 속성 — `mask_all_text`·`mask_all_element_attributes`, 녹화는 `maskTextSelector: "*"`(`src/lib/posthog-privacy.ts`). 거래 목록 select의 `aria-label`에 가맹점명이 들어 있어 자동 수집이 그대로 보내고 있었다.
+  - 예외 메시지 — 브라우저·서버 공통 `before_send`가 지운다. 메시지에 거래 내용이 섞일 수 있다.
+  - LLM 프롬프트·응답 원문 — `privacyMode`·`posthogPrivacyMode`.
+  - 서버 예외 경로 — `request.path` 대신 라우트 파일 경로만(`instrumentation.ts`의 `onRequestError`).
+- **계측이 요청을 깨지 않는다**: 전송 실패는 삼킨다. 이미 끝난 저장을 500으로 바꾸지 않는다.
+- **서버 이벤트·로그에 배포 환경을 붙인다**: 로컬 개발 서버도 같은 프로젝트로 보내는데, 서버 이벤트에는 `$host`가 없어 구분이 안 됐다. 개발 서버의 핫 리로드가 열린 대시보드를 다시 그릴 때마다 `insight_loaded`가 찍혀(파일 변경 한 번에 최대 7건) 프로덕션 지표처럼 보였다. 서버 클라이언트의 `before_send`(`prepareServerEvent`)가 모든 이벤트에 `environment`(`VERCEL_ENV`, 없으면 `development`)를, 로그 프로바이더가 `deployment.environment.name`을 붙인다. 지표는 `environment = production`으로 걸러 본다.
+
+**이유**: Vercel Analytics는 페이지뷰만 본다. 업로드 한도 도달·매핑 실패·분류 실패·결제 확인 지연·인사이트 캐시 적중률처럼 퍼널과 비용을 가르는 사건이 보이지 않았고, 서버 예외는 Vercel 함수 로그를 직접 뒤져야 했다. 도입 직후 `insight_loaded`가 캐시 적중 0%를, `insight_cache_unavailable` 로그가 그 원인(service role 키 누락)을 바로 보여 줬다.
+
+**버린 대안**:
+
+| 대안 | 버린 이유 |
+|---|---|
+| Vercel Analytics 유지 + 직접 만든 이벤트 테이블 | 대시보드·퍼널·에러 묶음을 다시 만들어야 한다. step 10이 이벤트 테이블을 만들지 않기로 한 이유와 같다 |
+| 자동 수집 끄고 전부 수동 `capture` | 놓친 클릭은 나중에 볼 수 없다. 텍스트만 가리면 구조와 버튼 이름은 남는다 |
+| 이메일로 식별 | 사람을 찾기 쉽지만 개인정보 위탁 범위가 넓어진다. id로 Supabase를 찾으면 된다 |
+
+**트레이드오프**: 개인정보처리방침에 PostHog를 수탁자로 적는다. 화면 텍스트를 가려서 녹화·히트맵으로는 무슨 금액을 보고 있었는지 알 수 없다. 예외 메시지를 지워 같은 타입의 다른 원인이 한 이슈로 묶일 수 있다 — 스택과 라우트 경로로 가른다.
+
+### ADR-018: 검색 노출은 공개 페이지로 한정하고, 프로덕션 배포만 수집을 허용한다
+
+**결정**: 검색엔진 수집 대상은 `/`·`/demo`·`/privacy`·`/guide/card-statement-analysis`(`PUBLIC_PATHS`, `src/lib/site.ts`)뿐이다. 핵심 검색어는 **'카드 명세서 분석'**이고 랜딩의 `<title>`·설명·h1에 같은 말을 둔다. 등록할 검색엔진은 Google과 네이버다.
+
+- **수집 허용은 `VERCEL_ENV === "production"`일 때만이다**(`isIndexable()`). 프리뷰·로컬에서는 `robots.txt`가 전부 막고, 모든 페이지에 `noindex` 메타 태그를 단다. 판정을 호스트 이름·`NEXT_PUBLIC_*`로 바꾸지 않는다 — `isPreviewDeployment()`와 같은 이유다.
+- **기준 주소**는 `NEXT_PUBLIC_SITE_URL`, 없으면 Vercel이 넣는 `VERCEL_PROJECT_PRODUCTION_URL`이다. 프리뷰의 canonical도 프로덕션을 가리킨다.
+- `/login`은 `noindex, follow`, `/dashboard`·`/api/`·`/auth/`는 `robots.txt`에서 막는다.
+- 소유 확인 값은 `GOOGLE_SITE_VERIFICATION`·`NAVER_SITE_VERIFICATION` 환경 변수로 받는다. 공개되는 값이라 비밀이 아니다.
+- 구조화 데이터(JSON-LD)는 `dangerouslySetInnerHTML` 없이 `<script>`의 자식 텍스트로 넣고, `jsonLdText()`가 `<`를 이스케이프해 태그 밖으로 나가지 못하게 한다.
+- 공유 이미지(`src/app/opengraph-image.png`)는 정적 PNG다. 랜딩 히어로의 예시 숫자를 그대로 쓴다.
+- 공개 페이지는 `pageMetadata(path)`로 canonical과 `og:url`을 같은 경로에 묶는다. 페이지가 `openGraph`를 주면 레이아웃 값과 루트 공유 이미지가 통째로 덮이므로 `SHARED_OPEN_GRAPH`에 이미지까지 명시한다. 하위 페이지 제목은 짧게 쓰고 `%s | FinSight` 템플릿이 붙인다. 구조화 데이터는 `Organization`·`WebSite`·`WebApplication`을 한 `@graph`로 잇고, iOS 홈 화면용 `apple-icon.png`(180×180)를 둔다.
+
+**이유**: 프리뷰 배포에는 공개 비밀번호로 들어가는 테스트 계정 로그인이 열려 있다(ADR-016). 프리뷰 주소가 검색에 걸리면 그 화면이 누구에게나 노출된다. 수집 허용을 기본 차단으로 두고 프로덕션에서만 여는 쪽이 틀렸을 때 안전하다.
+
+**버린 대안**:
+
+| 대안 | 버린 이유 |
+|---|---|
+| `next/og`로 공유 이미지를 동적 생성 | 한글을 그리려면 TTF/WOFF 서체를 함수 번들에 넣어야 한다. 앱의 Pretendard는 woff2 조각이라 그대로 못 쓴다. 바뀌지 않는 이미지에 비해 비용이 크다 |
+| 키워드를 h1 큰 문구에 직접 넣기 | 검색에는 가장 강하지만 랜딩의 짧은 문구가 길어진다. 작은 라벨로 h1 안에 둔다 |
+
+- **안내 글은 `/guide/` 아래에 둔다.** 첫 글은 '카드 명세서 분석하는 법' 한 편이다. 업로드 제약·카테고리 목록은 제품 상수(`src/lib/limits.ts`, `src/types/category.ts`)에서 가져와 글과 제품이 어긋나지 않게 한다. 구조화 데이터는 `Article`이고 발행자는 랜딩의 `Organization` `@id`를 가리킨다. 랜딩 푸터에서 내부 링크로 잇는다.
+
+**트레이드오프**: 공유 이미지의 숫자는 랜딩 예시와 손으로 맞춰야 한다. 가이드의 정기결제 판정 기준(26~35일 간격·3회·±10%)은 `detectSubscriptions`에 상수로 빠져 있지 않아 문장으로 옮겨 적었다 — 기준을 바꾸면 글도 고친다. 카드사별 내려받기 페이지는 만들지 않았다. 각 카드사 메뉴 경로를 직접 확인할 수 없고 자주 바뀌어, 틀린 안내가 검색에 걸리는 비용이 크다. 같은 이유로 빈 대시보드·업로드 화면의 내려받기 안내도 카드·은행 공통 경로만 적는다(`StatementDownloadSteps`) — 두 화면이 같은 카드사를 서로 다른 경로로 안내하고 있었다.
+
 ---
 
-### ADR-017: Branching 대신 무료 스테이징 프로젝트를 프리뷰 DB로 쓰고, 프로덕션 마이그레이션은 사람이 적용한다
+### ADR-019: Branching 대신 무료 스테이징 프로젝트를 프리뷰 DB로 쓰고, 프로덕션 마이그레이션은 사람이 적용한다
 
 **결정**: Supabase Branching(ADR-016)을 켜지 않는다. 대신 Free 조직의 두 번째 프로젝트 `finsight-staging`을 프리뷰 DB로 쓴다.
 
 - **스테이징에는 합성 데이터만 둔다.** `supabase/seed.sql`(`buildSeedSql()`이 생성) 그대로다. 실데이터를 복사하지 않는다.
 - **Vercel Preview 환경변수는 언제나 스테이징을 가리킨다.** 앱이 이미 읽는 이름(`NEXT_PUBLIC_SUPABASE_URL`·`NEXT_PUBLIC_SUPABASE_ANON_KEY`·`SUPABASE_SERVICE_ROLE_KEY`)을 그대로 쓴다. 연동이 PR마다 값을 쓰지 않으므로 이름을 바꾸는 코드 변경이 필요 없다.
 - **`.github/workflows/staging-db.yml`이 스테이징을 다시 만든다.** `supabase/**`를 건드린 PR, `main` 푸시(같은 경로), 수동 실행(`workflow_dispatch`)에서 `supabase db reset --db-url "$STAGING_DB_URL" --yes`로 초기화 → 마이그레이션 전부 → 시드(`[db.seed]`) 순서로 돈다. Supabase CLI는 2.120.0으로 고정한다. 실행은 `concurrency: staging-db`로 직렬화하고 도중 취소하지 않는다. `main` 푸시 실행은 PR이 남긴 스키마를 main 상태로 되돌린다.
-- **프로덕션 마이그레이션은 사람이 CLI(`db push`)나 대시보드로 적용한다.** PR #26 이전 규칙으로 되돌린다.
+- **프로덕션 마이그레이션은 사람이 적용한다.** 머지 직후 대시보드 SQL Editor에서 파일을 한 트랜잭션으로 돌리고, 같은 트랜잭션에서 `supabase_migrations.schema_migrations`에 (version, name)을 넣는다(절차는 ADR-016 `시행 상태`). 앱 배포는 적용을 확인한 뒤에 한다.
 
 **이유**: Branching은 Supabase 조직 Pro 월 요금에 프리뷰 브랜치마다 시간당 컴퓨트 요금이 붙는다. 포트폴리오/데모 규모에서 PR마다 DB를 띄우는 값으로는 크다. ADR-016이 노린 핵심 — **마이그레이션이 프로덕션보다 먼저 빈 DB에서 처음부터 돌아 보는 것**, **프리뷰 앱이 실데이터에 닿지 않는 것** — 은 무료 스테이징 하나와 초기화 워크플로우로 얻는다.
 
 **ADR-016에서 이어받는 것과 버리는 것**:
 
-| 항목 | ADR-016 | ADR-017 |
+| 항목 | ADR-016 | ADR-019 |
 |---|---|---|
 | 마이그레이션 파일명 `<UTC YYYYMMDDHHMMSS>_<snake_case>.sql`, 적용 후 불변 | ✓ | **이어받음** — CLI `db push`·스테이징 초기화 모두 버전을 원격 `schema_migrations`와 대조한다 |
 | `seed.sql` 생성기(`buildSeedSql()`), 합성 데이터만 | ✓ | **이어받음** |

@@ -1,9 +1,11 @@
 import type { Metadata } from "next";
+import { pageMetadata } from "@/lib/site";
 import Link from "next/link";
 
 export const metadata: Metadata = {
-  title: "개인정보처리방침 | FinSight",
+  title: "개인정보처리방침",
   description: "FinSight가 수집하는 항목, 처리 목적, 보유 기간, 국외 이전 대상과 삭제 요청 방법을 안내합니다.",
+  ...pageMetadata("/privacy"),
 };
 
 // 계정 삭제 셀프서비스는 MVP 제외이므로(docs/PRD.md) 접수 경로를 하나 명시합니다.
@@ -20,6 +22,12 @@ const TRANSFERS: { processor: string; country: string; items: string; purpose: s
   { processor: "Supabase", country: "미국", items: "계정 정보, 원본 CSV, 거래 내역", purpose: "인증·데이터 저장" },
   { processor: "Vercel", country: "미국", items: "접속 로그", purpose: "호스팅" },
   { processor: "Polar", country: "미국", items: "결제 정보", purpose: "구독 결제" },
+  {
+    processor: "PostHog",
+    country: "미국",
+    items: "사용자 ID, 방문한 화면·누른 버튼 이름·오류 종류, 글자를 가린 화면 이용 기록, AI 호출의 모델·토큰·비용",
+    purpose: "서비스 개선과 오류 추적",
+  },
 ];
 
 const COLLECTED: string[] = [
@@ -27,6 +35,7 @@ const COLLECTED: string[] = [
   "업로드한 CSV 원본 — 비공개 Storage 버킷에 보관하며 본인만 접근할 수 있습니다.",
   "파싱된 거래 내역 — 날짜·가맹점명·금액·카테고리·거래 유형입니다.",
   "구독 결제 정보 — Polar가 처리하며 카드번호는 FinSight 서버에 저장하지 않습니다.",
+  "서비스 이용 기록 — 방문한 화면, 누른 버튼 이름, 오류 종류입니다. 화면의 글자·금액·가맹점명은 가린 채 기록합니다.",
 ];
 
 const LINK = "text-accent underline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent";

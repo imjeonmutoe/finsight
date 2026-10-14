@@ -35,3 +35,13 @@ __pycache__/
 
 # Supabase 어드바이저 리포트 (공개 리포 — 미수정 DB 지적 목록을 커밋하지 않는다)
 .supabase-advisor/
+
+# Lighthouse autoresearch 루프 산출물 (results.tsv·측정 로그·기준 스크린샷)
+.autoresearch/
+
+# 하네스 eval HTML 보고서 (npm run eval이 실행마다 쓴다)
+.evals/
+.env.eval.local
+
+# oncall Autopilot draft (유저 이메일·문의 원문이 들어 있다 — 공개 리포에 커밋 금지)
+.oncall/

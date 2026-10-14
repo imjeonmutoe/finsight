@@ -1,6 +1,6 @@
 import { render, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import Home from "@/app/page";
+import Home, { metadata } from "@/app/page";
 
 const mocks = vi.hoisted(() => ({
   getClaims: vi.fn(),
@@ -43,7 +43,7 @@ describe("랜딩 (S1 · S1b)", () => {
   it("결과를 먼저 말하는 히어로와 노동의 총량을 보여줍니다", async () => {
     render(await Home());
 
-    expect(screen.getByRole("heading", { level: 1, name: "지출이 어디로 새는지" })).toBeVisible();
+    expect(screen.getByRole("heading", { level: 1, name: "카드 명세서 분석 지출이 어디로 새는지" })).toBeVisible();
     expect(screen.getByText(/파일을 올리면 매핑 확인까지 1분, 요약까지 5분입니다./)).toBeVisible();
   });
 
@@ -99,6 +99,15 @@ describe("랜딩 (S1 · S1b)", () => {
     expect(screen.getByRole("link", { name: "샘플 대시보드 보기" })).toHaveAttribute("href", "/demo");
   });
 
+  it("검색으로 들어올 가이드 글로 가는 내부 링크를 둡니다", async () => {
+    render(await Home());
+
+    expect(screen.getByRole("link", { name: "카드 명세서 분석하는 법" })).toHaveAttribute(
+      "href",
+      "/guide/card-statement-analysis",
+    );
+  });
+
   it("로그인했으면 CTA를 대시보드로 바꿉니다", async () => {
     signedIn();
 
@@ -122,5 +131,26 @@ describe("랜딩 (S1 · S1b)", () => {
     render(await Home());
 
     expect(screen.getByRole("button", { name: "다크 모드로 전환" })).toBeVisible();
+  });
+});
+
+describe("랜딩 검색 노출", () => {
+  it("핵심 검색어 '카드 명세서 분석'을 제목과 설명에 담고 대표 주소를 세웁니다", () => {
+        expect(metadata.description).toContain("카드 명세서");
+    expect(metadata.alternates?.canonical).toBe("/");
+    expect(metadata.openGraph).toMatchObject({ url: "/" });
+    // 랜딩은 서비스 이름이 앞에 오는 고유 제목이라 템플릿을 타지 않습니다.
+    expect(metadata.title).toEqual({ absolute: "FinSight — 카드 명세서 분석으로 지출 누수 찾기" });
+  });
+
+  it("검색 결과용 구조화 데이터를 유효한 JSON으로 넣습니다", async () => {
+    const { container } = render(await Home());
+
+    const script = container.querySelector('script[type="application/ld+json"]');
+    expect(script).not.toBeNull();
+    const data = JSON.parse(script?.textContent ?? "") as { "@context": string; "@graph": { "@type": string }[] };
+    expect(data["@context"]).toBe("https://schema.org");
+    expect(data["@graph"].map((node) => node["@type"])).toEqual(["Organization", "WebSite", "WebApplication"]);
+    expect(data["@graph"][2]).toMatchObject({ name: "FinSight", inLanguage: "ko" });
   });
 });

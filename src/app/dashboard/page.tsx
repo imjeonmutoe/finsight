@@ -18,7 +18,7 @@ import { createServiceSupabase } from "@/services/supabase-service";
 import type { Plan } from "@/types/billing";
 
 export const metadata: Metadata = {
-  title: "대시보드 | FinSight",
+  title: "대시보드",
   description: "카테고리별 지출과 AI 월간 요약을 확인합니다.",
 };
 
@@ -70,6 +70,7 @@ function LockedSection({ title, body, note }: { title: string; body: string; not
         <Link
           href="/dashboard/settings"
           className="text-accent underline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+          data-ph-capture-attribute-cta="locked_upgrade"
         >
           설정에서 Pro 시작하기
         </Link>

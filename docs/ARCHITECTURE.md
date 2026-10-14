@@ -33,7 +33,7 @@ src/
 └── services/           # 외부 API 래퍼 (Claude, Supabase, Polar)
 supabase/
 ├── migrations/           # SQL 마이그레이션 (<UTC YYYYMMDDHHMMSS>_<snake_case>.sql)
-├── config.toml           # 로컬·CLI 설정. 원격 미적용, 스테이징 Auth는 대시보드에서 맞춘다 (ADR-017)
+├── config.toml           # 로컬·CLI 설정. 원격 미적용, 스테이징 Auth는 대시보드에서 맞춘다 (ADR-019)
 └── seed.sql              # 자동 생성(src/lib/demo/seed-sql.ts), 스테이징(프리뷰 DB) 전용 합성 데이터
 ```
 

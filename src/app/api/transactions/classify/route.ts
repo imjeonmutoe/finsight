@@ -3,7 +3,8 @@ import { z } from "zod";
 import { errorResponse, jsonResponse, requireUserId } from "@/lib/api";
 import { CLASSIFICATION_BATCH_SIZE } from "@/lib/limits";
 import { classifyByRule } from "@/lib/merchant-rules";
-import { classifyTransactions } from "@/services/claude";
+import { captureServerEvent, trackApiFailure } from "@/services/posthog-server";
+import { classifyTransactions, createAiObservabilityContext } from "@/services/claude";
 import { createServerSupabase } from "@/services/supabase";
 import type { ClassifyResponse } from "@/types/api";
 import { CATEGORIES } from "@/types/category";
@@ -63,7 +64,7 @@ export async function POST() {
   let modelFailed = false;
   if (remainder.length > 0) {
     try {
-      for (const item of await classifyTransactions(remainder)) {
+      for (const item of await classifyTransactions(remainder, createAiObservabilityContext(userId))) {
         // 반환은 id로만 매칭합니다. 배열 순서나 길이를 신뢰하지 않습니다.
         decided.set(item.id, { category: item.category, source: "ai" });
       }
@@ -94,7 +95,15 @@ export async function POST() {
 
   const remaining = await countRemaining();
   if (modelFailed) {
+    await trackApiFailure(userId, "transactions/classify", 502, "CLASSIFY_FAILED");
     return errorResponse(502, "CLASSIFY_FAILED", MODEL_FAILED, { classified, remaining });
+  }
+  if (remaining === 0) {
+    await captureServerEvent({
+      distinctId: userId,
+      event: "transaction_classification_completed",
+      properties: { classified_count: classified, batch_size: batch.data.length },
+    });
   }
   return jsonResponse({ classified, remaining } satisfies ClassifyResponse);
 }

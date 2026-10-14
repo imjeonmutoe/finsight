@@ -3,6 +3,7 @@ import { z } from "zod";
 import { errorResponse, jsonResponse, requireUserId } from "@/lib/api";
 import { computeCandidateHash, computeDedupeHash } from "@/lib/dedupe";
 import { getMonthlySummary } from "@/lib/queries";
+import { captureServerEvent } from "@/services/posthog-server";
 import { createServerSupabase } from "@/services/supabase";
 import { CATEGORIES } from "@/types/category";
 import type { ParsedTransaction } from "@/types/transaction";
@@ -93,6 +94,16 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     }
     return errorResponse(500, "WRITE_FAILED", WRITE_FAILED);
   }
+
+  const updatedFields = [
+    ...(body.data.category !== undefined ? ["category"] : []),
+    ...(body.data.kind !== undefined ? ["kind"] : []),
+  ].join("_");
+  await captureServerEvent({
+    distinctId: userId,
+    event: "transaction_updated",
+    properties: { updated_fields: updatedFields },
+  });
 
   // 집계는 여기서 다시 구현하지 않고 queries.ts를 재조회합니다.
   const summary = await getMonthlySummary(supabase, userId, row.accounting_month.slice(0, 7));

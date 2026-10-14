@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { errorResponse, jsonResponse } from "@/lib/api";
 import { logEvent } from "@/lib/event-log";
+import { captureServerEvent } from "@/services/posthog-server";
 import { verifyWebhookSignature } from "@/services/polar";
 import { createServiceSupabase } from "@/services/supabase-service";
 import type { Plan } from "@/types/billing";
@@ -119,5 +120,14 @@ export async function POST(request: Request) {
     return errorResponse(500, "PLAN_UPDATE_FAILED", "구독 상태를 갱신하지 못했습니다.");
   }
 
-  return jsonResponse({ received: true, applied: (data ?? []).length > 0 });
+  const applied = (data ?? []).length > 0;
+  if (applied) {
+    await captureServerEvent({
+      distinctId: userId.data,
+      event: "subscription_plan_updated",
+      properties: { plan, webhook_type: type },
+    });
+  }
+
+  return jsonResponse({ received: true, applied });
 }

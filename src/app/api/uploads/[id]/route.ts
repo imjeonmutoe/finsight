@@ -2,6 +2,7 @@ import { cookies } from "next/headers";
 import { z } from "zod";
 import { errorResponse, jsonResponse, requireUserId } from "@/lib/api";
 import { ownsStoragePath } from "@/lib/storage-path";
+import { captureServerEvent } from "@/services/posthog-server";
 import { createServerSupabase } from "@/services/supabase";
 
 const BUCKET = "statements";
@@ -63,6 +64,12 @@ export async function DELETE(_request: Request, { params }: { params: Promise<{ 
   if (error) {
     return errorResponse(500, "DELETE_FAILED", "업로드를 지우지 못했습니다. 잠시 후 다시 시도해 주세요.");
   }
+
+  await captureServerEvent({
+    distinctId: userId,
+    event: "statement_upload_deleted",
+    properties: { transaction_count: transactionCount, upload_status: upload.status },
+  });
 
   return jsonResponse({ deleted: transactionCount });
 }

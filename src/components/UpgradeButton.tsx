@@ -39,6 +39,7 @@ export function UpgradeButton() {
     <div className="space-y-3">
       <button
         type="button" className={PRIMARY} disabled={busy}
+        data-ph-capture-attribute-cta="upgrade_pro"
         onClick={() => { void start(); }}
       >
         {busy ? "결제 화면을 여는 중입니다" : "Pro 시작하기"}

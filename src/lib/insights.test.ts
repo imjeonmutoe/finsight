@@ -5,11 +5,18 @@ import type { MonthlySummary, Outlier, Subscription } from "@/types/analytics";
 import type { Transaction } from "@/types/transaction";
 
 vi.mock("server-only", () => ({}));
-vi.mock("@/services/claude", () => ({ generateInsights: vi.fn() }));
+vi.mock("@/services/claude", () => ({
+  createAiObservabilityContext: vi.fn((distinctId: string) => ({
+    distinctId, sessionId: "test-session", traceId: "test-trace",
+  })),
+  generateInsights: vi.fn(),
+}));
 vi.mock("./event-log", () => ({ logEvent: vi.fn() }));
+vi.mock("@/services/posthog-server", () => ({ captureServerEvent: vi.fn() }));
 
 const { generateInsights } = await import("@/services/claude");
 const { logEvent } = await import("./event-log");
+const { captureServerEvent } = await import("@/services/posthog-server");
 const { buildInsightInput, insightFingerprint, loadInsight } = await import("./insights");
 
 const summary: MonthlySummary = {
@@ -137,6 +144,17 @@ describe("인사이트 캐시", () => {
     expect(generateInsights).not.toHaveBeenCalled();
     expect(supabase.filter.eq).toHaveBeenCalledWith("user_id", "사용자");
     expect(supabase.filter.eq).toHaveBeenCalledWith("accounting_month", "2026-04-01");
+    expect(captureServerEvent).toHaveBeenCalledWith({
+      distinctId: "사용자", event: "insight_loaded", properties: { source: "cache", plan: "free" },
+    });
+  });
+
+  it("새로 생성하면 생성으로 기록합니다", async () => {
+    await loadInsight({ supabase: reader(null), service: writer(), userId: "사용자", plan: "pro", input });
+
+    expect(captureServerEvent).toHaveBeenCalledWith({
+      distinctId: "사용자", event: "insight_loaded", properties: { source: "generated", plan: "pro" },
+    });
   });
 
   it.each([
@@ -147,7 +165,9 @@ describe("인사이트 캐시", () => {
     const service = writer();
 
     expect(await loadInsight({ supabase: reader(row), service, userId: "사용자", plan: "free", input })).toEqual(payload);
-    expect(generateInsights).toHaveBeenCalledExactlyOnceWith(input, "free");
+    expect(generateInsights).toHaveBeenCalledExactlyOnceWith(
+      input, "free", expect.objectContaining({ distinctId: "사용자" }),
+    );
     expect(service.upsert).toHaveBeenCalledWith(expect.objectContaining({
       user_id: "사용자", accounting_month: "2026-04-01", payload,
       txn_fingerprint: insightFingerprint(summary), plan: "free", model: "claude-sonnet-5",

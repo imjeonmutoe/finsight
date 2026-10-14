@@ -21,7 +21,7 @@ Next 16은 학습 데이터와 관례가 다르다. Next API·파일 규칙(미�
 - TypeScript 5.9.3 strict mode + `noUncheckedIndexedAccess` + `verbatimModuleSyntax`
 - Tailwind CSS v4 (4.3.3) — `@theme` 토큰만 사용. v3 문법은 v4에서 에러 없이 조용히 무시된다
 - Vitest 4.1.11 / ESLint 9.39.5 / zod 4.5.4
-- Supabase (Auth / Postgres / Storage) + 프리뷰용 무료 스테이징 프로젝트 (ADR-017)
+- Supabase (Auth / Postgres / Storage) + 프리뷰용 무료 스테이징 프로젝트 (ADR-019)
 - Anthropic Claude API — 컬럼 매핑·카테고리 분류는 플랜 무관 `claude-sonnet-5`. AI 인사이트는 **Free도 `claude-sonnet-5`로 생성**하고 Pro만 `claude-opus-5`를 쓴다 (ADR-015)
 - Polar **샌드박스** (구독 결제) — `sandbox-api.polar.sh`. 프로덕션 토큰을 쓰지 않는다
 - Vercel (배포)
@@ -45,7 +45,7 @@ Next 16은 학습 데이터와 관례가 다르다. Next API·파일 규칙(미�
 - CRITICAL: 금융 데이터를 로그에 남기지 마라. 거래 내용·가맹점명·금액을 `console.log`하지 않는다. 에러 로그에는 행 내용 대신 **행 번호**만 남긴다. Vercel 함수 로그도 유출 경로다.
 - CRITICAL: `dangerouslySetInnerHTML`을 쓰지 마라. LLM 출력에는 사용자가 올린 CSV에서 온 임의 문자열이 섞일 수 있다. React 기본 이스케이프가 유일한 XSS 방어선이다.
 - CRITICAL: RLS를 믿되 라우트 핸들러 쿼리에도 `user_id` 조건을 명시하라. RLS 정책을 나중에 잘못 고쳐도 한 겹이 남는다.
-- CRITICAL: 에이전트는 프로덕션 DB에 쓰지 않는다. Supabase MCP는 `.mcp.json`의 `read_only=true`로만 연결하고(읽기 전용 Postgres 역할로 SQL이 돈다), 마이그레이션·배포·브랜치 도구는 `.claude/settings.json`의 `permissions.deny`가 막는다. 마이그레이션은 사람이 CLI나 대시보드로 적용한다. `read_only`를 빼거나 deny를 지우지 마라. 이유: 에이전트는 신뢰할 수 없는 입력(CSV·diff·문서)을 읽으므로, 거기 심긴 지시 하나로 실제 사용자 데이터가 지워질 수 있다. 앱의 쓰기 경로(`src/services/`의 anon·service role 클라이언트)는 MCP와 무관하다.
+- CRITICAL: 에이전트는 프로덕션 DB에 쓰지 않는다. Supabase MCP는 `.mcp.json`의 `read_only=true`로만 연결하고(읽기 전용 Postgres 역할로 SQL이 돈다), 마이그레이션·배포·브랜치 도구는 `.claude/settings.json`의 `permissions.deny`가 막는다. 마이그레이션은 사람이 `supabase/`를 건드린 PR을 머지한 뒤 대시보드 SQL Editor에서 직접 적용하고, 같은 트랜잭션에서 `supabase_migrations.schema_migrations`에 (version, name)도 넣는다. Supabase GitHub 연동("Deploy to production")은 켜지 않으므로 **머지해도 프로덕션에 적용되지 않는다**(ADR-019). `read_only`를 빼거나 deny를 지우지 마라. 이유: 에이전트는 신뢰할 수 없는 입력(CSV·diff·문서)을 읽으므로, 거기 심긴 지시 하나로 실제 사용자 데이터가 지워질 수 있다. 앱의 쓰기 경로(`src/services/`의 anon·service role 클라이언트)는 MCP와 무관하다.
 - CRITICAL: 마이그레이션 파일명은 `<UTC YYYYMMDDHHMMSS>_<snake_case>.sql`이다. 이미 적용된 파일은 이름도 내용도 바꾸지 않는다 — 고칠 것이 있으면 새 마이그레이션을 쓴다. 이유: 파일명의 버전이 원격 `schema_migrations`의 버전과 대조된다(CLI `db push`·스테이징 초기화 모두). 이름이 바뀌면 적용된 마이그레이션을 새것으로 보고 프로덕션에 다시 돌린다. `src/lib/migration-files.test.ts`가 고정한다.
 - CRITICAL: CI는 스테이징에만 붙는다. 워크플로우 비밀은 `STAGING_DB_URL` 하나이고, Supabase 액세스 토큰·프로덕션 접속 정보를 CI에 두지 않는다. 이유: PR 코드가 도는 잡에서 실데이터 DB까지 손이 닿는다. `scripts/test_staging_workflow.py`가 고정한다.
 - CRITICAL: `supabase/seed.sql`은 `src/lib/demo/seed-sql.ts`의 `buildSeedSql()`이 생성한다(스냅샷 테스트를 `-u`로 갱신). 손으로 고치지 않는다. 실데이터를 넣지 않는다 — 합성 데모 데이터셋만 쓴다. 이유: 프리뷰 DB는 PR을 보는 누구나 들여다본다.
@@ -139,7 +139,7 @@ git config core.hooksPath scripts/githooks
 | 🔴 critical · 🟠 major 하나라도 | **승인도 머지도 하지 않는다** |
 | 판정이 `Incomplete` (차원 미실행) | 아무것도 하지 않는다 — '모르겠다'는 '깨끗하다'가 아니다 |
 
-`supabase/`(이름 변경의 옛 경로 포함)를 건드린 PR은 nit만 있어도 **승인만** 한다 — 마이그레이션 PR은 머지와 프로덕션 적용을 사람이 함께 한다. 머지만 되고 적용이 안 되면 앱 코드와 DB가 어긋난다(ADR-017). 변경 파일 목록(`merge_gate.py --files`)을 못 받으면 머지하지 않는다.
+`supabase/`(이름 변경의 옛 경로 포함)를 건드린 PR은 nit만 있어도 **승인만** 한다 — 마이그레이션 PR은 사람이 머지하고 머지 직후 프로덕션에 적용한다. 머지만 되고 적용이 안 되면 앱 코드와 DB가 어긋난다(ADR-019). 변경 파일 목록(`merge_gate.py --files`)을 못 받으면 머지하지 않는다.
 
 틀리는 쪽은 항상 '아무것도 안 함'이다. 판정을 모르겠으면 머지하지 않는다.
 
@@ -173,6 +173,97 @@ git config core.hooksPath scripts/githooks
 같은 ref에 묶어 둔 것이다. 대가는 **게이트를 고치는 PR이 자기 게이트를 검증하지 못한다**는 것 —
 머지된 뒤부터 적용된다. 그 PR에서 게이트 잡이 빨간불인 것은 정상이다.
 
+### oncall — CI 실패 자동 수정
+
+**사람이 시킨 게 아니라 main이 깨진 사실 자체가 트리거다.** `ci.yml`(lint · build · test)이 main
+푸시에서 실패하면 `oncall-ci-fix.yml`이 깨어나 헤드리스 에이전트(`claude -p`)가 실패 잡 로그만 읽고
+근본 원인을 고친 뒤 `oncall/ci-fix-<실행ID>` 브랜치로 **PR을 연다.** 출력은 언제나 PR이고 머지는
+사람이 한다. 고칠 수 없으면 `docs/incidents/`에 사고 기록만 담은 **draft** PR을 연다.
+
+| 잡 | LLM | 쓰기 권한 | 하는 일 |
+|---|---|---|---|
+| `diagnose` | ✓ | ✗ (`actions`·`contents`·`pull-requests` 읽기만) | 트리아지 → 로그 마스킹 → 수정 → 재검증 → 관문 → 패치 아티팩트 |
+| `publish` | ✗ | `contents`·`pull-requests` 쓰기 | 관문 재확인 → 브랜치 푸시 → PR 생성. **패치 코드를 실행하지 않는다** |
+
+**두 잡을 합치지 마라.** 리뷰 게이트와 같은 이유다 — 에이전트는 신뢰할 수 없는 로그를 읽는다.
+
+**무한 루프 방지는 다섯 겹이다.** main 푸시 CI만 본다(PR·`oncall/` 브랜치·fork 제외) / 봇 actor 제외 /
+`GITHUB_TOKEN`으로 만든 푸시·PR은 GitHub이 워크플로우를 띄우지 않는다 / 열린 `oncall/` PR이 있으면
+건너뜀 / main이 이미 다음 커밋이면 건너뜀. 그래서 **oncall PR에는 CI도 리뷰도 자동으로 돌지 않는다.**
+본문의 검증표는 oncall 잡이 직접 돌린 결과이고, 머지 전에 PR을 닫았다 다시 열면 CI가 돈다.
+사람이 `oncall/` 브랜치에 푸시해 리뷰 게이트가 `merge`를 내도 자동 머지 스텝이 건너뛴다.
+
+**관문(`scripts/oncall_ci.py validate`)이 '고친 척'을 막는다.** `.github/`·`.claude/`·`scripts/`·
+`supabase/`(DB 마이그레이션 — 사람이 적용)·`package.json`·lint/tsc/vitest 설정·`next.config.ts`를 건드리거나,
+테스트 파일을 지우거나, `skip`·`only`·`eslint-disable`·`@ts-ignore`를 더한 패치는 PR이 되지 않고
+사고 기록 draft로 바뀐다. 막힌 경로를 고쳐야 하는 장애는 사람이 고친다.
+
+**비밀값.** 로그는 에이전트에게 넘기기 전에, PR 본문·제목은 올리기 전에 `redact`를 거친다. GitHub은
+등록된 시크릿만 `***`로 가린다. 워크플로우에는 `CLAUDE_CODE_OAUTH_TOKEN` 말고 어떤 서비스 키도 없고
+MCP도 띄우지 않는다(`--strict-mcp-config`) — **prod는 읽기조차 하지 않는다.**
+
+`workflow_run`은 기본 브랜치의 워크플로우 파일만 쓴다. 이 워크플로우를 고치는 PR은 **머지된 뒤부터**
+적용된다. `ci.yml`의 `name: CI`를 바꾸면 `workflows: [CI]`도 함께 바꿔라 — 안 바꾸면 조용히 안 깨어난다.
+수동 재실행: `gh workflow run oncall-ci-fix.yml -f run_id=<실패한 CI 실행 ID>`.
+
+### oncall — Autopilot (유저 질의 응답)
+
+유저 이메일 문의와 팀 내부 질문에 **코드 · PostHog 에러/로그 · Supabase DB(읽기 전용)** 를 근거로 답한다.
+두뇌는 `oncall-autopilot` 스킬이고, 상시 입구(메일 수신·봇)는 아직 없다 — 지금은 로컬 one-shot이다.
+
+| 청중 | 채널 | 답이 가는 곳 |
+|---|---|---|
+| 유저 | 이메일 | `.oncall/drafts/*.md` **draft만**(gitignore). 사람이 `approve`로 `## 유저용 답장`만 꺼내 직접 보낸다 |
+| 운영 동료 | Claude Code 터미널 | 바로 출력 |
+
+```bash
+python3 scripts/oncall_ask.py ask --audience user --email a@b.c "문의 원문"   # 헤드리스 one-shot
+python3 scripts/oncall_ask.py ask --audience internal "질문"
+python3 scripts/oncall_ask.py approve .oncall/drafts/<파일>.md               # 사람 승인
+```
+
+**에이전트는 아무것도 바꾸지 않는다.** 구독 해지·환불·플랜 변경·데이터 삭제는 `## escalation`에 사람이
+할 일로 적는다. 헤드리스 입구는 `--restricted`(프로젝트 설정·훅 미적용) + `--tools Read,Grep,Glob`(쓰기·셸
+도구 없음) + `--strict-mcp-config`(Supabase `read_only=true`, PostHog `readonly=true`·`x-posthog-read-only`)로
+잠근다. 이 플래그를 풀거나 쓰기 도구를 더하지 마라 — 문의 본문은 신뢰할 수 없는 입력이다.
+
+**관문(`check`)이 지어내기를 막는다.** 근거 줄은 `[코드]`·`[로그]`·`[DB]`·`[미확인]` 중 하나이고, `[코드]`는
+실제로 있는 `파일:줄`이어야 한다. 근거가 `[미확인]`뿐이면 escalation 없이 끝낼 수 없다. 유저용 답장에
+경로·UUID·SQL·스택이 섞이거나 "해지했습니다"처럼 하지 않은 조치를 쓰면 막는다. `approve`도 관문을 다시
+돌리므로 사람이 draft를 고친 뒤에도 같은 규칙이 걸린다. 관문은 인용이 **존재**하는지만 본다 — 인용이
+주장과 맞는지는 승인하는 사람이 본다.
+
+헤드리스 `claude -p`는 대화형 세션의 MCP OAuth 토큰을 쓰지 못한다(2.1.299 실측). one-shot에서 DB·로그를
+보려면 `SUPABASE_ACCESS_TOKEN`·`POSTHOG_PERSONAL_API_KEY`를 환경변수로 준다. 없으면 그 근거는 `[미확인]`으로
+남는다. 대화형 세션에서는 스킬이 연결된 MCP를 쓰고 `oncall_ask.py save`로 같은 관문을 거친다.
+
+### oncall — prod alert 1차 방어선
+
+PostHog error tracking alert(새 에러 · 재발 · 급증)를 받아 **노이즈면 기록만, 신호면 분석을 들고 사람을 깨운다.**
+두뇌는 `oncall-alert` 스킬, 판정 관문은 `scripts/oncall_alert.py`다.
+
+| 단계 | 어디서 | LLM | 하는 일 |
+|---|---|---|---|
+| 받기 | `/api/oncall/alert` (Vercel) | ✗ | Standard Webhooks 서명 검증 → `oncall_alert_events`에 event_id **선삽입**(PK 충돌 = 중복) → `workflow_dispatch` |
+| `analyze` | `oncall-alert.yml` | ✓ | PostHog(읽기 전용)·코드·최근 커밋으로 판정 · 분석 → 관문 → 가린 본문 아티팩트. 쓰기 권한 없음 |
+| `escalate` | `oncall-alert.yml` | ✗ | 노이즈 → 잡 요약에 기록 / 신호 → `oncall-alert` 라벨 Issue + 리포 주인 assign. 같은 PostHog 이슈는 열린 Issue에 코멘트(dedup) |
+
+**핸들러는 세 가지만 한다.** 서버리스는 `claude -p`를 못 띄운다. 이슈 이름·예외 메시지는 저장·전달하지 않는다 —
+사용자 데이터가 섞일 수 있고, CI가 PostHog에서 직접 읽는다. 위임이 실패하면 넣은 event_id를 지우고 502를
+돌려준다(안 지우면 PostHog 재전송이 '중복'으로 걸러져 alert가 사라진다).
+
+**경계는 신호로 기운다.** 관문은 에이전트 판정을 그대로 믿지 않는다. 결과를 못 읽으면 신호 · 확신도 낮음,
+급증 · 재발은 노이즈가 될 수 없고, 노이즈는 '확신도 높음 + 한 명으로 확인 + 핵심 경로 아님'일 때만 살아남는다.
+나머지 노이즈 판정은 신호 · 확신도 낮음으로 올린다. 틀리는 쪽은 사람을 한 번 더 깨우는 쪽이다.
+
+**리포가 공개라 Issue도 공개다.** 본문에 예외 메시지 · 스택 · 유저 식별자를 싣지 않고 PostHog 링크로 대신한다.
+관문이 비밀값 · 이메일 · 이슈 밖 UUID · HTML 주석(dedup 마커 위조) · `@멘션`을 가린다.
+
+**토큰.** Vercel의 `GITHUB_DISPATCH_TOKEN`은 이 리포에 **Actions: write만** 준 fine-grained PAT다.
+`repository_dispatch`로 바꾸지 마라 — Contents: write(= 코드 푸시 권한)가 필요해진다. Vercel env는
+`POSTHOG_ALERT_WEBHOOK_SECRET`(PostHog 목적지의 signing secret, `whsec_<base64>`)도 필요하다. 리포 시크릿
+`POSTHOG_PERSONAL_API_KEY`(읽기 스코프)가 없으면 분석은 전부 `[미확인]`이 되고 판정은 신호 · 확신도 낮음이다.
+
 ### CI에 이미 물려 있는 것
 
 고치기 전에 이유를 읽어라. 셋 다 **실패해도 빨간불이 안 뜨는** 종류의 함정이다.
@@ -202,7 +293,7 @@ git config core.hooksPath scripts/githooks
   되돌린 파일은 작업트리에 남으므로, `/review-code` 1단계는 CI에서 작업트리·untracked diff를 빼고
   `merge-base..HEAD`만 팩에 담는다. 안 빼면 되돌림이 "PR이 자기 변경을 되돌린다"는 가짜 hunk로 섞인다.
 - Claude Code는 `install.sh`를 파이프로 실행하지 않고, 바이너리를 받아 **고정한 sha256**과 대조한 뒤
-  `claude install <버전>`만 한다(두 워크플로우 모두). install.sh와 그것이 읽는 manifest는 고정할 수
+  `claude install <버전>`만 한다(네 워크플로우 모두 — review-code·owasp-scan·oncall-ci-fix·oncall-alert). install.sh와 그것이 읽는 manifest는 고정할 수
   없어서다. 버전을 올리면 `CLAUDE_SHA256`도 그 버전 manifest의 `linux-x64` checksum으로 함께 바꿔라 —
   안 바꾸면 설치 스텝이 `sha256sum -c`에서 빨간불로 멈춘다(그게 설계대로다).
 - GitHub 토큰은 `GH_TOKEN`(`secrets.GITHUB_TOKEN`) 하나다. 워크플로우의 `permissions` 그대로
@@ -232,7 +323,11 @@ npm run dev      # 개발 서버
 npm run build    # 프로덕션 빌드
 npm run lint     # ESLint
 npm run test     # 테스트 (vitest run)
+npm run eval     # 하네스 품질 eval (라이브 API 호출·비용 발생, evals/harness/README.md)
 bash scripts/preview-shot.sh [경로]   # 빌드 후 headless Chrome 스크린샷. PNG 경로를 출력한다
+python3 scripts/lighthouse_loop.py status   # Lighthouse autoresearch 루프 기록 (/lighthouse-loop, docs/LIGHTHOUSE_LOOP.md)
+python3 scripts/oncall_ask.py ask --audience user|internal "질문"   # oncall Autopilot one-shot (draft → approve)
+gh workflow run oncall-alert.yml -f event_id=<UUID> -f kind=<alert 종류> -f issue_id=<UUID>   # prod alert 수동 재실행
 
 # 하네스 스크립트 자체의 테스트 (pytest는 uv로 임시 설치해 돌린다)
 uv run --with pytest python -m pytest scripts/ -q
@@ -240,6 +335,7 @@ bash scripts/hooks/test-tdd-guard.sh
 bash scripts/hooks/test-tdd-backstop.sh
 bash scripts/githooks/test-pre-commit.sh   # git pre-commit 훅
 node scripts/test-review-workflow.mjs   # /review-code 워크플로우 후처리
+node scripts/test-lighthouse-workflow.mjs   # /lighthouse-loop 정지 조건
 
 # 스테이징 DB 수동 초기화: GitHub Actions → "스테이징 DB 초기화"(.github/workflows/staging-db.yml) → Run workflow
 ```

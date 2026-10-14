@@ -154,6 +154,8 @@ describe("업로드 1단계 — 파일 선택", () => {
     const guide = screen.getByText("카드사·은행에서 명세서 내려받는 곳").closest("details");
 
     expect(guide).not.toHaveAttribute("open");
+    // 빈 대시보드와 같은 안내를 씁니다. 화면마다 경로가 다르면 둘 중 하나는 틀린 안내입니다.
+    expect(guide).toHaveTextContent("이용내역 조회 또는 이용대금명세서 → 엑셀 내려받기");
   });
 
   it("별칭이 없으면 새로 만들도록 안내합니다", () => {

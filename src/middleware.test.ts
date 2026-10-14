@@ -206,6 +206,10 @@ describe("matcher", () => {
     expect(await runs("/api/billing/webhook")).toBe(false);
   });
 
+  it("PostHog alert 웹훅을 미들웨어에서 제외합니다", async () => {
+    expect(await runs("/api/oncall/alert")).toBe(false);
+  });
+
   it.each(["/_next/static/chunk.js", "/_next/image", "/favicon.ico"])(
     "정적 파일 %s를 제외합니다",
     async (path) => {

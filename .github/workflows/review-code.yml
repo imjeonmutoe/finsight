@@ -95,7 +95,7 @@ jobs:
       # 배포 경로가 오염되면 바뀐 스크립트가 토큰을 쥔 이 잡에서 돈다. 바이너리를 직접 받아 고정한
       # sha256과 대조한 뒤 install.sh가 하던 마지막 단계(`claude install <버전>`)만 한다.
       # 버전을 올릴 때는 downloads.claude.ai/claude-code-releases/<버전>/manifest.json의
-      # platforms.linux-x64.checksum으로 CLAUDE_SHA256을 함께 바꾼다(두 워크플로우 모두).
+      # platforms.linux-x64.checksum으로 CLAUDE_SHA256을 함께 바꾼다(네 워크플로우 모두 — oncall-ci-fix.yml·oncall-alert.yml 포함).
       - name: Claude Code 설치
         env:
           CLAUDE_VERSION: 2.1.286
@@ -219,7 +219,7 @@ jobs:
             --jq '.[] | {login: .user.login, at: .submitted_at, body: .body} | @json' > events.jsonl
           gh api "repos/$REPO/issues/$PR/comments" --paginate \
             --jq '.[] | {login: .user.login, at: .created_at, body: .body} | @json' >> events.jsonl
-          # supabase/를 건드린 PR은 승인까지만 한다. 머지와 프로덕션 적용을 사람이 함께 해야 앱 코드와 DB가 어긋나지 않는다(ADR-017).
+          # supabase/를 건드린 PR은 승인까지만 한다. 머지와 프로덕션 적용을 사람이 함께 해야 앱 코드와 DB가 어긋나지 않는다(ADR-019).
           # 이름 변경은 옛 경로도 넘긴다 — supabase/ 밖으로 옮긴 마이그레이션도 사람이 확인해야 한다.
           gh api "repos/$REPO/pulls/$PR/files" --paginate \
             --jq '.[] | .filename, (.previous_filename // empty)' > files.txt
@@ -250,8 +250,10 @@ jobs:
             -f event=APPROVE \
             -f body="✅ 자동 승인 — $REASON"
 
+      # oncall/ 브랜치(oncall-ci-fix.yml이 연 PR)는 자동 머지하지 않는다. 사고 대응 수정은 사람이 머지한다.
+      # oncall PR은 GITHUB_TOKEN으로 열려 보통 이 잡이 돌지 않지만, 사람이 그 브랜치에 푸시하면 돈다.
       - name: 자동 머지
-        if: steps.gate.outputs.action == 'merge'
+        if: steps.gate.outputs.action == 'merge' && !startsWith(github.event.pull_request.head.ref, 'oncall/')
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           REPO: ${{ github.repository }}
@@ -263,6 +265,10 @@ jobs:
             echo "::error::자동 머지 실패 — 충돌이거나 머지할 수 없는 상태다. 사람이 처리해야 한다."
             exit 1
           fi
+
+      - name: oncall PR 머지 보류 기록
+        if: steps.gate.outputs.action == 'merge' && startsWith(github.event.pull_request.head.ref, 'oncall/')
+        run: echo "::notice::oncall PR이라 자동 머지하지 않는다 — 사람이 머지한다."
 
       - name: 보류 사유 기록
         if: steps.gate.outputs.action == 'none'

@@ -18,16 +18,20 @@ describe("대시보드 빈 상태", () => {
     expect(screen.getByRole("link", { name: "샘플 대시보드 보기" })).toHaveAttribute("href", "/demo");
   });
 
-  it("카드사·은행별 내려받기 경로를 펼친 상태로 보여줍니다", () => {
+  it("클릭 수집에 버튼 이름을 붙입니다", () => {
+    render(<EmptyDashboard />);
+
+    expect(screen.getByRole("link", { name: "명세서 올리기" })).toHaveAttribute("data-ph-capture-attribute-cta", "empty_upload");
+    expect(screen.getByRole("link", { name: "샘플 대시보드 보기" })).toHaveAttribute("data-ph-capture-attribute-cta", "empty_demo");
+  });
+
+  it("카드·은행 내려받기 경로를 펼친 상태로 보여줍니다", () => {
     render(<EmptyDashboard />);
     const guide = screen.getByTestId("csv-guide");
 
     expect(guide).toHaveAttribute("open");
-    for (const issuer of ["신한카드", "KB국민카드", "삼성카드", "현대카드", "롯데카드",
-      "국민은행", "신한은행", "우리은행"]) {
-      expect(within(guide).getByText(issuer)).toBeVisible();
-    }
-    expect(within(guide).getAllByText(/이용내역|이용대금명세서|거래내역|입출금거래내역/).length).toBeGreaterThan(0);
+    expect(within(guide).getByText(/이용내역 조회 또는 이용대금명세서 → 엑셀 내려받기/)).toBeVisible();
+    expect(within(guide).getByText(/거래내역 조회 → 엑셀 내려받기/)).toBeVisible();
   });
 
   it("카드사 주소를 링크로 걸지 않습니다", () => {
