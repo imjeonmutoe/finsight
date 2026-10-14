@@ -2,9 +2,17 @@
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+const { resourceFromAttributes } = vi.hoisted(() => ({ resourceFromAttributes: vi.fn() }));
+vi.mock("@opentelemetry/resources", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@opentelemetry/resources")>();
+  resourceFromAttributes.mockImplementation(actual.resourceFromAttributes);
+  return { ...actual, resourceFromAttributes };
+});
+
 afterEach(() => {
   vi.unstubAllEnvs();
   vi.resetModules();
+  resourceFromAttributes.mockClear();
 });
 
 async function load() {
@@ -39,5 +47,18 @@ describe("PostHog 로그 프로바이더", () => {
     expect(() => getPostHogLogProvider()).toThrow("NEXT_PUBLIC_POSTHOG_PROJECT_TOKEN");
     vi.stubEnv("NODE_ENV", "production");
     expect(getPostHogLogProvider()).toBeNull();
+  });
+
+  it("운영 로그에 서비스 이름과 배포 환경을 붙입니다", async () => {
+    vi.stubEnv("NEXT_PUBLIC_POSTHOG_PROJECT_TOKEN", "phc_test");
+    vi.stubEnv("NEXT_PUBLIC_POSTHOG_HOST", "https://us.i.posthog.com");
+    vi.stubEnv("VERCEL_ENV", "production");
+
+    (await load())();
+
+    expect(resourceFromAttributes).toHaveBeenCalledWith({
+      "service.name": "finsight",
+      "deployment.environment.name": "production",
+    });
   });
 });

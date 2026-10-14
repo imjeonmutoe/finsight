@@ -266,6 +266,7 @@ Next.js는 반대로 **16.3.4(최신)** 를 쓴다. 생짜로 시작하는 프�
   - LLM 프롬프트·응답 원문 — `privacyMode`·`posthogPrivacyMode`.
   - 서버 예외 경로 — `request.path` 대신 라우트 파일 경로만(`instrumentation.ts`의 `onRequestError`).
 - **계측이 요청을 깨지 않는다**: 전송 실패는 삼킨다. 이미 끝난 저장을 500으로 바꾸지 않는다.
+- **서버 이벤트·로그에 배포 환경을 붙인다**: 로컬 개발 서버도 같은 프로젝트로 보내는데, 서버 이벤트에는 `$host`가 없어 구분이 안 됐다. 개발 서버의 핫 리로드가 열린 대시보드를 다시 그릴 때마다 `insight_loaded`가 찍혀(파일 변경 한 번에 최대 7건) 프로덕션 지표처럼 보였다. 서버 클라이언트의 `before_send`(`prepareServerEvent`)가 모든 이벤트에 `environment`(`VERCEL_ENV`, 없으면 `development`)를, 로그 프로바이더가 `deployment.environment.name`을 붙인다. 지표는 `environment = production`으로 걸러 본다.
 
 **이유**: Vercel Analytics는 페이지뷰만 본다. 업로드 한도 도달·매핑 실패·분류 실패·결제 확인 지연·인사이트 캐시 적중률처럼 퍼널과 비용을 가르는 사건이 보이지 않았고, 서버 예외는 Vercel 함수 로그를 직접 뒤져야 했다. 도입 직후 `insight_loaded`가 캐시 적중 0%를, `insight_cache_unavailable` 로그가 그 원인(service role 키 누락)을 바로 보여 줬다.
 
