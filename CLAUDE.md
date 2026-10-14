@@ -45,7 +45,7 @@ Next 16은 학습 데이터와 관례가 다르다. Next API·파일 규칙(미�
 - CRITICAL: 금융 데이터를 로그에 남기지 마라. 거래 내용·가맹점명·금액을 `console.log`하지 않는다. 에러 로그에는 행 내용 대신 **행 번호**만 남긴다. Vercel 함수 로그도 유출 경로다.
 - CRITICAL: `dangerouslySetInnerHTML`을 쓰지 마라. LLM 출력에는 사용자가 올린 CSV에서 온 임의 문자열이 섞일 수 있다. React 기본 이스케이프가 유일한 XSS 방어선이다.
 - CRITICAL: RLS를 믿되 라우트 핸들러 쿼리에도 `user_id` 조건을 명시하라. RLS 정책을 나중에 잘못 고쳐도 한 겹이 남는다.
-- CRITICAL: 에이전트는 프로덕션 DB에 쓰지 않는다. Supabase MCP는 `.mcp.json`의 `read_only=true`로만 연결하고(읽기 전용 Postgres 역할로 SQL이 돈다), 마이그레이션·배포·브랜치 도구는 `.claude/settings.json`의 `permissions.deny`가 막는다. 마이그레이션은 사람이 `supabase/`를 건드린 PR을 머지할 때 Supabase GitHub 연동이 적용한다. `read_only`를 빼거나 deny를 지우지 마라. 이유: 에이전트는 신뢰할 수 없는 입력(CSV·diff·문서)을 읽으므로, 거기 심긴 지시 하나로 실제 사용자 데이터가 지워질 수 있다. 앱의 쓰기 경로(`src/services/`의 anon·service role 클라이언트)는 MCP와 무관하다.
+- CRITICAL: 에이전트는 프로덕션 DB에 쓰지 않는다. Supabase MCP는 `.mcp.json`의 `read_only=true`로만 연결하고(읽기 전용 Postgres 역할로 SQL이 돈다), 마이그레이션·배포·브랜치 도구는 `.claude/settings.json`의 `permissions.deny`가 막는다. 마이그레이션은 사람이 `supabase/`를 건드린 PR을 머지한 뒤 대시보드 SQL Editor에서 직접 적용하고, 같은 트랜잭션에서 `supabase_migrations.schema_migrations`에 (version, name)도 넣는다. Supabase GitHub 연동("Deploy to production")은 꺼져 있어 **머지해도 프로덕션에 적용되지 않는다**(ADR-016 미시행). `read_only`를 빼거나 deny를 지우지 마라. 이유: 에이전트는 신뢰할 수 없는 입력(CSV·diff·문서)을 읽으므로, 거기 심긴 지시 하나로 실제 사용자 데이터가 지워질 수 있다. 앱의 쓰기 경로(`src/services/`의 anon·service role 클라이언트)는 MCP와 무관하다.
 - CRITICAL: 마이그레이션 파일명은 `<UTC YYYYMMDDHHMMSS>_<snake_case>.sql`이다. 이미 적용된 파일은 이름도 내용도 바꾸지 않는다 — 고칠 것이 있으면 새 마이그레이션을 쓴다. 이유: Supabase GitHub 연동이 파일명의 버전을 원격 `schema_migrations`와 대조한다. 이름이 바뀌면 적용된 마이그레이션을 새것으로 보고 프로덕션에 다시 돌린다. `src/lib/migration-files.test.ts`가 고정한다.
 - CRITICAL: `supabase/config.toml`에 `[storage.buckets]`·`[functions]`를 선언하지 않는다. 이유: 머지하면 연동이 프로덕션에 배포한다. 버킷과 함수는 마이그레이션과 사람이 관리한다.
 - CRITICAL: `supabase/seed.sql`은 `src/lib/demo/seed-sql.ts`의 `buildSeedSql()`이 생성한다(스냅샷 테스트를 `-u`로 갱신). 손으로 고치지 않는다. 실데이터를 넣지 않는다 — 합성 데모 데이터셋만 쓴다. 이유: 프리뷰 DB는 PR을 보는 누구나 들여다본다.
@@ -139,7 +139,7 @@ git config core.hooksPath scripts/githooks
 | 🔴 critical · 🟠 major 하나라도 | **승인도 머지도 하지 않는다** |
 | 판정이 `Incomplete` (차원 미실행) | 아무것도 하지 않는다 — '모르겠다'는 '깨끗하다'가 아니다 |
 
-`supabase/`(이름 변경의 옛 경로 포함)를 건드린 PR은 nit만 있어도 **승인만** 한다 — 머지가 곧 프로덕션 적용이다(ADR-016). 변경 파일 목록(`merge_gate.py --files`)을 못 받으면 머지하지 않는다.
+`supabase/`(이름 변경의 옛 경로 포함)를 건드린 PR은 nit만 있어도 **승인만** 한다 — DB 변경은 사람이 머지하고 머지 직후 사람이 프로덕션에 적용한다(ADR-016 `시행 상태`). 변경 파일 목록(`merge_gate.py --files`)을 못 받으면 머지하지 않는다.
 
 틀리는 쪽은 항상 '아무것도 안 함'이다. 판정을 모르겠으면 머지하지 않는다.
 
@@ -194,7 +194,7 @@ git config core.hooksPath scripts/githooks
 사람이 `oncall/` 브랜치에 푸시해 리뷰 게이트가 `merge`를 내도 자동 머지 스텝이 건너뛴다.
 
 **관문(`scripts/oncall_ci.py validate`)이 '고친 척'을 막는다.** `.github/`·`.claude/`·`scripts/`·
-`supabase/`(머지 = 프로덕션 적용)·`package.json`·lint/tsc/vitest 설정·`next.config.ts`를 건드리거나,
+`supabase/`(DB 마이그레이션 — 사람이 적용)·`package.json`·lint/tsc/vitest 설정·`next.config.ts`를 건드리거나,
 테스트 파일을 지우거나, `skip`·`only`·`eslint-disable`·`@ts-ignore`를 더한 패치는 PR이 되지 않고
 사고 기록 draft로 바뀐다. 막힌 경로를 고쳐야 하는 장애는 사람이 고친다.
 

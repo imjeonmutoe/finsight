@@ -10,8 +10,8 @@
     critical·major 하나라도 → none    아무것도 하지 않는다
 
     바뀐 파일에 `supabase/` 아래가 있으면 merge → approve로만 낮춘다 (approve·none은 그대로).
-    Branching 연동이 머지 순간 마이그레이션·config.toml을 프로덕션 DB에 적용하므로,
-    사람이 머지 버튼을 누르는 것이 곧 프로덕션 적용 승인이다.
+    DB 변경은 사람이 보고 머지한 뒤 사람이 프로덕션에 적용한다(ADR-016 시행 상태 — 연동이 꺼져 있어
+    머지가 적용하지 않는다). 연동을 켜면 머지가 곧 적용이 되므로 이 규칙은 그때도 그대로 필요하다.
 
 틀리는 쪽은 항상 `none`이다. 판정을 모르겠으면(마커 없음·형식 깨짐·미실행 차원) 머지하지 않는다.
 
@@ -41,7 +41,7 @@ MARKER_RE = re.compile(r"<!--\s*finsight-review\s+(\{.*?\})\s*-->", re.S)
 SEVERITIES = ("critical", "major", "minor", "nit")
 BLOCKING = ("critical", "major")
 
-# 이 아래를 건드린 PR은 머지가 곧 프로덕션 DB 배포다 (Supabase Branching "Deploy to production").
+# 이 아래를 건드린 PR은 DB 변경이다. 사람이 머지하고 사람이 프로덕션에 적용한다 (ADR-016).
 DB_PATH_PREFIX = "supabase/"
 
 
@@ -93,7 +93,7 @@ def decide(marker, paths):
     # 낮추기만 한다. approve·none을 올리거나 다른 값으로 바꾸지 않는다.
     if action == "merge" and touches_db(paths):
         return "approve", reason.replace(" — 승인하고 머지한다", "") + (
-            " — supabase/를 건드려 머지가 곧 프로덕션 DB 적용이다. 승인만 하고 사람이 머지한다"
+            " — supabase/(DB 변경)를 건드렸다. 승인만 하고 사람이 머지·적용한다"
         )
     return action, reason
 

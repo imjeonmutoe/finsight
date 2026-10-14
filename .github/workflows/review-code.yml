@@ -219,7 +219,7 @@ jobs:
             --jq '.[] | {login: .user.login, at: .submitted_at, body: .body} | @json' > events.jsonl
           gh api "repos/$REPO/issues/$PR/comments" --paginate \
             --jq '.[] | {login: .user.login, at: .created_at, body: .body} | @json' >> events.jsonl
-          # supabase/를 건드린 PR은 머지가 곧 프로덕션 DB 적용(Branching)이라 승인까지만 하고 사람이 머지한다.
+          # supabase/를 건드린 PR은 DB 변경이라 승인까지만 하고 사람이 머지·적용한다(ADR-016).
           # 이름 변경은 옛 경로도 넘긴다 — supabase/ 밖으로 옮긴 파일도 프로덕션에 반영된다.
           gh api "repos/$REPO/pulls/$PR/files" --paginate \
             --jq '.[] | .filename, (.previous_filename // empty)' > files.txt

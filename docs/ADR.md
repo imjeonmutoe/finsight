@@ -216,6 +216,16 @@ Next.js는 반대로 **16.3.4(최신)** 를 쓴다. 생짜로 시작하는 프�
 
 ### ADR-016: Supabase Branching으로 PR마다 프리뷰 DB를 띄우고, DB 변경 PR은 사람이 머지한다
 
+> **시행 상태 (2026-10-14): 시행되지 않았다.** Branching에 필요한 Supabase Pro 비용 때문에 아래 "사람이 할 설정"
+> 1·2를 하지 않았다(2026-10-12). 그래서 프리뷰 DB도 없고, **main에 머지해도 프로덕션에 마이그레이션이 적용되지 않는다**
+> (PR #41 머지 뒤 원격 `schema_migrations`에 새 버전이 생기지 않은 것으로 확인). 아래 결정 중 지금 유효한 것은
+> 파일명 규약과 "`supabase/` PR은 게이트가 승인만 한다"뿐이다.
+>
+> **지금의 적용 절차** — `supabase/migrations/` PR을 사람이 머지한 직후, 그 파일을 사람이 대시보드 SQL Editor에서 한 트랜잭션으로 돌린다.
+> 끝에 `insert into supabase_migrations.schema_migrations (version, name) values ('<파일명 앞 14자리>', '<파일명 뒤 이름>');`를
+> 함께 넣는다. 이력을 안 넣으면 나중에 연동을 켰을 때 이미 적용된 마이그레이션을 다시 돌린다. 앱 배포(Vercel, 수동)는
+> 적용을 확인한 뒤에 한다 — 새 테이블을 쓰는 코드가 테이블보다 먼저 나가면 그 경로가 실패한다.
+
 **결정**: Supabase 조직을 Pro로 올리고 Branching을 GitHub 연동으로 켠다. PR이 열리면 Supabase가 그 PR 전용 프리뷰 브랜치(별도 Postgres·Auth)를 만들어 `supabase/migrations/`와 `supabase/seed.sql`을 적용하고, PR이 머지되거나 닫히면 브랜치를 지운다. Supabase–Vercel 연동이 그 브랜치의 접속 정보를 같은 git 브랜치의 Vercel 프리뷰 배포에 넣어, **프리뷰 앱과 프리뷰 DB가 한 쌍**으로 뜬다. 연동의 "Deploy to production"을 켜므로 **main에 머지하는 순간이 곧 프로덕션 마이그레이션 적용**이다.
 
 - **시드는 데모 데이터셋이다.** `supabase/seed.sql`은 `buildSeedSql()`(`src/lib/demo/seed-sql.ts`)이 샘플 대시보드(S0)의 `buildDemoDataset()` 거래 188건을 프리뷰 계정 Free·Pro 두 개에 넣어 생성한다. 프리뷰 화면의 숫자가 `/demo`와 같다. **실데이터는 복사하지 않는다** — 프리뷰 DB는 PR 작성자·리뷰어 누구나 들여다보는 곳이다.
