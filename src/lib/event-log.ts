@@ -1,4 +1,4 @@
-import { logPostHogOpsEvent } from "./posthog-log";
+import { logPostHogOpsEvent } from "@/services/posthog-log";
 
 /**
  * 운영자가 알아야 하는 이벤트를 Vercel 함수 로그와 PostHog 로그에 남긴다.

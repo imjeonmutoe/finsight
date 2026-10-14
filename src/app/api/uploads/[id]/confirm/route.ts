@@ -6,7 +6,7 @@ import { parseStatementRows } from "@/lib/statement";
 import { decodeCsv } from "@/lib/encoding";
 import { MAX_CSV_ROWS, MAX_FILE_BYTES } from "@/lib/limits";
 import { ownsStoragePath } from "@/lib/storage-path";
-import { captureServerEvent, trackApiFailure } from "@/lib/posthog-server";
+import { captureServerEvent, trackApiFailure } from "@/services/posthog-server";
 import { classifyByRule } from "@/lib/merchant-rules";
 import { createServerSupabase } from "@/services/supabase";
 import type { ConfirmResponse, ImportReviewResponse } from "@/types/api";

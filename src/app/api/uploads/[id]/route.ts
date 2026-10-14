@@ -2,7 +2,7 @@ import { cookies } from "next/headers";
 import { z } from "zod";
 import { errorResponse, jsonResponse, requireUserId } from "@/lib/api";
 import { ownsStoragePath } from "@/lib/storage-path";
-import { captureServerEvent } from "@/lib/posthog-server";
+import { captureServerEvent } from "@/services/posthog-server";
 import { createServerSupabase } from "@/services/supabase";
 
 const BUCKET = "statements";

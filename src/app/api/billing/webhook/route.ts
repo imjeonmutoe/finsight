@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { errorResponse, jsonResponse } from "@/lib/api";
 import { logEvent } from "@/lib/event-log";
-import { captureServerEvent } from "@/lib/posthog-server";
+import { captureServerEvent } from "@/services/posthog-server";
 import { verifyWebhookSignature } from "@/services/polar";
 import { createServiceSupabase } from "@/services/supabase-service";
 import type { Plan } from "@/types/billing";

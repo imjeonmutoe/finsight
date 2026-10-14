@@ -12,7 +12,7 @@ const { exchangeCodeForSession, createServerSupabase } = vi.hoisted(() => {
 });
 vi.mock("@/services/supabase", () => ({ createServerSupabase }));
 const { captureServerEvent } = vi.hoisted(() => ({ captureServerEvent: vi.fn() }));
-vi.mock("@/lib/posthog-server", () => ({ captureServerEvent }));
+vi.mock("@/services/posthog-server", () => ({ captureServerEvent }));
 vi.mock("next/headers", () => ({ cookies: vi.fn(async () => ({ getAll: () => [], set: () => {} })) }));
 
 const ORIGIN = "https://finsight.example";

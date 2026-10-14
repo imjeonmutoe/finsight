@@ -11,7 +11,7 @@ const { emit, forceFlush, after, getPostHogLogProvider } = vi.hoisted(() => {
     getPostHogLogProvider: vi.fn(() => ({ getLogger: () => ({ emit }), forceFlush })),
   };
 });
-vi.mock("../../instrumentation", () => ({ getPostHogLogProvider }));
+vi.mock("./posthog-log-provider", () => ({ getPostHogLogProvider }));
 vi.mock("next/server", () => ({ after }));
 
 const { logPostHogOpsEvent } = await import("./posthog-log");

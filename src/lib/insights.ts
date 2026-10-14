@@ -4,7 +4,7 @@ import { createHash } from "node:crypto";
 import { z } from "zod";
 import { logEvent } from "./event-log";
 import { modelForInsights } from "./limits";
-import { captureServerEvent } from "./posthog-server";
+import { captureServerEvent } from "@/services/posthog-server";
 import { createAiObservabilityContext, generateInsights } from "@/services/claude";
 import type { InsightInput, MonthlySummary, Outlier, Subscription } from "@/types/analytics";
 import type { Plan } from "@/types/billing";

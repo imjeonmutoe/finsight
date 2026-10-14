@@ -3,7 +3,7 @@ import { z } from "zod";
 import { errorResponse, jsonResponse, requireUserId } from "@/lib/api";
 import { CLASSIFICATION_BATCH_SIZE } from "@/lib/limits";
 import { classifyByRule } from "@/lib/merchant-rules";
-import { captureServerEvent, trackApiFailure } from "@/lib/posthog-server";
+import { captureServerEvent, trackApiFailure } from "@/services/posthog-server";
 import { classifyTransactions, createAiObservabilityContext } from "@/services/claude";
 import { createServerSupabase } from "@/services/supabase";
 import type { ClassifyResponse } from "@/types/api";

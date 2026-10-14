@@ -1,6 +1,6 @@
+import type { SupabaseClient } from "@supabase/supabase-js";
 import posthog from "posthog-js";
-import { createBrowserSupabase } from "@/services/supabase";
-import { BROWSER_PRIVACY_OPTIONS } from "./posthog-privacy";
+import { BROWSER_PRIVACY_OPTIONS } from "@/lib/posthog-privacy";
 
 const identifiedUserStorageKey = "posthog_identified_user_id";
 
@@ -31,7 +31,7 @@ function resetIdentifiedUser() {
   }
 }
 
-export function initPostHogBrowser(projectToken: string, host: string): void {
+export function initPostHogBrowser(projectToken: string, host: string, supabase: SupabaseClient): void {
   posthog.init(projectToken, {
     api_host: host,
     defaults: "2026-01-30",
@@ -41,7 +41,6 @@ export function initPostHogBrowser(projectToken: string, host: string): void {
     ...BROWSER_PRIVACY_OPTIONS,
   });
 
-  const supabase = createBrowserSupabase();
   supabase.auth.onAuthStateChange((event, session) => {
     if ((event === "INITIAL_SESSION" || event === "SIGNED_IN" || event === "USER_UPDATED") && session?.user) {
       const { id } = session.user;

@@ -11,7 +11,7 @@ const { from, createServiceSupabase } = vi.hoisted(() => {
 });
 const { logEvent } = vi.hoisted(() => ({ logEvent: vi.fn() }));
 vi.mock("server-only", () => ({}));
-vi.mock("@/lib/posthog-server", () => ({ captureServerEvent: vi.fn() }));
+vi.mock("@/services/posthog-server", () => ({ captureServerEvent: vi.fn() }));
 vi.mock("@/services/supabase-service", () => ({ createServiceSupabase }));
 vi.mock("@/lib/event-log", () => ({ logEvent }));
 

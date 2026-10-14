@@ -3,7 +3,7 @@ import { z } from "zod";
 import { errorResponse, jsonResponse, requireUserId } from "@/lib/api";
 import { computeCandidateHash, computeDedupeHash } from "@/lib/dedupe";
 import { getMonthlySummary } from "@/lib/queries";
-import { captureServerEvent } from "@/lib/posthog-server";
+import { captureServerEvent } from "@/services/posthog-server";
 import { createServerSupabase } from "@/services/supabase";
 import { CATEGORIES } from "@/types/category";
 import type { ParsedTransaction } from "@/types/transaction";

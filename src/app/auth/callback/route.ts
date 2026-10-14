@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { cookies } from "next/headers";
 import { NextResponse, type NextRequest } from "next/server";
-import { captureServerEvent } from "@/lib/posthog-server";
+import { captureServerEvent } from "@/services/posthog-server";
 import { createServerSupabase } from "@/services/supabase";
 
 // 목적지는 서버가 고정합니다. 쿼리 파라미터로 받으면 오픈 리디렉트가 됩니다.
