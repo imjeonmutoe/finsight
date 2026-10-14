@@ -75,15 +75,31 @@ jobs:
       - name: 스테이징 storage 비우기
         env:
           STAGING_DB_URL: ${{ secrets.STAGING_DB_URL }}
+          SQL: |
+            begin;
+            set local storage.allow_delete_query = 'true';
+            drop policy if exists statements_own on storage.objects;
+            delete from storage.objects where bucket_id = 'statements';
+            delete from storage.buckets where id = 'statements';
+            commit;
+        # URL을 psql에 그대로 넘기지 않는다. libpq는 비밀번호의 인코딩 안 된 `@`를 호스트로 읽고 그 '호스트'를
+        # 에러에 찍는데, GitHub은 시크릿 전체만 가려 비밀번호 조각이 공개 로그에 남는다(2026-10-14 실제로 남았다).
+        # 마지막 `@`로 나눠 PG* 환경변수로 넘기고, 디코딩한 비밀번호도 가린다.
         run: |
-          psql "$STAGING_DB_URL" -v ON_ERROR_STOP=1 -q <<'SQL'
-          begin;
-          set local storage.allow_delete_query = 'true';
-          drop policy if exists statements_own on storage.objects;
-          delete from storage.objects where bucket_id = 'statements';
-          delete from storage.buckets where id = 'statements';
-          commit;
-          SQL
+          python3 - <<'PY'
+          import os, subprocess, sys
+          from urllib.parse import unquote, urlsplit
+          rest = os.environ["STAGING_DB_URL"].split("://", 1)[1]
+          userinfo, hostpart = rest.rsplit("@", 1)
+          user, password = userinfo.split(":", 1)
+          password = unquote(password)
+          print(f"::add-mask::{password}", flush=True)
+          u = urlsplit("postgresql://" + hostpart)
+          env = dict(os.environ, PGHOST=u.hostname or "", PGPORT=str(u.port or 5432), PGUSER=unquote(user),
+                     PGPASSWORD=password, PGDATABASE=u.path.lstrip("/") or "postgres", PGSSLMODE="require")
+          env.pop("STAGING_DB_URL")
+          sys.exit(subprocess.run(["psql", "-v", "ON_ERROR_STOP=1", "-q", "-c", os.environ["SQL"]], env=env).returncode)
+          PY
 
       # 마이그레이션 전부를 처음부터 적용하고 [db.seed]의 seed.sql까지 넣는다(--no-seed를 주지 않으면
       # --db-url에서도 시드가 돈다 — 2.120.0 `db reset --help`로 확인). --yes는 원격 초기화 확인 프롬프트용.

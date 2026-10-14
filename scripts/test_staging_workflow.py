@@ -144,7 +144,11 @@ def test_storage_cleared_between_guard_and_reset():
     reset = step_index(r"supabase db reset")
     assert guard < clear < reset
     body = "\n".join(lines[clear - 10 : reset])
-    assert 'psql "$STAGING_DB_URL"' in body
+    # libpq는 비밀번호의 인코딩 안 된 `@`를 호스트로 읽고, 그 '호스트'를 에러에 찍는다. GitHub은 시크릿
+    # 전체만 가리므로 비밀번호 조각이 공개 로그에 남았다(2026-10-14). URL을 psql에 넘기지 않는다.
+    assert 'psql "$STAGING_DB_URL"' not in body
+    assert "PGPASSWORD" in body
+    assert "::add-mask::" in body
     assert "ON_ERROR_STOP=1" in body
     assert "drop policy if exists statements_own on storage.objects" in body
 
