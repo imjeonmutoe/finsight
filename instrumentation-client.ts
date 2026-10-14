@@ -1,4 +1,5 @@
-import { initPostHogBrowser } from "@/lib/posthog-browser";
+import { initPostHogBrowser } from "@/services/posthog-browser";
+import { createBrowserSupabase } from "@/services/supabase";
 
 const projectToken = process.env.NEXT_PUBLIC_POSTHOG_PROJECT_TOKEN;
 const host = process.env.NEXT_PUBLIC_POSTHOG_HOST;
@@ -14,5 +15,5 @@ if (!projectToken || !host) {
     );
   }
 } else {
-  initPostHogBrowser(projectToken, host);
+  initPostHogBrowser(projectToken, host, createBrowserSupabase());
 }

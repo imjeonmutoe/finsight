@@ -10,7 +10,7 @@ import { decodeCsv, detectEncoding } from "@/lib/encoding";
 import { MAX_CSV_ROWS, MAX_FILE_BYTES, MAX_MULTIPART_BODY_BYTES } from "@/lib/limits";
 import { buildSanitizedMappingInput } from "@/lib/sanitize";
 import { ownsStoragePath } from "@/lib/storage-path";
-import { captureServerEvent, trackApiFailure } from "@/lib/posthog-server";
+import { captureServerEvent, trackApiFailure } from "@/services/posthog-server";
 import { createAiObservabilityContext, inferColumnMapping } from "@/services/claude";
 import { createServerSupabase } from "@/services/supabase";
 import type { MappingResponse } from "@/types/api";

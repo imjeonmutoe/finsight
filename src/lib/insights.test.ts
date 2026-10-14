@@ -12,11 +12,11 @@ vi.mock("@/services/claude", () => ({
   generateInsights: vi.fn(),
 }));
 vi.mock("./event-log", () => ({ logEvent: vi.fn() }));
-vi.mock("./posthog-server", () => ({ captureServerEvent: vi.fn() }));
+vi.mock("@/services/posthog-server", () => ({ captureServerEvent: vi.fn() }));
 
 const { generateInsights } = await import("@/services/claude");
 const { logEvent } = await import("./event-log");
-const { captureServerEvent } = await import("./posthog-server");
+const { captureServerEvent } = await import("@/services/posthog-server");
 const { buildInsightInput, insightFingerprint, loadInsight } = await import("./insights");
 
 const summary: MonthlySummary = {

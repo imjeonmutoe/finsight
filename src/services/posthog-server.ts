@@ -2,7 +2,7 @@ import { headers } from "next/headers";
 import { after } from "next/server";
 import { PostHog } from "posthog-node";
 import { flushPostHogLogs, logPostHogCapture } from "./posthog-log";
-import { redactExceptionEvent } from "./posthog-privacy";
+import { redactExceptionEvent } from "@/lib/posthog-privacy";
 
 let client: PostHog | null = null;
 

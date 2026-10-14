@@ -1,7 +1,7 @@
 import { cookies } from "next/headers";
 import { z } from "zod";
 import { errorResponse, jsonResponse, requireUserId } from "@/lib/api";
-import { captureServerEvent, trackApiFailure } from "@/lib/posthog-server";
+import { captureServerEvent, trackApiFailure } from "@/services/posthog-server";
 import { clientIpAddress, createProCheckout } from "@/services/polar";
 import { createServerSupabase } from "@/services/supabase";
 

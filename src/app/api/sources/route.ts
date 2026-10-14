@@ -1,7 +1,7 @@
 import { cookies } from "next/headers";
 import { z } from "zod";
 import { errorResponse, jsonResponse, requireUserId } from "@/lib/api";
-import { captureServerEvent } from "@/lib/posthog-server";
+import { captureServerEvent } from "@/services/posthog-server";
 import { sanitizeMerchantForLlm } from "@/lib/sanitize";
 import { createServerSupabase } from "@/services/supabase";
 import type { FinancialSource } from "@/types/upload";

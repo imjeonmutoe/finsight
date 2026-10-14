@@ -3,7 +3,7 @@
 import { afterEach, expect, it, vi } from "vitest";
 
 const { logPostHogOpsEvent } = vi.hoisted(() => ({ logPostHogOpsEvent: vi.fn() }));
-vi.mock("./posthog-log", () => ({ logPostHogOpsEvent }));
+vi.mock("@/services/posthog-log", () => ({ logPostHogOpsEvent }));
 
 const { logEvent } = await import("./event-log");
 

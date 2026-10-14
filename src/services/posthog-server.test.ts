@@ -18,7 +18,7 @@ vi.mock("next/server", () => ({ after: vi.fn() }));
 vi.mock("./posthog-log", () => ({ flushPostHogLogs: vi.fn(), logPostHogCapture: vi.fn() }));
 
 const { captureServerEvent, captureServerException, getPostHogClient, trackApiFailure } = await import("./posthog-server");
-const { redactExceptionEvent } = await import("./posthog-privacy");
+const { redactExceptionEvent } = await import("@/lib/posthog-privacy");
 
 beforeEach(() => {
   vi.stubEnv("NEXT_PUBLIC_POSTHOG_PROJECT_TOKEN", "phc_test");

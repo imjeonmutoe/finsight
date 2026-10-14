@@ -9,7 +9,7 @@ import { inferColumnMapping, classifyTransactions, createAiObservabilityContext,
 
 const { create, constructor } = vi.hoisted(() => ({ create: vi.fn(), constructor: vi.fn() }));
 vi.mock("server-only", () => ({}));
-vi.mock("@/lib/posthog-server", () => ({
+vi.mock("@/services/posthog-server", () => ({
   getPostHogClient: () => ({ flush: async () => undefined }),
 }));
 vi.mock("@anthropic-ai/sdk", async (importOriginal) => {

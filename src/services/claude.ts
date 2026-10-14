@@ -10,7 +10,7 @@ import {
   LLM_TIMEOUT_MS, MAX_LLM_RETRIES, SONNET_MODEL, modelForInsights,
 } from "@/lib/limits";
 import { groundedNumbers, knownNumbers } from "@/lib/insight-numbers";
-import { getPostHogClient } from "@/lib/posthog-server";
+import { getPostHogClient } from "@/services/posthog-server";
 import { sanitizeMerchantForLlm } from "@/lib/sanitize";
 import { CATEGORIES } from "@/types/category";
 import type { Category } from "@/types/category";

@@ -14,7 +14,7 @@ const { getClaims, from, createServerSupabase } = vi.hoisted(() => {
   };
 });
 vi.mock("server-only", () => ({}));
-vi.mock("@/lib/posthog-server", () => ({ captureServerEvent: vi.fn() }));
+vi.mock("@/services/posthog-server", () => ({ captureServerEvent: vi.fn() }));
 vi.mock("@/services/supabase", () => ({ createServerSupabase }));
 vi.mock("next/headers", () => ({ cookies: vi.fn(async () => ({ getAll: () => [], set: () => {} })) }));
 

@@ -3,7 +3,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 const { captureServerException } = vi.hoisted(() => ({ captureServerException: vi.fn() }));
-vi.mock("@/lib/posthog-server", () => ({ captureServerException }));
+vi.mock("@/services/posthog-server", () => ({ captureServerException }));
 
 const { onRequestError } = await import("./instrumentation");
 

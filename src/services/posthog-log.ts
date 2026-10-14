@@ -1,6 +1,6 @@
 import { SeverityNumber } from "@opentelemetry/api-logs";
 import { after } from "next/server";
-import { getPostHogLogProvider } from "../../instrumentation";
+import { getPostHogLogProvider } from "./posthog-log-provider";
 
 const loggerName = "finsight-posthog-integration";
 
