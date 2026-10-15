@@ -21,10 +21,13 @@ describe("브라우저 계측 진입점", () => {
     expect(initPostHogBrowser).toHaveBeenCalledWith("phc_test", "https://us.i.posthog.com", supabase);
   });
 
-  it("개발 환경에서 설정이 빠지면 바로 실패합니다", async () => {
+  // 로컬은 키를 비워 PostHog로 보내지 않는다. 개발 서버의 에러가 prod 프로젝트에 섞이면
+  // oncall alert가 공개 Issue를 연다.
+  it.each(["development", "production"])("설정이 빠지면 %s에서도 멈추지 않고 초기화만 건너뜁니다", async (nodeEnv) => {
+    vi.stubEnv("NODE_ENV", nodeEnv);
     vi.stubEnv("NEXT_PUBLIC_POSTHOG_PROJECT_TOKEN", "");
     vi.stubEnv("NEXT_PUBLIC_POSTHOG_HOST", "https://us.i.posthog.com");
-    await expect(import("./instrumentation-client")).rejects.toThrow("NEXT_PUBLIC_POSTHOG_PROJECT_TOKEN");
+    await expect(import("./instrumentation-client")).resolves.toBeDefined();
     expect(initPostHogBrowser).not.toHaveBeenCalled();
   });
 });

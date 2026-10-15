@@ -21,17 +21,9 @@ export function getPostHogClient(): PostHog | null {
   const projectToken = process.env.NEXT_PUBLIC_POSTHOG_PROJECT_TOKEN;
   const host = process.env.NEXT_PUBLIC_POSTHOG_HOST;
 
-  if (!projectToken || !host) {
-    if (process.env.NODE_ENV !== "production") {
-      const missingVariable = !projectToken
-        ? "NEXT_PUBLIC_POSTHOG_PROJECT_TOKEN"
-        : "NEXT_PUBLIC_POSTHOG_HOST";
-      throw new Error(
-        `${missingVariable} variable required by PostHog is missing or un-configured, this causes events to be silently missed. This error stops appearing once ${missingVariable} is configured`,
-      );
-    }
-    return null;
-  }
+  // 키가 없으면 보내지 않는다. 로컬은 일부러 비운다 — 개발 서버 에러가 prod 프로젝트에 섞이면
+  // oncall alert가 공개 Issue를 연다(CLAUDE.md `oncall — prod alert 1차 방어선`).
+  if (!projectToken || !host) return null;
 
   client ??= new PostHog(projectToken, {
     host,
