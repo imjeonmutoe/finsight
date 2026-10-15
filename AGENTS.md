@@ -264,6 +264,11 @@ PostHog error tracking alert(새 에러 · 재발 · 급증)를 받아 **노이�
 `POSTHOG_ALERT_WEBHOOK_SECRET`(PostHog 목적지의 signing secret, `whsec_<base64>`)도 필요하다. 리포 시크릿
 `POSTHOG_PERSONAL_API_KEY`(읽기 스코프)가 없으면 분석은 전부 `[미확인]`이 되고 판정은 신호 · 확신도 낮음이다.
 
+**로컬은 PostHog로 보내지 않는다.** `.env.local`에 `NEXT_PUBLIC_POSTHOG_PROJECT_TOKEN`·`NEXT_PUBLIC_POSTHOG_HOST`를 두지 않는다 —
+키가 없으면 앱은 계측만 건너뛴다. 개발 서버 에러가 prod 프로젝트에 들어오면 `/dashboard` 같은 핵심 경로라 신호로 판정돼
+공개 Issue가 열린다. alert에 `environment` 필터를 거는 것으로 대신하지 마라 — 브라우저 예외에는 그 속성이 없고,
+급증 alert 이벤트에는 예외 속성이 실리지 않아 필터를 걸면 prod 브라우저 에러와 급증 alert가 통째로 사라진다.
+
 ### CI에 이미 물려 있는 것
 
 고치기 전에 이유를 읽어라. 셋 다 **실패해도 빨간불이 안 뜨는** 종류의 함정이다.

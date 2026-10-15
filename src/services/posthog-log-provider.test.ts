@@ -38,13 +38,13 @@ describe("PostHog 로그 프로바이더", () => {
     expect((await load())()).toBeNull();
   });
 
-  it("개발 환경에서 설정이 빠지면 바로 실패하고, 프로덕션에서는 조용히 끕니다", async () => {
+  it("설정이 빠지면 개발·프로덕션 모두 조용히 끕니다", async () => {
     vi.stubEnv("NEXT_PUBLIC_POSTHOG_PROJECT_TOKEN", "");
     vi.stubEnv("NEXT_PUBLIC_POSTHOG_HOST", "https://us.i.posthog.com");
     const getPostHogLogProvider = await load();
 
     vi.stubEnv("NODE_ENV", "development");
-    expect(() => getPostHogLogProvider()).toThrow("NEXT_PUBLIC_POSTHOG_PROJECT_TOKEN");
+    expect(getPostHogLogProvider()).toBeNull();
     vi.stubEnv("NODE_ENV", "production");
     expect(getPostHogLogProvider()).toBeNull();
   });

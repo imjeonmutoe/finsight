@@ -31,6 +31,15 @@ afterEach(() => {
 });
 
 describe("PostHog 서버 클라이언트", () => {
+  it.each(["development", "production"])("설정이 빠지면 %s에서도 클라이언트 없이 조용히 넘어갑니다", async (nodeEnv) => {
+    vi.stubEnv("NODE_ENV", nodeEnv);
+    vi.stubEnv("NEXT_PUBLIC_POSTHOG_PROJECT_TOKEN", "");
+
+    expect(getPostHogClient()).toBeNull();
+    await expect(captureServerException(new Error("x"), {})).resolves.toBeUndefined();
+    expect(captureException).not.toHaveBeenCalled();
+  });
+
   it("LLM 원문과 예외 메시지를 보내지 않도록 설정합니다", () => {
     getPostHogClient();
     expect(constructor).toHaveBeenCalledWith("phc_test", expect.objectContaining({
